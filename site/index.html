@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盤後雷達</title>
+<meta name="description" content="台股漲停族群、隔日表現、處置預測、自結季報營收公告、券差借券費率與主動 ETF 持股異動，每日收盤後自動更新。">
+<meta name="theme-color" content="#24335e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2324335e'/%3E%3Cpath d='M6 22 12 15l5 4 9-10' stroke='%23ff6b64' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="logo" href="#/" aria-label="回首頁">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#fff" opacity=".12"/><path d="M6 22 12 15l5 4 9-10" stroke="#ff8a84" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="siteName">盤後雷達</span>
+    </a>
+    <nav class="main" aria-label="主選單">
+      <span class="grp"><a href="#/commentary">氣氛</a><a href="#/daily">當日</a><a href="#/nextday">隔日</a><a href="#/stats">統計</a></span>
+      <span class="grp"><a href="#/att">自結</a><a href="#/fin">季報</a><a href="#/rev">營收</a><a href="#/treasury">庫藏</a><a href="#/events">事件</a></span>
+      <span class="grp"><a href="#/borrow">券差</a><a href="#/disposal">處置</a><a href="#/etf">主動ETF</a><a href="#/stock">個股</a></span>
+    </nav>
+    <button class="tbtn" id="themeBtn" type="button" aria-label="切換深淺色">深淺色</button>
+  </div>
+</header>
+<div id="mockbar" class="mockbar" hidden>目前顯示的是模擬資料（公司名稱皆為虛構）。部署並執行資料流程後會換成真實行情。</div>
+<main id="app" tabindex="-1"><p class="muted">載入中…</p></main>
+<footer>
+  資料來源：臺灣證券交易所、證券櫃檯買賣中心、公開資訊觀測站、各投信公開資訊。
+  本站資訊由程式自動整理，可能有誤，僅供研究參考，不構成任何投資建議；請以官方公告為準。
+  <div id="updated" class="small" style="margin-top:6px"></div>
+</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="assets/app.js"></script>
+</body>
+</html>

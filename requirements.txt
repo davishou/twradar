@@ -1,0 +1,2 @@
+requests>=2.31
+anthropic>=0.40  # 選用：AI 族群分類/評分/氣氛

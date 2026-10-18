@@ -1,0 +1,22 @@
+{
+  "_說明": "族群（題材）定義。codes 填入股票代號即固定歸類；keywords 會比對公司名稱與近期重大訊息主旨。沒對到的股票：有 AI 金鑰時由 AI 分類，否則用官方產業別。",
+  "themes": {
+    "低軌衛星": {"emoji": "🛰️", "codes": [], "keywords": ["衛星", "低軌"]},
+    "CPO矽光子": {"emoji": "💡", "codes": [], "keywords": ["矽光子", "CPO", "光通訊", "光收發"]},
+    "軟板FPC": {"emoji": "📎", "codes": [], "keywords": ["軟板", "FPC"]},
+    "PCB設備": {"emoji": "🛠️", "codes": [], "keywords": ["PCB設備", "鑽孔"]},
+    "AI伺服器": {"emoji": "🖥️", "codes": [], "keywords": ["伺服器"]},
+    "散熱": {"emoji": "🌀", "codes": [], "keywords": ["散熱", "均熱", "液冷", "水冷"]},
+    "機器人": {"emoji": "🤖", "codes": [], "keywords": ["機器人", "減速機", "自動化"]},
+    "重電": {"emoji": "⚡", "codes": [], "keywords": ["重電", "變壓器", "電網"]},
+    "生技新藥": {"emoji": "🧬", "codes": [], "keywords": ["新藥", "臨床", "藥證", "生醫"]},
+    "記憶體": {"emoji": "💾", "codes": [], "keywords": ["記憶體", "DRAM", "NAND"]},
+    "軟體": {"emoji": "💻", "codes": [], "keywords": ["軟體", "雲端", "資安"]},
+    "鋼鐵": {"emoji": "🔩", "codes": [], "keywords": ["鋼"]},
+    "電腦週邊": {"emoji": "🖨️", "codes": [], "keywords": []},
+    "被動元件": {"emoji": "🔌", "codes": [], "keywords": ["MLCC", "電容", "電阻"]},
+    "營建資產": {"emoji": "🏗️", "codes": [], "keywords": ["建設", "營造", "土地"]},
+    "航運": {"emoji": "🚢", "codes": [], "keywords": ["海運", "航運", "貨櫃"]},
+    "教育服務": {"emoji": "📚", "codes": [], "keywords": ["教育"]}
+  }
+}
