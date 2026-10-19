@@ -348,7 +348,19 @@ async function showFollow(nd, row, scroll) {
   if (scroll) box.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
   const title = `${esc(row.code)} ${esc(row.name)} 漲停日 ${md(nd.limit_date)} 前15大買超券商 → 隔日 ${md(nd.date)} 動向`;
   if (!b1) {
-    box.innerHTML = `<h2 class="bk-title">${title}</h2><div class="empty">沒有漲停日 ${esc(nd.limit_date)} 的分點資料（分點從開始抓取的那天才有，且只能在收盤當天抓）。</div>`;
+    let html = `<h2 class="bk-title">${title}</h2><div class="empty">沒有漲停日 ${esc(nd.limit_date)} 的分點資料（分點從開始抓取的那天才有，且只能在收盤當天抓），所以無法對照主力買家。</div>`;
+    if (b2) {
+      const B2 = parseBranches(b2);
+      const refs = [{v: b2.open, label: "開盤", cls: "open"}, {v: b2.avg, label: "均價", cls: "avg"}, {v: b2.close, label: "收盤", cls: "close"}].filter(r => r.v);
+      html += instHead(`隔日 ${md(nd.date)} 分點`, row.code, row.name, b2.inst) + statsHTML(B2, b2.lots) + topPairHTML(B2) + bubbleSVG(b2, B2, refs) + LEGEND +
+        dtHTML(b2, B2, `${esc(b2.code)} ${esc(b2.name)} ${md(b2.date)} 當沖 Top10（收盤 ${fp(b2.close)}）`);
+      box.innerHTML = html;
+      wireBubble(box, [B2]);
+    } else {
+      const st = await load(`brokers/${nd.date}/_status.json`);
+      const why = st?.stocks?.[row.code]?.msg;
+      box.innerHTML = html + (why ? `<div class="empty">隔日也沒有分點資料：${esc(why)}</div>` : "");
+    }
     return;
   }
   const B1 = parseBranches(b1), B2 = b2 ? parseBranches(b2) : [];
