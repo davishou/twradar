@@ -87,7 +87,7 @@ def _ai_scores(items: list[dict], kind: str) -> dict:
     res = ai.ask_json(
         f"以下是台股公司剛公布的{kind}。請為每筆給一個 -5 到 +5 的整數分數，代表相對公司近期水準"
         "的驚喜程度（+5 大幅優於、0 持平、-5 大幅轉差），並給 20 字內理由。\n"
-        f"{lines}\n格式：{{\"代號\": {{\"score\": 整數, \"why\": \"理由\"}}}}")
+        f"{lines}\n格式：{{\"代號\": {{\"score\": 整數, \"why\": \"理由\"}}}}", tag=f"score-{kind}", max_tokens=6000)
     return res if isinstance(res, dict) else {}
 
 

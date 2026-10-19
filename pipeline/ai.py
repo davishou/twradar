@@ -42,7 +42,10 @@ def _status(**kw) -> None:
         pass
 
 
-def ask(prompt: str, system: str = "", max_tokens: int = 2000) -> str | None:
+def ask(prompt: str, system: str = "", max_tokens: int = 2000, tag: str = "") -> str | None:
+    global _tag
+    if tag:
+        _tag = tag
     if not enabled():
         _status(ok=False, error="沒有設定 ANTHROPIC_API_KEY")
         return None
@@ -64,9 +67,7 @@ def ask(prompt: str, system: str = "", max_tokens: int = 2000) -> str | None:
 
 def ask_json(prompt: str, tag: str = "", **kw):
     """要求模型輸出 JSON；擷取第一個 JSON 區塊並解析"""
-    global _tag
-    _tag = tag
-    txt = ask(prompt + "\n\n只輸出 JSON，不要其他文字。", **kw)
+    txt = ask(prompt + "\n\n只輸出 JSON，不要其他文字。", tag=tag or "json", **kw)
     if not txt:
         return None
     txt = re.sub(r"^```(?:json)?|```$", "", txt.strip(), flags=re.M)

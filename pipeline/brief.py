@@ -31,7 +31,7 @@ def commentary(daily: dict, nextday: dict | None) -> dict:
     text = ai.ask(
         "根據以下台股盤後資料，寫一段 180~260 字的『今日盤面主軸』評論：點出資金主線族群、集中或分散程度、"
         "連板與隔日表現代表的追價氣氛。只能使用資料中的事實，不要預測股價，不要給買賣建議。\n\n" + facts,
-        max_tokens=800)
+        max_tokens=2000, tag="commentary")
     src = "ai"
     if not text:
         src = "rule"
