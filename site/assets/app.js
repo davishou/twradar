@@ -244,12 +244,12 @@ function allHTML(B, key) {
 }
 const LEGEND = `<div class="bk-legend"><span><i class="dot up"></i>買進</span><span><i class="dot down"></i>賣出</span>
   <span><i class="ln gold"></i>金線：同一券商又買又賣，賣均高於買均（有價差）</span><span><i class="ln silver"></i>銀線：賣均不高於買均</span>
-  <span>線越粗＝當沖比越高</span><span><i class="ln avg"></i>全日均價</span></div>`;
+  <span>常駐顯示當沖量前 5 大的連線，滑過券商可看其他；線越粗＝當沖比越高</span><span><i class="ln avg"></i>全日均價</span></div>`;
 
 /* refs: [{v, label, cls}] 右側價位標記；隔日頁用來標開盤/均價/收盤 */
 function bubbleSVG(bk, B, refs = []) {
   const W = 1000, H = 480, ml = 74, mr = refs.length ? 96 : 24, mt = 26, mb = 44, cx = ml + (W - ml - mr) / 2, half = (W - ml - mr) / 2 - 34;
-  const top = B.slice().sort((a, c) => c.tot - a.tot).slice(0, 40);
+  const top = B.slice().sort((a, c) => c.tot - a.tot).slice(0, 20);  // 只畫成交量前 20 大，避免擁擠
   const maxV = Math.max(1, ...top.map(x => Math.max(x.b, x.s)));
   const X = (v, side) => cx + side * (8 + Math.sqrt(v / maxV) * half);
   const R = v => 3 + Math.sqrt(v / maxV) * 24;
@@ -271,7 +271,7 @@ function bubbleSVG(bk, B, refs = []) {
   g += `<line class="mid" x1="${cx}" x2="${cx}" y1="${mt}" y2="${H - mb}"/>`;
   if (showLimit) g += `<line class="lim" x1="${ml}" x2="${W - mr}" y1="${Y(limit)}" y2="${Y(limit)}"/><text class="limt" x="${ml - 8}" y="${Y(limit) + 4}" text-anchor="end">漲停 ${fp(limit)}</text>`;
   g += `<line class="flat" x1="${ml}" x2="${W - mr}" y1="${Y(bk.prev_close)}" y2="${Y(bk.prev_close)}"/><text class="flatt" x="${ml - 8}" y="${Y(bk.prev_close) + 4}" text-anchor="end">平盤 ${fp(bk.prev_close)}</text>`;
-  if (vw && !refs.length) g += `<line class="vw" x1="${ml}" x2="${W - mr}" y1="${Y(vw)}" y2="${Y(vw)}"/><text class="vwt" x="${W - mr - 4}" y="${Y(vw) - 5}" text-anchor="end">全日均價 ${fx(vw, 2)}</text>`;
+  if (vw && !refs.length) g += `<line class="vw" x1="${ml}" x2="${W - mr}" y1="${Y(vw)}" y2="${Y(vw)}"/><text class="vwt" x="${cx + 6}" y="${Y(vw) - 5}">全日均價 ${fx(vw, 2)}</text>`;
   // 右側價位標記（避免文字重疊）
   let lastY = -99;
   refs.slice().sort((a, c) => Y(a.v) - Y(c.v)).forEach(r => {
@@ -280,14 +280,24 @@ function bubbleSVG(bk, B, refs = []) {
     if (r.cls === "avg") g += `<line class="vw" x1="${ml}" x2="${W - mr}" y1="${y}" y2="${y}"/>`;
   });
   g += `<text class="side up" x="${ml + 8}" y="${mt + 4}">← 買進</text><text class="side down" x="${W - mr - 8}" y="${mt + 4}" text-anchor="end">賣出 →</text>`;
-  const links = [], dots = [], labels = [];
+  const links = [], dots = [], cand = [];
+  // 只常駐顯示當沖張數前 5 大的連線，其餘滑過時才出現
+  const dtTop = new Set(top.filter(x => x.b && x.s).sort((p, q) => Math.min(q.b, q.s) - Math.min(p.b, p.s)).slice(0, 5).map(x => x.n));
   top.forEach(x => {
     const a = x.b ? {cx: X(x.b, -1), cy: Y(x.ba), r: R(x.b)} : null, c = x.s ? {cx: X(x.s, 1), cy: Y(x.sa), r: R(x.s)} : null;
     const n = esc(x.n);
-    if (a && c) links.push(`<line class="lk ${x.sa > x.ba ? "gold" : "silver"}" data-n="${n}" x1="${a.cx.toFixed(1)}" y1="${a.cy.toFixed(1)}" x2="${c.cx.toFixed(1)}" y2="${c.cy.toFixed(1)}" style="stroke-width:${(.8 + x.dt * 2.4).toFixed(2)};opacity:${(.3 + x.dt * .6).toFixed(2)}"/>`);
-    [[a, "b"], [c, "s"]].forEach(([p, sd]) => { if (!p) return;
+        if (a && c) links.push(`<line class="lk ${x.sa > x.ba ? "gold" : "silver"} ${dtTop.has(x.n) ? "" : "quiet"}" data-n="${n}" x1="${a.cx.toFixed(1)}" y1="${a.cy.toFixed(1)}" x2="${c.cx.toFixed(1)}" y2="${c.cy.toFixed(1)}" style="stroke-width:${(1 + x.dt * 2.5).toFixed(2)}"/>`);
+    [[a, "b", x.b], [c, "s", x.s]].forEach(([p, sd, v]) => { if (!p) return;
       dots.push([p.r, `<circle class="bb ${sd}" data-n="${n}" cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" r="${p.r.toFixed(1)}"/>`]);
-      labels.push(`<text class="lb" data-n="${n}" x="${p.cx.toFixed(1)}" y="${(p.cy - p.r - 4).toFixed(1)}" text-anchor="middle">${n}</text>`); });
+      cand.push({n, v, x: p.cx, y: p.cy - p.r - 5}); });
+  });
+  // 標籤：依張數由大到小放，和已放的標籤重疊就先藏起來（滑過時才顯示）
+  const placed = [], labels = [];
+  cand.sort((p, q) => q.v - p.v).forEach(c => {
+    const w = c.n.length * 11 + 6, box = [c.x - w / 2, c.y - 12, c.x + w / 2, c.y + 2];
+    const hit = placed.length >= 10 || placed.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]));
+    if (!hit) placed.push(box);
+    labels.push(`<text class="lb ${hit ? "hid" : ""}" data-n="${c.n}" x="${c.x.toFixed(1)}" y="${c.y.toFixed(1)}" text-anchor="middle">${c.n}</text>`);
   });
   dots.sort((a, c) => c[0] - a[0]);
   g += `<g>${links.join("")}</g><g>${dots.map(d => d[1]).join("")}</g><g>${labels.join("")}</g>`;

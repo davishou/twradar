@@ -264,3 +264,14 @@ table.follow tfoot td{font-weight:700;border-top:2px solid var(--line)}
 .kpi .dif.up{color:var(--up)} .kpi .dif.down{color:var(--down)}
 .tag.up.strong{background:var(--up);color:#fff}
 .tag.up.soft{background:transparent;border:1px solid var(--up)}
+
+/* 泡泡圖：精簡版 */
+svg.bubble .lk{opacity:.75}
+svg.bubble .lk.quiet{opacity:0}
+svg.bubble .lb{font-size:11px;fill:var(--ink-2)}
+svg.bubble .lb.hid{opacity:0}
+svg.bubble .bb.b{fill-opacity:.35} svg.bubble .bb.s{fill-opacity:.35}
+svg.bubble.focus .lk.quiet.hl{opacity:1}
+svg.bubble.focus .lb.hid.hl{opacity:1}
+svg.bubble.focus .lb.hid:not(.hl),svg.bubble.focus .lk.quiet:not(.hl){opacity:0}
+svg.bubble .vwt{paint-order:stroke;stroke:var(--bg);stroke-width:4px}
