@@ -361,6 +361,43 @@ def fetch_business(code: str) -> str:
     return re.sub(r"\s+", " ", txt).strip()[:300]
 
 
+def fetch_material_mops(d: date) -> list[dict] | None:
+    """公開資訊觀測站 d 日全部重大訊息（上市、上櫃），含完整說明。失敗回 None。
+    [{date,time,code,name,market,subject,body,clause}]"""
+    import html as _html
+    from .http import session
+    data = {"step": "0", "newstuff": "1", "firstin": "1", "year": str(d.year - 1911), "month": str(d.month), "day": str(d.day)}
+    try:
+        r = session().post(U["mops_material_day"], data=data, timeout=config.HTTP_TIMEOUT)
+        r.encoding = "utf-8"
+        page = r.text
+    except Exception as e:  # noqa: BLE001
+        log.warning("觀測站重大訊息 %s 抓取失敗：%s", d, e)
+        return None
+    if "查詢過於頻繁" in page or "頁面無法執行" in page:
+        log.warning("觀測站重大訊息 %s 被拒：查詢過於頻繁", d)
+        return None
+    out = []
+    for form in re.findall(r"<form[^>]*ajax_t05st02.*?</form>", page, re.S | re.I):
+        vals = [_html.unescape(m[1]) for m in re.findall(r"""name=['"]h\d+['"] value=(['"])(.*?)\1\s*/?>""", form, re.S)]
+        if len(vals) < 9:
+            continue
+        name, code, ymd, hms, subject, _, _, _, body = vals[:9]
+        typek = re.search(r'TYPEK\.value=(?:&quot;|")(\w+)', form)
+        typek = typek.group(1) if typek else ""
+        if typek not in ("sii", "otc"):
+            continue
+        code = code.strip()
+        out.append({
+            "date": f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:8]}" if len(ymd) == 8 else "",
+            "time": f"{hms.zfill(6)[:2]}:{hms.zfill(6)[2:4]}",
+            "code": code, "name": name.strip(), "market": "TWSE" if typek == "sii" else "TPEX",
+            "subject": re.sub(r"\s+", " ", subject).strip(), "body": body.strip(), "clause": "",
+        })
+    log.info("觀測站重大訊息 %s：%d 筆", d, len(out))
+    return out
+
+
 def fetch_revenue() -> list[dict]:
     """月營收 [{ym,code,name,market,industry,rev,rev_prev,rev_ly,mom,yoy,cum,cum_yoy,note}]（單位：千元）"""
     out = []

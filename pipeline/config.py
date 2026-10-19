@@ -29,7 +29,7 @@ URLS = {
     "tpex_quotes_by_date": "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc?date={yyyy}/{mm}/{dd}&type=EW&response=json",
     # 上市櫃公司基本資料（產業別、實收資本額）
     "twse_company": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
-    "tpex_company": "https://www.tpex.org.tw/openapi/v1/mopsfe_t187ap03_O",
+    "tpex_company": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
     # 本益比、殖利率、淨值比
     "twse_pe": "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL",
     "tpex_pe": "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis",
@@ -40,13 +40,13 @@ URLS = {
     "tpex_punish": "https://www.tpex.org.tw/openapi/v1/tpex_disposal_information",
     # 重大訊息（自結、庫藏股、事件）
     "twse_material": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
-    "tpex_material": "https://www.tpex.org.tw/openapi/v1/mopsfe_t187ap04_O",
+    "tpex_material": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap04_O",
     # 月營收
     "twse_revenue": "https://openapi.twse.com.tw/v1/opendata/t187ap05_L",
-    "tpex_revenue": "https://www.tpex.org.tw/openapi/v1/mopsfe_t187ap05_O",
+    "tpex_revenue": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
     # 季報 EPS
     "twse_eps": "https://openapi.twse.com.tw/v1/opendata/t187ap14_L",
-    "tpex_eps": "https://www.tpex.org.tw/openapi/v1/mopsfe_t187ap14_O",
+    "tpex_eps": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap14_O",
     # 休市日
     "holidays": "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
     # 櫃買舊版依日期行情（新版失敗時備援）
@@ -64,6 +64,8 @@ URLS = {
     "isin_tpex": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4",
     # 公司基本資料（主要經營業務），給 AI 判斷族群用
     "mops_profile": "https://mopsov.twse.com.tw/mops/web/ajax_t05st03",
+    # 公開資訊觀測站：指定日期的全部重大訊息（含內文），一次一個請求
+    "mops_material_day": "https://mopsov.twse.com.tw/mops/web/t05st02",
 }
 
 # ---- 券商分點 ----
