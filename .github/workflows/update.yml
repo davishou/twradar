@@ -33,6 +33,7 @@ jobs:
       name: github-pages
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AI_MODEL: ${{ vars.AI_MODEL || 'claude-haiku-5-5' }}
       SITE_NAME: ${{ vars.SITE_NAME || '盤後雷達' }}
       SITE_URL: ${{ vars.SITE_URL }}
     steps:
