@@ -183,6 +183,35 @@ def fetch_companies() -> dict[str, dict]:
             }
         if len(out) == before:
             log.warning("%s 公司基本資料抓取失敗或格式改變（%s）", market, U[key])
+            from .util import write_json
+            write_json(config.STATE_DIR / f"companies_debug_{market}.json",
+                       {"url": U[key], "type": type(js).__name__, "len": len(js) if hasattr(js, "__len__") else None,
+                        "sample": js[:2] if isinstance(js, list) else str(js)[:500]})
+            if market == "TPEX":
+                out.update(_tpex_isin())
+    return out
+
+
+def _tpex_isin() -> dict[str, dict]:
+    """備援：從證交所 ISIN 一覽表取得上櫃股票的產業別（Big5 網頁）"""
+    from .http import get_bytes
+    raw = get_bytes(U["isin_tpex"])
+    if not raw:
+        return {}
+    html = raw.decode("cp950", errors="replace")
+    out = {}
+    for tr in re.findall(r"<tr>(.*?)</tr>", html, re.S):
+        tds = [re.sub(r"<[^>]+>", "", x).strip() for x in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
+        if len(tds) < 5:
+            continue
+        m = re.match(r"^(\d{4})[\s\u3000]+(.+)$", tds[0])
+        if not m or not is_common_stock(m.group(1)):
+            continue
+        ind = tds[4].replace("業", "").strip()
+        out[m.group(1)] = {"code": m.group(1), "name": m.group(2).strip(), "market": "TPEX",
+                           "industry_code": INDUSTRY_BY_NAME.get(ind, ""), "industry": ind or "其他",
+                           "capital": 0, "shares": 0}
+    log.info("上櫃產業別改用 ISIN 一覽表：%d 檔", len(out))
     return out
 
 

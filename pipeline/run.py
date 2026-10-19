@@ -49,10 +49,7 @@ def job_daily(src, d: date | None = None, light: bool = False) -> date | None:
         # 所以先用依日期查詢抓今天，抓不到（休市或尚未收盤）才用 OpenAPI 的最新資料
         now = now_tw()
         day = now.date() if now.hour * 60 + now.minute >= 14 * 60 + 30 else now.date() - timedelta(days=1)
-        last = latest_day()
         for _ in range(6):
-            if last and day <= last:
-                break
             if day.weekday() < 5:
                 td, quotes = src.fetch_quotes(day)
                 if quotes and td == day and any(q["market"] == "TWSE" for q in quotes):

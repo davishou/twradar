@@ -58,6 +58,8 @@ URLS = {
     # 券商買賣證券日報表（分點進出）。證交所版只提供最近一個交易日，且每次查詢要輸入驗證碼
     "twse_bsr_menu": "https://bsr.twse.com.tw/bshtm/bsMenu.aspx",
     "tpex_bsr_menu": "https://www.tpex.org.tw/web/stock/aftertrading/broker_trading/brokerBS.php?l=zh-tw",
+    # 證交所 ISIN 一覽表（上櫃），櫃買公司資料抓不到時用來補產業別
+    "isin_tpex": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4",
     # 公司基本資料（主要經營業務），給 AI 判斷族群用
     "mops_profile": "https://mopsov.twse.com.tw/mops/web/ajax_t05st03",
 }
