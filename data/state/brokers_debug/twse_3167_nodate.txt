@@ -1,0 +1,398 @@
+券商買賣股票成交價量資訊
+股票代碼,="3167"
+序號,券商,價格,買進股數,賣出股數,,序號,券商,價格,買進股數,賣出股數
+"1","1020合　　庫","980.00","1000","0",,"2","1020合　　庫","985.00","2000","0" 
+"3","1020合　　庫","987.00","50","0",,"4","1020合　　庫","989.00","2000","0" 
+"5","1020合　　庫","990.00","1000","1000",,"6","1020合　　庫","991.00","1000","0" 
+"7","1020合　　庫","994.00","1000","0",,"8","1020合　　庫","995.00","1000","0" 
+"9","1020合　　庫","996.00","50","2000",,"10","1020合　　庫","1000.00","2020","0" 
+"11","1020合　　庫","1005.00","1000","300",,"12","1020合　　庫","1010.00","2000","0" 
+"13","1020合　　庫","1015.00","50","50",,"14","1020合　　庫","1020.00","1053","0" 
+"15","1020合　　庫","1025.00","1000","0",,"16","1021合庫台中","983.00","10","0" 
+"17","1021合庫台中","984.00","0","67",,"18","1021合庫台中","987.00","10","0" 
+"19","1021合庫台中","988.00","50","1000",,"20","1021合庫台中","990.00","1000","0" 
+"21","1021合庫台中","994.00","10","0",,"22","1021合庫台中","995.00","0","1000" 
+"23","1021合庫台中","997.00","30","0",,"24","1021合庫台中","1000.00","0","300" 
+"25","1021合庫台中","1010.00","0","32",,"26","1022合庫台南","987.00","1000","0" 
+"27","1022合庫台南","991.00","1000","0",,"28","1022合庫台南","997.00","10","0" 
+"29","1022合庫台南","1000.00","0","1000",,"30","1022合庫台南","1005.00","100","0" 
+"31","1022合庫台南","1010.00","0","458",,"32","1022合庫台南","1015.00","10","0" 
+"33","1023合庫高雄","980.00","20","0",,"34","1023合庫高雄","986.00","1000","0" 
+"35","1023合庫高雄","987.00","19","0",,"36","1023合庫高雄","990.00","1","0" 
+"37","1023合庫高雄","991.00","0","3000",,"38","1023合庫高雄","992.00","1010","3000" 
+"39","1023合庫高雄","997.00","0","1000",,"40","1023合庫高雄","1005.00","1000","0" 
+"41","1023合庫高雄","1010.00","6000","0",,"42","1024合庫嘉義","985.00","10","0" 
+"43","1024合庫嘉義","992.00","1000","0",,"44","1024合庫嘉義","996.00","5","0" 
+"45","1024合庫嘉義","1005.00","5","0",,"46","1024合庫嘉義","1020.00","1000","0" 
+"47","1025合庫基隆","1010.00","50","0",,"48","1028合庫彰化","983.00","1000","0" 
+"49","1028合庫彰化","998.00","20","0",,"50","1028合庫彰化","999.00","20","0" 
+"51","1028合庫彰化","1000.00","1000","0",,"52","1028合庫彰化","1005.00","0","1000" 
+"53","1028合庫彰化","1015.00","0","1000",,"54","1028合庫彰化","1030.00","1020","0" 
+"55","1029合庫鳳山","985.00","5000","0",,"56","1029合庫鳳山","989.00","100","0" 
+"57","1029合庫鳳山","992.00","1000","0",,"58","1029合庫鳳山","994.00","0","1000" 
+"59","1029合庫鳳山","995.00","1000","0",,"60","1029合庫鳳山","998.00","100","0" 
+"61","1029合庫鳳山","1005.00","900","0",,"62","1029合庫鳳山","1020.00","50","0" 
+"63","1029合庫鳳山","1030.00","3000","0",,"64","102A合庫新竹","982.00","30","0" 
+"65","102A合庫新竹","993.00","1000","0",,"66","102A合庫新竹","1000.00","0","1" 
+"67","102A合庫新竹","1005.00","0","1000",,"68","102A合庫新竹","1010.00","0","1000" 
+"69","102C合庫自強","985.00","1000","0",,"70","102C合庫自強","987.00","1000","0" 
+"71","102C合庫自強","988.00","25","0",,"72","102C合庫自強","989.00","1000","1000" 
+"73","102C合庫自強","991.00","1000","0",,"74","102C合庫自強","995.00","0","1000" 
+"75","102C合庫自強","1005.00","0","100",,"76","102C合庫自強","1010.00","25","0" 
+"77","102C合庫自強","1015.00","15","0",,"78","102E合庫桃園","990.00","0","1000" 
+"79","102E合庫桃園","993.00","1000","0",,"80","102E合庫桃園","995.00","1000","0" 
+"81","102E合庫桃園","1010.00","0","1000",,"82","102E合庫桃園","1015.00","10","0" 
+"83","102E合庫桃園","1030.00","1000","0",,"84","102F合庫西台","989.00","0","1000" 
+"85","102F合庫西台","996.00","1000","0",,"86","102F合庫西台","1010.00","1000","0" 
+"87","102F合庫西台","1015.00","0","110",,"88","102G合庫三重","983.00","50","0" 
+"89","102G合庫三重","986.00","10","0",,"90","102G合庫三重","987.00","50","0" 
+"91","102G合庫三重","989.00","0","2000",,"92","102G合庫三重","998.00","50","0" 
+"93","102G合庫三重","1000.00","150","0",,"94","102G合庫三重","1010.00","50","0" 
+"95","102G合庫三重","1020.00","1000","0",,"96","102G合庫三重","1030.00","1000","0" 
+"97","1030土　　銀","989.00","0","1000",,"98","1030土　　銀","1000.00","1000","0" 
+"99","1031土銀台中","986.00","1000","0",,"100","1031土銀台中","988.00","1000","0" 
+"101","1033土銀高雄","1010.00","0","100",,"102","1034土銀嘉義","982.00","0","1000" 
+"103","1034土銀嘉義","1030.00","1000","0",,"104","1035土銀新竹","987.00","1000","0" 
+"105","1035土銀新竹","988.00","50","0",,"106","1035土銀新竹","1005.00","0","1000" 
+"107","1035土銀新竹","1015.00","1000","0",,"108","1037土銀花蓮","994.00","0","1000" 
+"109","1037土銀花蓮","1030.00","1000","0",,"110","103B土銀彰化","995.00","50","0" 
+"111","103B土銀彰化","1005.00","30","0",,"112","103B土銀彰化","1015.00","2000","0" 
+"113","103B土銀彰化","1020.00","0","2000",,"114","103C土銀白河","981.00","1000","0" 
+"115","103C土銀白河","1005.00","0","1000",,"116","1040臺    銀","986.00","111","0" 
+"117","1040臺    銀","987.00","0","1000",,"118","1040臺    銀","992.00","5","0" 
+"119","1040臺    銀","999.00","20","0",,"120","1040臺    銀","1020.00","0","60" 
+"121","1040臺    銀","1030.00","1000","10",,"122","1042臺銀臺南","984.00","0","21" 
+"123","1042臺銀臺南","987.00","50","0",,"124","1042臺銀臺南","988.00","20","0" 
+"125","1042臺銀臺南","995.00","1000","0",,"126","1042臺銀臺南","997.00","0","50" 
+"127","1042臺銀臺南","999.00","2","100",,"128","1042臺銀臺南","1000.00","100","12" 
+"129","1042臺銀臺南","1005.00","0","88",,"130","1042臺銀臺南","1010.00","200","0" 
+"131","1042臺銀臺南","1015.00","10","0",,"132","1043臺銀民權","977.00","1000","0" 
+"133","1043臺銀民權","980.00","1000","0",,"134","1
+----- html -----
+
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>
+	未命名頁面
+</title>
+    <style type="text/css">
+        body {
+            margin: 0;
+            padding: 0;
+            border: 0;
+            overflow: hidden;
+            height: 100%;
+            max-height: 100%;
+        }
+
+        td {
+            font-family: Verdana;
+            font-size: 10pt;
+        }
+
+        .Tse_Page_Title_Location {
+            font-size: 30pt;
+            /*font-family: Times New Roman;*/
+            font-family: 標楷體;
+            color: #000000;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .Tse_Page_Title_Grop {
+            font-size: 7pt;
+            /*font-family: Tahoma;*/
+            font-family: 標楷體;
+            color: #000000;
+            text-align: center;
+        }
+
+        .Tse_Page_Title_Report {
+            font-size: 14pt;
+            font-family: 標楷體,Arial,Helvetica,Sans-Serif;
+            color: #FFFFFF;
+            font-weight: bold;
+        }
+
+        .button2 {
+            font-family: Verdana;
+            font-size: 10pt;
+            border-top: #a9a9a9 1px solid;
+            border-left: #a9a9a9 1px solid;
+            border-right: #a9a9a9 1px solid;
+            border-bottom: #a9a9a9 1px solid;
+            COLOR: #000000;
+            cursor: hand;
+        }
+
+        .InputReadOnly {
+            font-size: 11pt;
+            font-family: Arial,Helvetica,Sans-Serif,Tahoma,Verdana;
+            color: #000000;
+            background-color: #ffcc66;
+        }
+
+        .td_Column_Input {
+            text-align: left;
+        }
+
+        .InputSelectReadOnly {
+            font-size: 9pt;
+            font-family: Arial,Helvetica,Sans-Serif;
+            color: #000000;
+            background-color: #FFFFFF;
+            border-top-style: none;
+            border-left-style: none;
+            border-right-style: none;
+            border-bottom-style: #000000 1px solid;
+        }
+
+        .Massage_Title {
+            font-size: 16pt;
+            font-family: Arial;
+            color: #FFFFFF;
+            font-weight: bold;
+        }
+
+        .Massage_Context {
+            font-size: 42pt;
+            font-family: Times New Roman;
+            color: #FFFFFF;
+        }
+
+        .Massage_Description {
+            font-size: 8.5pt;
+            font-family: Tahoma,Verdana;
+            color: #FFFFFF;
+        }
+
+        .Massage_Sens {
+            font-size: 8.5pt;
+            /*font-family: Tahoma,Verdana;*/
+            font-family: 標楷體;
+            color: #FFFFFF;
+        }
+
+        .td_hyperlink {
+            font-size: 10pt;
+            /*font-family: 新細明體,Arial,Helvetica,Sans-Serif;*/
+            font-family: 標楷體;
+            color: #000000;
+            border-top: #ffffff 1px solid;
+            border-left: #ffffff 1px solid;
+            border-right: #ffffff 1px solid;
+            border-bottom: #ee0000 1px solid;
+            cursor: hand;
+        }
+
+        .td_hyperlink_none {
+            font-family: 標楷體;
+            cursor: hand;
+        }
+
+        .radio {
+            /*vertical-align:top;*/
+            background-color: #4c4c4c;
+            color: white;
+            border-style: none;
+            font-size: 12pt;
+            font-family: 標楷體;
+        }
+    </style>
+
+    <link href="css/jquery.autocomplete.css" rel="stylesheet" type="text/css" />
+    <!--script src="scripts/jquery-1.4.1.min.js" type="text/javascript"></script>-->
+    <script src="scripts/jquery-3.7.0.min.js"></script>
+    <script>
+        jQuery.browser = {};
+        (function () {
+            jQuery.browser.msie = false;
+            jQuery.browser.version = 0;
+            if (navigator.userAgent.match(/MSIE ([0-9]+)./)) {
+                jQuery.browser.msie = true;
+                jQuery.browser.version = RegExp.$1;
+            }
+        })();
+
+        function stockNoChanged() {
+            var downloadLink = document.getElementById('HyperLink_DownloadCSV');
+
+            if (downloadLink) {
+                downloadLink.style.display = 'none';
+            }
+        }
+    </script>
+    <script src="scripts/jquery.autocomplete.js" type="text/javascript"></script>
+    <script type="text/javascript">
+        $(document).ready(function () {
+            $("#TextBox_Stkno").autocomplete('ACStock.aspx');
+        });
+    </script>
+</head>
+<body bottommargin="0" leftmargin="0" topmargin="0" rightmargin="0" scroll="no" link="#FFFF00"
+    vlink="#FFFF00" alink="#FFFF00">
+    <form name="form1" method="post" action="./bsMenu.aspx" onkeypress="javascript:return WebForm_FireDefaultButton(event, 'btnOK')" id="form1">
+<div>
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="" />
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="" />
+<input type="hidden" name="__LASTFOCUS" id="__LASTFOCUS" value="" />
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="u0PJIVY3joxozSpZiVvcsn1TSbQ6piAOyCsm7jZ23fU79jv/dYOzS3Hr4Ed8Ph7S9D2Ln8lZCKABMGBKNn0WC9NadFrxPuGSvA5N7Qcwa5y14rFNgqMVuxS6L+YPSEj3Xa0iZ8EAUORp1+k+W62NGNhMdxPKZRdrDxfPF1zB+p4tv3QUB+LZzhOcmuUTOWxxokf9ns5SedpUf0BGUSUJw4qpapeRl88cjnVWekoha/AmY1hdldaqfXBJmTrV/U/twmvcaO8zukxKczeIMxGHWHP8ezDj2M3SATmWuf+P+0ofhX32+5nArLJF8OqI2Sx/Rl4YCXcsx6Wm1RZ1liSDxvdy2uy5L/rkuyZ1SJNu+LOGiOVu7CidrGFnOjX4yBPLHz/jCKWm+LPx77Vy9iKBuREWecwHBEXKMhbEFNm36fPzv5H9nw2C75iY03PIl1DW2jkUlZ+oHYTzquv0eSRr0F5wVqnXNA0VGBFILLdZHtYF/8GHsv1hS/cRl3iH77aTBh+cHJ+wZM5tGH172eIi9/U/6//qSk4YwI9A1uVjP/g=" />
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+var theForm = document.forms['form1'];
+if (!theForm) {
+    theForm = document.form1;
+}
+function __doPostBack(eventTarget, eventArgument) {
+    if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+        theForm.__EVENTTARGET.value = eventTarget;
+        theForm.__EVENTARGUMENT.value = eventArgument;
+        theForm.submit();
+    }
+}
+//]]>
+</script>
+
+
+<script src="/bshtm/WebResource.axd?d=PvOdD4-NX5jvuuldieIwwQoojHh0WPGEqNy-Le7C_exjE0YlH291ZZuEMsqWqFgKgNt_86ykBtfjig2yVi648Lg89nOJxCJCVXK-ci3BFvA1&amp;t=639191132600000000" type="text/javascript"></script>
+
+
+<script type="text/javascript">
+//<![CDATA[
+top.page2.location.href='bsContent.aspx?v=Display'//]]>
+</script>
+
+<script src="/bshtm/WebResource.axd?d=9niVJJLLEnBeBounVCRO7J_jJpuQgKbxYmEn3x1dyPE7_9vyKarpaDejkdVosTTkv9bG7pNl4WxPvA8pbjotbBg3DyZrsCfX0icW9gYTLwo1&amp;t=639191132600000000" type="text/javascript"></script>
+<div>
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="AA1F01CB" />
+	<input type="hidden" name="__VIEWSTATEENCRYPTED" id="__VIEWSTATEENCRYPTED" value="" />
+	<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="sKP59lcrcUFNNLULxb2ddvv5B2N5GO9TTnry+Hl/GtX4S946n0LpqABGRvGz7Fp2WpE7DxCcEdXJjTdMF+sRDpOkxX2Du2kZHyyble+sUT28soEaYFuODNhXwFMvs2CxjxfID6TlZUSZOmo01NDeTypug0vNNsdMNHB8ORpPPyGoh/NMelDWvUR/t/XUpyAiEN5KSiuMcsoPykIJL+vOuauwi+qSuIOeO3NwxjKKuZQ=" />
+</div>
+        <div>
+            <table width="100%" border="0" cellpadding="5" cellspacing="0" height="100%">
+                <tr align="center">
+                    <td>
+                        <img src="banner.png" width="100%" />
+                    </td>
+                </tr>
+                <tr>
+                    <td align="center" style="background-color: #4c4c4c;" height="80%" valign="top">
+                        <table width="100%" border="0" cellpadding="5" cellspacing="0" height="100%">
+                            <tr>
+                                <td valign="top" align="center">
+                                    <!-- 買賣日報表查詢系統 table -->
+                                    <table border="0" cellpadding="5" cellspacing="0" height="100%">
+                                        <tr>
+                                            <td class="Tse_Page_Title_Report">
+                                                <nobr>&lt;&lt;買賣日報表查詢系統&gt;&gt;</nobr>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <table cellspacing="0" cellpadding="0" border="0" style="width:270px;border-collapse:collapse;">
+	<tr style="width:270px;">
+		<td align="left" valign="top" style="width:35%;"><span class="radio" style="color:#1affff;"><input id="RadioButton_Normal" type="radio" name="RadioButton_Normal" value="RadioButton_Normal" checked="checked" /><label for="RadioButton_Normal">一般交易</label></span><br />
+                                                <br />
+                                                <span class="radio"><input id="RadioButton_Excd" type="radio" name="RadioButton_Excd" value="RadioButton_Excd" onclick="javascript:setTimeout(&#39;__doPostBack(\&#39;RadioButton_Excd\&#39;,\&#39;\&#39;)&#39;, 0)" /><label for="RadioButton_Excd">鉅額交易</label></span></td><td valign="top">
+                                                <div class="radio">
+                                                    <span id="Label_Stkno" class="radioT" style="color:#1affff;">證券代號: </span><input name="TextBox_Stkno" type="text" value="3167" maxlength="6" id="TextBox_Stkno" onkeyup="this.value=this.value.replace(/[^u4e00-u9fa5w]/g,&#39;&#39;)" oninput="stockNoChanged();" style="height:20px;width:65px;" />
+                                                </div>
+                                            </td>
+	</tr>
+</table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div id="Panel_bshtm">
+	
+                                        <table border="0" width="100%" cellpadding="0" cellspacing="0">
+                                            <tr>
+                                                <td valign="top" align="center">
+                                                    <table border="0">
+                                                        <tr>
+                                                            <td align="left" colspan="2">
+                                                                <div style='color:White;font-family:標楷體;'><div style='text-align:center;margin:5px;'><img src='CaptchaImage.aspx?guid=9352a821-dc6c-46a3-a1a9-8b19f11f4960' border='0' width=200 height=60></div><div style='text-align:left;'>輸入圖形中5碼文數字:&nbsp;&nbsp;<input name=CaptchaControl1 type=text size=5 maxlength=5 AutoComplete='Off'  value=''></div></div>
+                                                                
+                                                                
+                                                                
+                                                                
+                                                                
+                                                                
+                                                                
+                                                                
+                                                                <br />
+                                                                <span id="Label_ErrorMsg" class="radio" style="color:Chartreuse;font-size:12pt;"></span>
+                                                                <br />
+
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td align="center">
+                                                                &nbsp; <input type="submit" name="btnOK" value="查詢" onclick="javascript:WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;btnOK&quot;, &quot;&quot;, true, &quot;&quot;, &quot;&quot;, false, false))" id="btnOK" class="button2" />
+                                                                
+                                                                &nbsp;&nbsp;
+                                                                <input type="submit" name="Button_Reset" value="重設" onclick="javascript:WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;Button_Reset&quot;, &quot;&quot;, true, &quot;&quot;, &quot;&quot;, false, false))" id="Button_Reset" class="button2" />
+                                                                
+                                                                &nbsp;&nbsp;
+                                                                <a id="HyperLink_DownloadCSV" href="bsContent.aspx" target="_blank">下載  3167 CSV</a>
+                                                            </td>
+                                                        </tr>
+
+                                                        <tr>
+                                                            <td align="center">
+                                                                <br />
+                                                                <br />
+                                                                <div style="text-align: left; font-family: 標楷體; color: yellow; font-size: 12pt">
+                                                                    此資料不得逕自<span style="font-weight: bold;">散布</span>或<span style="font-weight: bold;">販售</span>，<br />
+                                                                    並請詳閱「使用條款」
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            
+                                        </table>
+                                    
+</div>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <td height="80%">&nbsp;</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td height="10%" align="center" style="background-color: #4c4c4c;" valign="top">
+                        <div class="links">
+                            <span><a href="#" style="font-family: 標楷體; font-size: 12pt;" onclick="window.open('use.htm',null,'scrollbars=yes,width=516,height=500')">使用條款</a></span> 
+                            &nbsp; <span>
+                                <a href="#" style="font-family: 標楷體; font-size: 12pt;" onclick="window.open('privacy.htm','null','scrollbars=yes,width=516,height=500')">隱私權保護說明</a></span>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+            <span id="sp_Files" name="sp_Files" style="display: none;"></span>
+            <span id="spLog" name="spLog" style="display: none;"></span><span id="sp_DropDownList" name="sp_DropDownList" style="display: none;"></span>
+        </div>
+    
+
+<script type="text/javascript">
+//<![CDATA[
+WebForm_AutoFocus('TextBox_Stkno');//]]>
+</script>
+</form>
+</body>
+</html>
+
