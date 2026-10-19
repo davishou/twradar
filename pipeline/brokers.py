@@ -88,6 +88,32 @@ def _clean_broker(s: str) -> str:
     return m.group(1) if m else s
 
 
+def decode(raw: bytes) -> str:
+    """報表可能是 UTF-8（含 BOM）或 Big5，先試 UTF-8，失敗再用 cp950"""
+    for enc in ("utf-8-sig", "cp950"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def site_dates(text: str) -> set[date]:
+    """抓出網頁或報表裡出現的日期：2026/10/19、2026-10-19、115/10/19、115年10月19日"""
+    out = set()
+    for y, m, d in re.findall(r"(20\d\d)\s*[/\-年]\s*(\d{1,2})\s*[/\-月]\s*(\d{1,2})", text):
+        try:
+            out.add(date(int(y), int(m), int(d)))
+        except ValueError:
+            pass
+    for y, m, d in re.findall(r"(?<!\d)(1\d\d)\s*[/年]\s*(\d{1,2})\s*[/月]\s*(\d{1,2})", text):
+        try:
+            out.add(date(int(y) + 1911, int(m), int(d)))
+        except ValueError:
+            pass
+    return out
+
+
 def parse_rows(text: str) -> list[tuple[str, float, int, int]]:
     """解析日報表 CSV（或已轉成逗號分隔的文字）：每列可能並排兩筆
     序號,證券商,成交單價,買進股數,賣出股數 → [(券商, 價格, 買股, 賣股)]"""
@@ -170,11 +196,14 @@ def fetch_twse(code: str, target: date) -> tuple[list | None, str]:
             url = urljoin(U["twse_bsr_menu"], link.group(1).replace("&amp;", "&")) if link else \
                 urljoin(U["twse_bsr_menu"], "bsContent.aspx?v=t")
             r = s.get(url, timeout=config.HTTP_TIMEOUT)
-            text = r.content.decode("cp950", errors="replace")
-            # 確認資料日期是今天（網站只保留最近一個交易日）
-            ds = re.findall(r"(20\d\d)[/-](\d\d)[/-](\d\d)", text + html)
-            if ds and not any(date(int(y), int(mo), int(d)) == target for y, mo, d in ds):
-                return None, f"網站資料日期不是 {target}（{'-'.join(ds[0])}）"
+            text = decode(r.content)
+            # 確認資料日期就是要的那天（網站只保留最近一個交易日）。日期可能是西元或民國格式
+            found = site_dates(text + html)
+            if not found:
+                _debug(f"twse_{code}_nodate.txt", text[:5000] + "\n----- html -----\n" + html)
+                return None, "找不到報表日期，為避免存錯日期而略過"
+            if target not in found:
+                return None, f"網站資料日期是 {sorted(found)[-1]}，不是 {target}"
             rows = parse_rows(text)
             if not rows:  # CSV 失敗時改讀 HTML 表格
                 page = s.get(urljoin(U["twse_bsr_menu"], "bsContent.aspx"), timeout=config.HTTP_TIMEOUT).text
@@ -201,11 +230,12 @@ def fetch_tpex(code: str, target: date) -> tuple[list | None, str]:
         r = s.get(U["tpex_bsr_menu"], timeout=config.HTTP_TIMEOUT)
     except requests.RequestException as e:
         return None, f"連線錯誤：{e}"
+    r.encoding = "utf-8"
     html = r.text
     if not (DEBUG_DIR / "tpex_menu.html").exists():
         _debug("tpex_menu.html", f"<!-- {r.status_code} {r.url} -->\n" + html)
     if re.search(r"recaptcha|g-recaptcha|turnstile", html, re.I):
-        return None, "櫃買查詢頁使用 Google reCAPTCHA，無法自動抓取"
+        return None, "櫃買查詢頁有 Cloudflare 真人驗證，無法自動抓取上櫃分點"
     return None, "櫃買分點尚未支援（已存下查詢頁供調整）"
 
 

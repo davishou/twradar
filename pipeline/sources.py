@@ -164,7 +164,11 @@ def fetch_companies() -> dict[str, dict]:
     """{code: {code,name,market,industry_code,industry,capital,shares}}"""
     out = {}
     for market, key in (("TWSE", "twse_company"), ("TPEX", "tpex_company")):
-        for r in get_json(U[key]) or []:
+        js = get_json(U[key]) or []
+        before = len(out)
+        if js and isinstance(js, list):
+            log.info("%s 公司資料 %d 筆，欄位：%s", market, len(js), list(js[0].keys())[:8])
+        for r in js:
             code = str(pick(r, "公司代號", "SecuritiesCompanyCode", default="")).strip()
             if not is_common_stock(code):
                 continue
@@ -177,6 +181,8 @@ def fetch_companies() -> dict[str, dict]:
                 "market": market, "industry_code": ind, "industry": INDUSTRY.get(ind, ind or "其他"),
                 "capital": capital, "shares": shares,
             }
+        if len(out) == before:
+            log.warning("%s 公司基本資料抓取失敗或格式改變（%s）", market, U[key])
     return out
 
 

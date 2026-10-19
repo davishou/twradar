@@ -28,7 +28,8 @@ log = logging.getLogger("twradar")
 
 def companies(src) -> dict:
     st = store.state("companies", {}) or {}
-    if src is sources and st.get("_date", "") >= (date.today() - timedelta(days=7)).isoformat():
+    has_tpex = any(v.get("market") == "TPEX" for v in (st.get("data") or {}).values())
+    if src is sources and has_tpex and st.get("_date", "") >= (date.today() - timedelta(days=7)).isoformat():
         return st["data"]
     data = src.fetch_companies()
     if data:
@@ -43,7 +44,26 @@ def latest_day() -> date | None:
 
 
 def job_daily(src, d: date | None = None, light: bool = False) -> date | None:
+    if d is None and src is sources:
+        # 證交所 OpenAPI 的「最新行情」有時好幾個小時都還是前一天，
+        # 所以先用依日期查詢抓今天，抓不到（休市或尚未收盤）才用 OpenAPI 的最新資料
+        now = now_tw()
+        day = now.date() if now.hour * 60 + now.minute >= 14 * 60 + 30 else now.date() - timedelta(days=1)
+        last = latest_day()
+        for _ in range(6):
+            if last and day <= last:
+                break
+            if day.weekday() < 5:
+                td, quotes = src.fetch_quotes(day)
+                if quotes and td == day and any(q["market"] == "TWSE" for q in quotes):
+                    return _daily(src, td, quotes, light)
+                log.info("依日期查詢 %s 沒有行情（休市或尚未公布）", day)
+            day -= timedelta(days=1)
     td, quotes = src.fetch_quotes(d)
+    return _daily(src, td, quotes, light, d)
+
+
+def _daily(src, td, quotes, light: bool = False, d=None) -> date | None:
     if not quotes or not td:
         log.info("沒有行情資料（非交易日或尚未收盤）：%s", d or "最新")
         return None
