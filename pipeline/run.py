@@ -93,22 +93,40 @@ def heal_missing_tpex(td: date, comp: dict, lookback: int = 10) -> None:
         log.info("已補上 %s 櫃買行情 %d 檔並重建當日資料", d, len(tp))
 
 
+def broker_targets(td: date, daily: dict | None, inst: dict | None) -> list[dict]:
+    """要抓分點的股票：當日漲停（看誰在買）＋昨日漲停（看隔日誰在賣）"""
+    quotes = store.load_day(td)
+    inst = inst or {}
+    out, seen = [], set()
+    for s in (daily or {}).get("stocks", []):
+        q = quotes.get(s["code"])
+        if q:
+            out.append(brokers.target(q, s["name"], inst.get(s["code"]) or s.get("inst"), "limit"))
+            seen.add(s["code"])
+    prev = store.prev_day(td)
+    for s in ((limitup.load_daily(prev) or {}).get("stocks", []) if prev else []):
+        q = quotes.get(s["code"])
+        if q and s["code"] not in seen:
+            out.append(brokers.target(q, s["name"], inst.get(s["code"]), "next"))
+    return out
+
+
 def job_brokers(src, td: date | None = None, daily: dict | None = None, inst: dict | None = None) -> None:
     """券商分點：證交所網站只保留最近一個交易日，所以只對最新一天抓"""
     td = td or latest_day()
     if not td:
         return
+    daily = daily or limitup.load_daily(td)
+    if src is not sources:
+        brokers.build_mock(td, broker_targets(td, daily, inst), store.prev_day(td))
+        return
     if td != latest_day():
         log.info("%s 不是最近一個交易日，略過券商分點", td)
         return
-    daily = daily or limitup.load_daily(td)
-    if not daily:
-        return
-    if src is not sources:
-        brokers.build_mock(td, daily)
-        return
+    if inst is None:
+        inst = src.fetch_institutional(td)
     try:
-        st = brokers.build(td, daily, inst)
+        st = brokers.build(td, broker_targets(td, daily, inst))
         log.info("券商分點 %s：成功 %d／%d 檔", td, st["ok"], st["total"])
     except Exception as e:  # noqa: BLE001  分點失敗不影響其他資料
         log.exception("券商分點失敗：%s", e)
@@ -211,6 +229,7 @@ def build_mock() -> None:
     limitup.build_stats()
     last = src.days[-1]
     brief.commentary(limitup.load_daily(last), limitup.build_nextday(last, src.quotes[last]))
+    job_brokers(src, src.days[-2])
     job_brokers(src, last)
     brief.touch_meta("daily", last)
     job_disposal(src)

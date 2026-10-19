@@ -204,8 +204,9 @@ svg.bubble .flat{stroke:var(--ink-3);stroke-dasharray:6 4;opacity:.7}
 svg.bubble .flatt{fill:var(--ink);font-size:12px;font-weight:700}
 svg.bubble .side{font-size:12px;font-weight:700}
 svg.bubble .side.up,svg.bubble .info.up{fill:var(--up)} svg.bubble .side.down,svg.bubble .info.down{fill:var(--down)}
-svg.bubble .info{font-size:14px;font-weight:700}
-svg.bubble .lk{stroke:var(--ink-3);stroke-width:1;stroke-dasharray:3 4;opacity:.45}
+svg.bubble .info{font-size:14px;font-weight:700;paint-order:stroke;stroke:var(--bg);stroke-width:5px;stroke-linejoin:round}
+svg.bubble .lk{stroke-linecap:round}
+svg.bubble .lk.gold{stroke:var(--gold)} svg.bubble .lk.silver{stroke:var(--silver)}
 svg.bubble .bb{stroke-width:1.5;cursor:pointer;transition:opacity .15s}
 svg.bubble .bb.b{fill:var(--up);fill-opacity:.45;stroke:var(--up)}
 svg.bubble .bb.s{fill:var(--down);fill-opacity:.45;stroke:var(--down)}
@@ -213,8 +214,44 @@ svg.bubble .lb{fill:var(--ink-3);font-size:10px;pointer-events:none}
 svg.bubble.focus .bb:not(.hl),svg.bubble.focus .lk:not(.hl){opacity:.2}
 svg.bubble.focus .lb:not(.hl){opacity:.3}
 svg.bubble .bb.hl{fill-opacity:.75;stroke-width:2.5}
-svg.bubble .lk.hl{stroke:var(--ink);stroke-width:2.5;stroke-dasharray:2 4;opacity:1}
-svg.bubble .lb.hl{fill:var(--ink);font-size:15px;font-weight:700}
+svg.bubble .lk.hl{stroke-dasharray:2 5;opacity:1!important;stroke-width:3!important}
+svg.bubble .lb.hl{fill:var(--ink);font-size:15px;font-weight:700;paint-order:stroke;stroke:var(--bg);stroke-width:4px}
 @media (max-width:820px){.bk-pair{grid-template-columns:minmax(0,1fr)}.bk{padding:12px}}
 @media (prefers-reduced-motion:reduce){svg.bubble .bb{transition:none}}
 .bk-side{min-width:0}
+
+/* 金線／銀線、統計、隔日動向 */
+:root{--gold:#b88a0e;--silver:#8a94a6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--gold:#e8b339;--silver:#aab3c2}}
+:root[data-theme="dark"]{--gold:#e8b339;--silver:#aab3c2}
+.bk-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:14px}
+.bk-stats>div{background:var(--paper);padding:9px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.bk-stats span{font-size:12px;color:var(--ink-3)}
+.bk-stats b{font-size:18px;font-variant-numeric:tabular-nums}
+.bk-stats small{font-size:12px;font-weight:500}
+.bk-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-2);margin:8px 2px 4px}
+.bk-legend i{display:inline-block;vertical-align:middle;margin-right:5px}
+.bk-legend .dot{width:10px;height:10px;border-radius:50%} .bk-legend .dot.up{background:var(--up)} .bk-legend .dot.down{background:var(--down)}
+.bk-legend .ln{width:18px;height:3px;border-radius:2px} .bk-legend .ln.gold{background:var(--gold)} .bk-legend .ln.silver{background:var(--silver)}
+.bk-legend .ln.avg{height:0;border-top:2px dashed var(--gold)}
+svg.bubble .vw{stroke:var(--gold);stroke-dasharray:6 4;opacity:.75}
+svg.bubble .vwt{fill:var(--gold);font-size:12px;font-weight:700}
+svg.bubble .ref{stroke-width:2} svg.bubble .reft{font-size:12px;font-weight:700}
+svg.bubble .ref.close{stroke:var(--up)} svg.bubble .reft.close{fill:var(--up)}
+svg.bubble .ref.avg{stroke:var(--gold)} svg.bubble .reft.avg{fill:var(--gold)}
+svg.bubble .ref.open{stroke:var(--brand-2)} svg.bubble .reft.open{fill:var(--brand-2)}
+.bk-title{font-size:18px;margin:0 0 12px;color:var(--brand-2)}
+.bk .bk-head{margin-top:22px}
+.bk>.bk-head:first-child{margin-top:0}
+.sortbtn{all:unset;cursor:pointer;color:inherit}
+.sortbtn:focus-visible{outline:2px solid var(--focus)}
+.sortbtn[aria-pressed="true"]{color:var(--ink);font-weight:700}
+.rk{color:var(--ink-3);width:2em}
+table.follow th.g1,table.follow td.g1{background:var(--up-bg)}
+table.follow tr.grp th{text-align:center;font-size:14px;color:var(--ink)}
+table.follow tr.idle td{color:var(--ink-3);opacity:.7}
+table.follow .idle-msg{text-align:center;font-style:italic}
+table.follow tfoot td{font-weight:700;border-top:2px solid var(--line)}
+.bar{display:inline-block;height:6px;border-radius:3px;margin-left:6px;vertical-align:middle;min-width:2px}
+.bar.up{background:var(--up)} .bar.down{background:var(--down)}
+@media (max-width:820px){.bk-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}

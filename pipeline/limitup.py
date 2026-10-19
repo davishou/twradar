@@ -134,6 +134,8 @@ def build_nextday(d: date, quotes: list[dict]) -> dict | None:
             "vol_ratio": s["vol_ratio"], "streak": s["streak"],
             "open": q["open"], "avg": q["avg"], "close": q["close"], "high": q["high"],
             "ret_open": r(q["open"]), "ret_avg": r(q["avg"]), "ret_close": r(q["close"]), "ret_high": r(q["high"]),
+            # 加權：假設 2/3 在開盤賣、1/3 在均價賣的報酬
+            "ret_wavg": round((2 * r(q["open"]) + r(q["avg"])) / 3, 2) if q["open"] and q["avg"] else None,
             "tag": _tag(ref, q["open"], q["close"], limit_up(ref)),
         })
     if not rows:
@@ -159,7 +161,8 @@ def build_nextday(d: date, quotes: list[dict]) -> dict | None:
     hist = [read_json(OUT / "nextday" / f"{x.isoformat()}.json") for x in daily_dates() if x < d][-20:]
     hist = [h for h in hist if h]
     base = {k: mean([h["summary"][k] for h in hist if h["summary"].get(k) is not None]) for k in ("open_win", "avg_win", "close_win")}
-    summ = {"n": len(rows), "open_avg": mean(o), "avg_avg": mean(a), "close_avg": mean(c),
+    wv = [x["ret_wavg"] for x in rows if x["ret_wavg"] is not None]
+    summ = {"n": len(rows), "open_avg": mean(o), "avg_avg": mean(a), "close_avg": mean(c), "wavg_avg": mean(wv),
             "open_win": win(o), "avg_win": win(a), "close_win": win(c), "cont": tags.get("續漲停", 0)}
     for k in ("open_win", "avg_win", "close_win"):
         summ[k + "_vs20"] = round(summ[k] - base[k], 1) if base.get(k) is not None else None

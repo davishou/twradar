@@ -187,7 +187,133 @@ P.daily = async (date) => {
   if (sel && data.stocks.some(s => s.code === sel)) pick(sel, true);
 };
 
-/* ---------- 券商分點：前 15 大、泡泡圖、當沖 Top10 ---------- */
+/* ---------- 券商分點（當日頁、隔日頁共用） ---------- */
+const PL_TIP = "以收盤價計算：賣出金額 − 買進金額 ＋ 未沖銷張數 × 收盤價，未扣手續費與證交稅";
+const p2 = v => v == null ? "—" : fx(v, 2);
+const sgnI = v => `${v > 0 ? "+" : ""}${fi(v)}`;
+function parseBranches(bk) {
+  return bk.branches.map(([n, b, s, ba, sa, bsd, ssd]) => ({n, b, s, ba, sa, bsd, ssd, net: b - s, tot: b + s,
+    dt: b && s ? Math.min(b, s) / Math.max(b, s) : 0}));
+}
+const vwapOf = B => { const t = B.reduce((a, x) => a + x.tot, 0); return t ? B.reduce((a, x) => a + (x.ba || 0) * x.b + (x.sa || 0) * x.s, 0) / t : null; };
+const instHead = (title, code, name, inst) => {
+  const pill = (l, v) => `<span class="ipill ${sign(v)}">${l} ${v == null ? "—" : sgnI(v)}</span>`;
+  return `<div class="bk-head"><h2>${title} <span class="muted">${esc(code)} ${esc(name)}</span></h2>
+    <div class="ipills">${pill("外資", inst?.f)}${pill("投信", inst?.t)}${pill("自營", inst?.d)}</div></div>`;
+};
+function statsHTML(B, lots) {
+  const buys = B.filter(x => x.net > 0).sort((a, c) => c.net - a.net).slice(0, 15);
+  const sells = B.filter(x => x.net < 0).sort((a, c) => a.net - c.net).slice(0, 15);
+  const sb = buys.reduce((a, x) => a + x.net, 0), ss = sells.reduce((a, x) => a - x.net, 0), diff = sb - ss;
+  const nb = B.filter(x => x.net > 0).length, ns = B.filter(x => x.net < 0).length;
+  return `<div class="bk-stats">
+    <div><span>前 15 買超合計</span><b class="up">${fi(sb)}</b></div>
+    <div><span>前 15 賣超合計</span><b class="down">${fi(ss)}</b></div>
+    <div><span>主力買賣超（集中度）</span><b class="${sign(diff)}">${sgnI(diff)}<small class="muted"> ${lots ? fx(diff / lots * 100, 1) + "%" : ""}</small></b></div>
+    <div><span>買超／賣超家數</span><b><span class="up">${nb}</span> / <span class="down">${ns}</span></b></div></div>`;
+}
+function topPairHTML(B) {
+  const buys = B.filter(x => x.net > 0).sort((a, c) => c.net - a.net).slice(0, 15);
+  const sells = B.filter(x => x.net < 0).sort((a, c) => a.net - c.net).slice(0, 15);
+  const side = (rows, sd) => `<div class="bk-side ${sd}"><div class="cap">${sd === "b" ? "買超" : "賣超"} Top15</div><div class="tw"><table>
+    <thead><tr><th scope="col">券商</th><th class="n" scope="col">${sd === "b" ? "買超" : "賣超"}</th><th class="n" scope="col">買均</th><th class="n" scope="col">買張</th><th class="n" scope="col">賣張</th><th class="n" scope="col">賣均</th></tr></thead>
+    <tbody>${rows.map(x => `<tr data-n="${esc(x.n)}"><td>${esc(x.n)}</td><td class="n ${sign(x.net)}">${sgnI(x.net)}</td><td class="n">${p2(x.ba)}</td><td class="n ${x.b ? "up" : "muted"}">${x.b ? "+" + fi(x.b) : "0"}</td><td class="n ${x.s ? "down" : "muted"}">${x.s ? "+" + fi(x.s) : "0"}</td><td class="n">${p2(x.sa)}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">無</td></tr>'}</tbody></table></div></div>`;
+  return `<div class="bk-pair">${side(buys, "b")}${side(sells, "s")}</div>`;
+}
+function dtHTML(bk, B, title) {
+  const dt = B.filter(x => x.b && x.s).map(x => ({...x, dq: Math.min(x.b, x.s), pl: (x.s * x.sa - x.b * x.ba + (x.b - x.s) * bk.close) * 1000}))
+    .sort((a, c) => c.dq - a.dq).slice(0, 10);
+  return `<h3 class="bk-dt">${title}</h3>
+    <div class="tw"><table><thead><tr><th scope="col">券商</th><th class="n" scope="col">交易張數</th><th class="n" scope="col">總損益 <span class="info" title="${PL_TIP}" aria-label="${PL_TIP}">ⓘ</span></th><th class="n" scope="col">買張數</th><th class="n" scope="col">買均價</th><th class="n" scope="col">賣張數</th><th class="n" scope="col">賣均價</th><th class="n" scope="col">留倉</th><th class="n" scope="col">當沖比</th></tr></thead>
+    <tbody>${dt.map(x => `<tr data-n="${esc(x.n)}"><td>${esc(x.n)}</td><td class="n">${fi(x.tot)}</td><td class="n ${sign(x.pl)}">${sgnI(x.pl)}</td><td class="n up">${fi(x.b)}</td><td class="n">@${p2(x.ba)}</td><td class="n down">${fi(x.s)}</td><td class="n">@${p2(x.sa)}</td><td class="n ${sign(x.net)}">${sgnI(x.net)}</td><td class="n">${Math.round(x.dt * 100)}%</td></tr>`).join("") || '<tr><td colspan="9" class="muted">沒有同時買賣的券商</td></tr>'}</tbody></table></div>
+    <p class="small muted">排序依當沖張數（買進與賣出較小的一方）。總損益${PL_TIP.slice(2)}。當沖比＝較小方 ÷ 較大方。</p>`;
+}
+function allHTML(B, key) {
+  const rows = B.slice().sort((a, c) => key === "net" ? c.net - a.net : key === "dt" ? c.dt - a.dt : c.tot - a.tot).slice(0, 30);
+  const hb = (k, t) => `<button type="button" class="sortbtn" data-sort="${k}" aria-pressed="${key === k}">${t}${key === k ? " ▼" : ""}</button>`;
+  return `<div class="tw"><table><thead><tr><th scope="col">券商</th><th class="n" scope="col">${hb("tot", "成交張數")}</th><th class="n" scope="col">買進</th><th class="n" scope="col">賣出</th><th class="n" scope="col">${hb("net", "買賣超")}</th><th class="n" scope="col">買均</th><th class="n" scope="col">賣均</th><th class="n" scope="col">${hb("dt", "當沖比")}</th></tr></thead>
+    <tbody>${rows.map(x => `<tr data-n="${esc(x.n)}"><td>${esc(x.n)}</td><td class="n">${fi(x.tot)}</td><td class="n">${fi(x.b)}</td><td class="n">${fi(x.s)}</td><td class="n ${sign(x.net)}">${sgnI(x.net)}</td><td class="n">${p2(x.ba)}</td><td class="n">${p2(x.sa)}</td><td class="n ${x.dt >= .8 ? "" : "muted"}">${x.dt ? Math.round(x.dt * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+const LEGEND = `<div class="bk-legend"><span><i class="dot up"></i>買進</span><span><i class="dot down"></i>賣出</span>
+  <span><i class="ln gold"></i>金線：同一券商又買又賣，賣均高於買均（有價差）</span><span><i class="ln silver"></i>銀線：賣均不高於買均</span>
+  <span>線越粗＝當沖比越高</span><span><i class="ln avg"></i>全日均價</span></div>`;
+
+/* refs: [{v, label, cls}] 右側價位標記；隔日頁用來標開盤/均價/收盤 */
+function bubbleSVG(bk, B, refs = []) {
+  const W = 1000, H = 480, ml = 74, mr = refs.length ? 96 : 24, mt = 26, mb = 44, cx = ml + (W - ml - mr) / 2, half = (W - ml - mr) / 2 - 34;
+  const top = B.slice().sort((a, c) => c.tot - a.tot).slice(0, 40);
+  const maxV = Math.max(1, ...top.map(x => Math.max(x.b, x.s)));
+  const X = (v, side) => cx + side * (8 + Math.sqrt(v / maxV) * half);
+  const R = v => 3 + Math.sqrt(v / maxV) * 24;
+  const vw = vwapOf(B);
+  const prices = top.flatMap(x => [x.b ? x.ba : null, x.s ? x.sa : null]).concat(refs.map(r => r.v), [bk.close, vw]).filter(v => v != null);
+  const limit = bk.limit || bk.close;
+  let lo = Math.min(bk.prev_close, ...prices), hi = Math.max(...prices);
+  const showLimit = hi >= bk.prev_close + (limit - bk.prev_close) * .6;
+  if (showLimit) hi = Math.max(hi, limit);
+  const pad = (hi - lo) * .06 || hi * .01; lo -= pad; hi += pad;
+  const Y = v => mt + (hi - v) / (hi - lo) * (H - mt - mb);
+  const step = (() => { const raw = (hi - lo) / 6, m = Math.pow(10, Math.floor(Math.log10(raw))), e = raw / m; return (e >= 5 ? 10 : e >= 2 ? 5 : e >= 1 ? 2 : 1) * m; })();
+  let g = "";
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) g += `<line class="grid" x1="${ml}" x2="${W - mr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${ml - 8}" y="${Y(v) + 4}" text-anchor="end">${+v.toFixed(2)}</text>`;
+  const xt = [0, 10, 25, 50, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000].filter(v => v <= maxV * 1.02);
+  const xtk = xt.filter((v, i) => i === 0 || Math.sqrt(v / maxV) - Math.sqrt(xt[i - 1] / maxV) > .08);
+  xtk.forEach(v => [-1, 1].forEach(sd => { if (v === 0 && sd > 0) return; const x = v === 0 ? cx : X(v, sd);
+    g += `<line class="grid" x1="${x}" x2="${x}" y1="${mt}" y2="${H - mb}"/><text class="ax" x="${x}" y="${H - mb + 18}" text-anchor="middle">${v}</text>`; }));
+  g += `<line class="mid" x1="${cx}" x2="${cx}" y1="${mt}" y2="${H - mb}"/>`;
+  if (showLimit) g += `<line class="lim" x1="${ml}" x2="${W - mr}" y1="${Y(limit)}" y2="${Y(limit)}"/><text class="limt" x="${ml - 8}" y="${Y(limit) + 4}" text-anchor="end">漲停 ${fp(limit)}</text>`;
+  g += `<line class="flat" x1="${ml}" x2="${W - mr}" y1="${Y(bk.prev_close)}" y2="${Y(bk.prev_close)}"/><text class="flatt" x="${ml - 8}" y="${Y(bk.prev_close) + 4}" text-anchor="end">平盤 ${fp(bk.prev_close)}</text>`;
+  if (vw && !refs.length) g += `<line class="vw" x1="${ml}" x2="${W - mr}" y1="${Y(vw)}" y2="${Y(vw)}"/><text class="vwt" x="${W - mr - 4}" y="${Y(vw) - 5}" text-anchor="end">全日均價 ${fx(vw, 2)}</text>`;
+  // 右側價位標記（避免文字重疊）
+  let lastY = -99;
+  refs.slice().sort((a, c) => Y(a.v) - Y(c.v)).forEach(r => {
+    const y = Y(r.v), ty = Math.max(y + 4, lastY + 13); lastY = ty;
+    g += `<line class="ref ${r.cls}" x1="${W - mr}" x2="${W - mr + 8}" y1="${y}" y2="${y}"/><text class="reft ${r.cls}" x="${W - mr + 12}" y="${ty}">${r.label} ${fp(r.v)}</text>`;
+    if (r.cls === "avg") g += `<line class="vw" x1="${ml}" x2="${W - mr}" y1="${y}" y2="${y}"/>`;
+  });
+  g += `<text class="side up" x="${ml + 8}" y="${mt + 4}">← 買進</text><text class="side down" x="${W - mr - 8}" y="${mt + 4}" text-anchor="end">賣出 →</text>`;
+  const links = [], dots = [], labels = [];
+  top.forEach(x => {
+    const a = x.b ? {cx: X(x.b, -1), cy: Y(x.ba), r: R(x.b)} : null, c = x.s ? {cx: X(x.s, 1), cy: Y(x.sa), r: R(x.s)} : null;
+    const n = esc(x.n);
+    if (a && c) links.push(`<line class="lk ${x.sa > x.ba ? "gold" : "silver"}" data-n="${n}" x1="${a.cx.toFixed(1)}" y1="${a.cy.toFixed(1)}" x2="${c.cx.toFixed(1)}" y2="${c.cy.toFixed(1)}" style="stroke-width:${(.8 + x.dt * 2.4).toFixed(2)};opacity:${(.3 + x.dt * .6).toFixed(2)}"/>`);
+    [[a, "b"], [c, "s"]].forEach(([p, sd]) => { if (!p) return;
+      dots.push([p.r, `<circle class="bb ${sd}" data-n="${n}" cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" r="${p.r.toFixed(1)}"/>`]);
+      labels.push(`<text class="lb" data-n="${n}" x="${p.cx.toFixed(1)}" y="${(p.cy - p.r - 4).toFixed(1)}" text-anchor="middle">${n}</text>`); });
+  });
+  dots.sort((a, c) => c[0] - a[0]);
+  g += `<g>${links.join("")}</g><g>${dots.map(d => d[1]).join("")}</g><g>${labels.join("")}</g>`;
+  g += `<text class="info up" data-i="B1" x="${ml + 8}" y="${H - mb - 26}"></text><text class="info up" data-i="B2" x="${ml + 8}" y="${H - mb - 8}"></text>`;
+  g += `<text class="info down" data-i="S1" x="${W - mr - 8}" y="${H - mb - 26}" text-anchor="end"></text><text class="info down" data-i="S2" x="${W - mr - 8}" y="${H - mb - 8}" text-anchor="end"></text>`;
+  return `<div class="bk-chart"><div class="bk-scroll"><svg class="bubble" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(bk.name)} ${esc(bk.date)} 券商分點泡泡圖">${g}</svg></div></div>`;
+}
+
+/* 滑過/點選券商：泡泡、連線、表格列一起亮起。scope 是包含圖與表的容器 */
+function wireBubble(scope, Blist) {
+  const svgs = [...scope.querySelectorAll("svg.bubble")];
+  const maps = svgs.map((svg, i) => new Map((Blist[i] || Blist[0]).map(x => [x.n, x])));
+  let pinned = "";
+  function hl(n) {
+    svgs.forEach((svg, i) => {
+      svg.classList.toggle("focus", !!n);
+      svg.querySelectorAll(".hl").forEach(e => e.classList.remove("hl"));
+      svg.querySelectorAll("text.info").forEach(e => e.textContent = "");
+      if (!n) return;
+      svg.querySelectorAll("[data-n]").forEach(e => { if (e.dataset.n === n) { e.classList.add("hl"); if (e.tagName === "text") e.parentNode.appendChild(e); } });
+      const x = maps[i].get(n), set = (k, t) => { const el = svg.querySelector(`text[data-i="${k}"]`); if (el) el.textContent = t; };
+      if (x?.b) { set("B1", `買均 ${fx(x.ba, 2)}`); set("B2", `買量 ${fi(x.b)}張`); }
+      if (x?.s) { set("S1", `賣均 ${fx(x.sa, 2)}`); set("S2", `賣量 ${fi(x.s)}張`); }
+    });
+    scope.querySelectorAll("tr.hl").forEach(e => e.classList.remove("hl"));
+    if (n) scope.querySelectorAll("tr[data-n]").forEach(e => { if (e.dataset.n === n) e.classList.add("hl"); });
+  }
+  const nameOf = e => e.target.closest("[data-n]")?.dataset.n || "";
+  // 用屬性指定而非 addEventListener，切換個股時不會重複綁定
+  scope.onpointerover = e => { const n = nameOf(e); if (n && !pinned) hl(n); };
+  scope.onpointerout = e => { if (!pinned && nameOf(e) && !e.relatedTarget?.closest?.("[data-n]")) hl(""); };
+  scope.onclick = e => { const n = nameOf(e); if (!n) return; pinned = n !== pinned ? n : ""; hl(pinned); };
+}
+
 async function showBrokers(daily, stock, scroll) {
   const box = document.getElementById("bk");
   if (!box || !stock) return;
@@ -195,101 +321,69 @@ async function showBrokers(daily, stock, scroll) {
   box.innerHTML = `<p class="muted">載入 ${esc(stock.code)} ${esc(stock.name)} 分點資料…</p>`;
   const bk = await load(`brokers/${daily.date}/${stock.code}.json`);
   if (scroll) box.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
-  const inst = (bk && bk.inst) || stock.inst;
-  const pill = (l, v) => `<span class="ipill ${sign(v)}">${l} ${v == null ? "—" : (v > 0 ? "+" : "") + fi(v)}</span>`;
-  const head = `<div class="bk-head"><h2>法人買賣 <span class="muted">${esc(stock.code)} ${esc(stock.name)}</span></h2>
-    <div class="ipills">${pill("外資", inst?.f)}${pill("投信", inst?.t)}${pill("自營", inst?.d)}</div></div>`;
+  const head = instHead("法人買賣", stock.code, stock.name, (bk && bk.inst) || stock.inst);
   if (!bk) {
     const st = await load(`brokers/${daily.date}/_status.json`);
     const why = st?.stocks?.[stock.code]?.msg;
-    box.innerHTML = head + `<div class="empty">${esc(why ? `這檔沒有分點資料：${why}` : "這天還沒有分點資料。分點只能在收盤當天抓取，較早的日期沒有。")}</div>`;
+    box.innerHTML = head + `<div class="empty">${esc(why ? `這檔沒有分點資料：${why}` : "這天沒有分點資料。分點只能在收盤當天抓取，較早的日期沒有。")}</div>`;
     return;
   }
-  const B = bk.branches.map(([n, b, s, ba, sa]) => ({n, b, s, ba, sa, net: b - s, tot: b + s}));
-  const buys = B.filter(x => x.net > 0).sort((a, c) => c.net - a.net).slice(0, 15);
-  const sells = B.filter(x => x.net < 0).sort((a, c) => a.net - c.net).slice(0, 15);
-  const p2 = v => v == null ? "—" : fx(v, 2);
-  const topT = (rows, side) => `<div class="bk-side ${side}"><div class="cap">${side === "b" ? "買超" : "賣超"} Top15</div><div class="tw"><table>
-    <thead><tr><th scope="col">券商</th><th class="n" scope="col">${side === "b" ? "買超" : "賣超"}</th><th class="n" scope="col">買均</th><th class="n" scope="col">買張</th><th class="n" scope="col">賣張</th><th class="n" scope="col">賣均</th></tr></thead>
-    <tbody>${rows.map(x => `<tr data-n="${esc(x.n)}"><td>${esc(x.n)}</td><td class="n ${sign(x.net)}">${x.net > 0 ? "+" : ""}${fi(x.net)}</td><td class="n">${p2(x.ba)}</td><td class="n ${x.b ? "up" : "muted"}">${x.b ? "+" + fi(x.b) : "0"}</td><td class="n ${x.s ? "down" : "muted"}">${x.s ? "+" + fi(x.s) : "0"}</td><td class="n">${p2(x.sa)}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">無</td></tr>'}</tbody></table></div></div>`;
-  const dt = B.filter(x => x.b && x.s).map(x => ({...x, dq: Math.min(x.b, x.s), pl: (x.s * x.sa - x.b * x.ba + (x.b - x.s) * bk.close) * 1000}))
-    .sort((a, c) => c.dq - a.dq).slice(0, 10);
-  const plTip = "以收盤價計算：賣出金額 − 買進金額 ＋ 未沖銷張數 × 收盤價，未扣手續費與證交稅";
-  box.innerHTML = head + `<div class="bk-pair">${topT(buys, "b")}${topT(sells, "s")}</div>
-    <div class="bk-chart"><div class="bk-scroll">${bubbleSVG(bk, B)}</div></div>
-    <p class="small muted">每家券商最多兩顆泡泡：左邊買進、右邊賣出，越外側張數越多；高度是成交均價，泡泡大小是張數。同一家券商又買又賣會用虛線相連。滑過或點選券商可對照。</p>
-    <h3 class="bk-dt">${esc(bk.code)} ${esc(bk.name)} ${md(bk.date)} 當沖 Top10（收盤 ${fp(bk.close)}）</h3>
-    <div class="tw"><table><thead><tr><th scope="col">券商</th><th class="n" scope="col">交易張數</th><th class="n" scope="col">總損益 <span class="info" title="${plTip}" aria-label="${plTip}">ⓘ</span></th><th class="n" scope="col">買張數</th><th class="n" scope="col">買均價</th><th class="n" scope="col">賣張數</th><th class="n" scope="col">賣均價</th></tr></thead>
-    <tbody>${dt.map(x => `<tr data-n="${esc(x.n)}"><td>${esc(x.n)}</td><td class="n">${fi(x.tot)}</td><td class="n ${sign(x.pl)}">${x.pl > 0 ? "+" : ""}${fi(x.pl)}</td><td class="n up">${fi(x.b)}</td><td class="n">@${p2(x.ba)}</td><td class="n down">${fi(x.s)}</td><td class="n">@${p2(x.sa)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">沒有同時買賣的券商</td></tr>'}</tbody></table></div>
-    <p class="small muted">排序依當沖張數（買進與賣出較小的一方）。總損益${plTip.slice(2)}。</p>`;
-  wireBubble(box, B, bk);
+  const B = parseBranches(bk);
+  let key = "tot";
+  box.innerHTML = head + statsHTML(B, bk.lots) + topPairHTML(B) + bubbleSVG(bk, B) + LEGEND +
+    `<p class="small muted">每家券商最多兩顆泡泡：左邊買進、右邊賣出，越外側張數越多；高度是成交均價，泡泡大小是張數。滑過或點選券商可對照，再點一次取消。</p>` +
+    dtHTML(bk, B, `${esc(bk.code)} ${esc(bk.name)} ${md(bk.date)} 當沖 Top10（收盤 ${fp(bk.close)}）`) +
+    `<h3 class="bk-dt">全部分點（前 30）</h3><div id="bkAll">${allHTML(B, key)}</div>`;
+  box.querySelector("#bkAll").addEventListener("click", e => { const b = e.target.closest("button[data-sort]"); if (!b) return; e.stopPropagation(); key = b.dataset.sort; box.querySelector("#bkAll").innerHTML = allHTML(B, key); });
+  wireBubble(box, [B]);
 }
 
-function bubbleSVG(bk, B) {
-  const W = 1000, H = 480, ml = 74, mr = 24, mt = 26, mb = 44, cx = ml + (W - ml - mr) / 2, half = (W - ml - mr) / 2 - 34;
-  const top = B.slice().sort((a, c) => c.tot - a.tot).slice(0, 40);
-  const maxV = Math.max(1, ...top.map(x => Math.max(x.b, x.s)));
-  const X = (v, side) => cx + side * (8 + Math.sqrt(v / maxV) * half);
-  const R = v => 3 + Math.sqrt(v / maxV) * 24;
-  const prices = top.flatMap(x => [x.b ? x.ba : null, x.s ? x.sa : null]).filter(v => v != null);
-  let lo = Math.min(bk.prev_close, ...prices), hi = Math.max(bk.close, ...prices);
-  const pad = (hi - lo) * .06 || hi * .01; lo -= pad; hi += pad;
-  const Y = v => mt + (hi - v) / (hi - lo) * (H - mt - mb);
-  const step = (() => { const raw = (hi - lo) / 6, m = Math.pow(10, Math.floor(Math.log10(raw))), e = raw / m; return (e >= 5 ? 10 : e >= 2 ? 5 : e >= 1 ? 2 : 1) * m; })();
-  let g = "";
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) g += `<line class="grid" x1="${ml}" x2="${W - mr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${ml - 8}" y="${Y(v) + 4}" text-anchor="end">${+v.toFixed(2)}</text>`;
-  const xt = [0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000].filter(v => v <= maxV * 1.02);
-  const xtk = xt.filter((v, i) => i === 0 || Math.sqrt(v / maxV) - Math.sqrt(xt[i - 1] / maxV) > .07);
-  xtk.forEach(v => [-1, 1].forEach(sd => { if (v === 0 && sd > 0) return; const x = v === 0 ? cx : X(v, sd);
-    g += `<line class="grid" x1="${x}" x2="${x}" y1="${mt}" y2="${H - mb}"/><text class="ax" x="${x}" y="${H - mb + 18}" text-anchor="middle">${v}</text>`; }));
-  g += `<line class="mid" x1="${cx}" x2="${cx}" y1="${mt}" y2="${H - mb}"/>`;
-  g += `<line class="lim" x1="${ml}" x2="${W - mr}" y1="${Y(bk.close)}" y2="${Y(bk.close)}"/><text class="limt" x="${ml - 8}" y="${Y(bk.close) + 4}" text-anchor="end">漲停 ${fp(bk.close)}</text>`;
-  g += `<line class="flat" x1="${ml}" x2="${W - mr}" y1="${Y(bk.prev_close)}" y2="${Y(bk.prev_close)}"/><text class="flatt" x="${ml - 8}" y="${Y(bk.prev_close) + 4}" text-anchor="end">平盤 ${fp(bk.prev_close)}</text>`;
-  g += `<text class="side up" x="${ml + 8}" y="${mt + 4}">← 買進</text><text class="side down" x="${W - mr - 8}" y="${mt + 4}" text-anchor="end">賣出 →</text>`;
-  const links = [], dots = [], labels = [];
-  top.forEach(x => {
-    const a = x.b ? {cx: X(x.b, -1), cy: Y(x.ba), r: R(x.b)} : null, c = x.s ? {cx: X(x.s, 1), cy: Y(x.sa), r: R(x.s)} : null;
-    const n = esc(x.n);
-    if (a && c) links.push(`<line class="lk" data-n="${n}" x1="${a.cx.toFixed(1)}" y1="${a.cy.toFixed(1)}" x2="${c.cx.toFixed(1)}" y2="${c.cy.toFixed(1)}"/>`);
-    [[a, "b"], [c, "s"]].forEach(([p, sd]) => { if (!p) return;
-      dots.push([p.r, `<circle class="bb ${sd}" data-n="${n}" cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" r="${p.r.toFixed(1)}"/>`]);
-      labels.push(`<text class="lb" data-n="${n}" x="${p.cx.toFixed(1)}" y="${(p.cy - p.r - 4).toFixed(1)}" text-anchor="middle">${n}</text>`); });
-  });
-  dots.sort((a, c) => c[0] - a[0]);
-  g += `<g class="lks">${links.join("")}</g><g>${dots.map(d => d[1]).join("")}</g><g class="lbs">${labels.join("")}</g>`;
-  g += `<text class="info up" id="bkiB1" x="${ml + 8}" y="${H - mb - 26}"></text><text class="info up" id="bkiB2" x="${ml + 8}" y="${H - mb - 8}"></text>`;
-  g += `<text class="info down" id="bkiS1" x="${W - mr - 8}" y="${H - mb - 26}" text-anchor="end"></text><text class="info down" id="bkiS2" x="${W - mr - 8}" y="${H - mb - 8}" text-anchor="end"></text>`;
-  return `<svg class="bubble" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(bk.name)} 券商分點泡泡圖">${g}</svg>`;
-}
-
-function wireBubble(box, B, bk) {
-  const svg = box.querySelector("svg.bubble");
-  const byName = new Map(B.map(x => [x.n, x]));
-  let pinned = "";
-  const info = (id, t) => { const el = svg.querySelector("#" + id); if (el) el.textContent = t; };
-  function hl(n) {
-    svg.classList.toggle("focus", !!n);
-    svg.querySelectorAll(".hl").forEach(e => e.classList.remove("hl"));
-    box.querySelectorAll("tr.hl").forEach(e => e.classList.remove("hl"));
-    ["bkiB1", "bkiB2", "bkiS1", "bkiS2"].forEach(i => info(i, ""));
-    if (!n) return;
-    svg.querySelectorAll("[data-n]").forEach(e => { if (e.dataset.n === n) { e.classList.add("hl"); if (e.tagName === "text") e.parentNode.appendChild(e); } });
-    box.querySelectorAll("tr[data-n]").forEach(e => { if (e.dataset.n === n) e.classList.add("hl"); });
-    const x = byName.get(n);
-    if (x) {
-      if (x.b) { info("bkiB1", `買均 ${fx(x.ba, 2)}`); info("bkiB2", `買量 ${fi(x.b)}張`); }
-      if (x.s) { info("bkiS1", `賣均 ${fx(x.sa, 2)}`); info("bkiS2", `賣量 ${fi(x.s)}張`); }
-    }
+/* 隔日頁：漲停日前 15 大買超券商，隔日怎麼動 */
+async function showFollow(nd, row, scroll) {
+  const box = document.getElementById("bk");
+  if (!box || !row) return;
+  box.hidden = false;
+  box.innerHTML = `<p class="muted">載入 ${esc(row.code)} ${esc(row.name)} 分點資料…</p>`;
+  const [b1, b2] = await Promise.all([load(`brokers/${nd.limit_date}/${row.code}.json`), load(`brokers/${nd.date}/${row.code}.json`)]);
+  if (scroll) box.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
+  const title = `${esc(row.code)} ${esc(row.name)} 漲停日 ${md(nd.limit_date)} 前15大買超券商 → 隔日 ${md(nd.date)} 動向`;
+  if (!b1) {
+    box.innerHTML = `<h2 class="bk-title">${title}</h2><div class="empty">沒有漲停日 ${esc(nd.limit_date)} 的分點資料（分點從開始抓取的那天才有，且只能在收盤當天抓）。</div>`;
+    return;
   }
-  const nameOf = e => e.target.closest("[data-n]")?.dataset.n || "";
-  svg.addEventListener("pointerover", e => { const n = nameOf(e); if (n && !pinned) hl(n); });
-  svg.addEventListener("pointerleave", () => { if (!pinned) hl(""); });
-  svg.addEventListener("click", e => { const n = nameOf(e); pinned = n && n !== pinned ? n : ""; hl(pinned); });
-  box.querySelectorAll("tbody").forEach(tb => {
-    tb.addEventListener("pointerover", e => { const n = nameOf(e); if (n && !pinned) hl(n); });
-    tb.addEventListener("pointerleave", () => { if (!pinned) hl(""); });
-    tb.addEventListener("click", e => { const n = nameOf(e); if (!n) return; pinned = n !== pinned ? n : ""; hl(pinned); });
-  });
+  const B1 = parseBranches(b1), B2 = b2 ? parseBranches(b2) : [];
+  const m2 = new Map(B2.map(x => [x.n, x]));
+  const top = B1.filter(x => x.net > 0).sort((a, c) => c.net - a.net).slice(0, 15);
+  const maxN = Math.max(1, ...top.map(x => Math.abs(m2.get(x.n)?.net || 0)));
+  const sum = {net: 0, n2: 0, s2: 0, b2: 0};
+  const rows = top.map((x, i) => {
+    const y = m2.get(x.n);
+    sum.net += x.net;
+    const sd = x.bsd ? `<small class="muted"> ±${fx(x.bsd, 2)}</small>` : "";
+    const left = `<td class="rk">${i + 1}</td><td>${esc(x.n)}</td><td class="n up g1">${sgnI(x.net)}</td><td class="n g1">${p2(x.ba)}${sd}</td>`;
+    if (!y) return `<tr class="idle" data-n="${esc(x.n)}">${left}<td colspan="6" class="idle-msg">${b2 ? "未交易（持股不動）" : "—"}</td></tr>`;
+    sum.n2 += y.net; sum.s2 += y.s; sum.b2 += y.b;
+    const w = Math.round(Math.abs(y.net) / maxN * 46);
+    const out = x.net ? Math.min(y.s / x.net, 9.99) : 0;
+    return `<tr data-n="${esc(x.n)}">${left}<td class="n"><span class="${sign(y.net)}">${sgnI(y.net)}</span><span class="bar ${y.net >= 0 ? "up" : "down"}" style="width:${w}px"></span></td>
+      <td class="n">${p2(y.sa)}</td><td class="n down">${fi(y.s)}</td><td class="n up">${fi(y.b)}</td><td class="n">${p2(y.ba)}</td><td class="n">${y.s ? Math.round(out * 100) + "%" : "—"}</td></tr>`;
+  }).join("");
+  const tbl = `<div class="tw"><table class="follow"><thead>
+    <tr class="grp"><th colspan="2"></th><th colspan="2" class="g1">漲停日 ${md(nd.limit_date)}</th><th colspan="6">隔日 ${md(nd.date)}</th></tr>
+    <tr><th scope="col">#</th><th scope="col">券商</th><th class="n g1" scope="col">買超</th><th class="n g1" scope="col">均價</th><th class="n" scope="col">${md(nd.date)} 買賣超</th><th class="n" scope="col">賣均</th><th class="n" scope="col">賣</th><th class="n" scope="col">買</th><th class="n" scope="col">買均</th><th class="n" scope="col">賣出比例 <span class="info" title="隔日賣出張數 ÷ 漲停日買超張數">ⓘ</span></th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td></td><td>合計</td><td class="n up g1">${sgnI(sum.net)}</td><td class="g1"></td><td class="n ${sign(sum.n2)}">${b2 ? sgnI(sum.n2) : "—"}</td><td></td><td class="n down">${b2 ? fi(sum.s2) : ""}</td><td class="n up">${b2 ? fi(sum.b2) : ""}</td><td></td><td class="n">${b2 && sum.net ? Math.round(sum.s2 / sum.net * 100) + "%" : ""}</td></tr></tfoot></table></div>
+    <p class="small muted">均價旁的 ± 是該券商買進價格的分散程度（標準差），越小代表越集中在同一價位。灰色列是隔日沒有交易的券商。</p>`;
+  let html = `<h2 class="bk-title">${title}</h2>` + tbl;
+  if (b2) {
+    const refs = [{v: b2.open, label: "開盤", cls: "open"}, {v: b2.avg, label: "均價", cls: "avg"}, {v: b2.close, label: "收盤", cls: "close"}].filter(r => r.v);
+    html += instHead(`隔日 ${md(nd.date)} 分點`, row.code, row.name, b2.inst) + statsHTML(B2, b2.lots) + bubbleSVG(b2, B2, refs) + LEGEND +
+      dtHTML(b2, B2, `${esc(b2.code)} ${esc(b2.name)} ${md(b2.date)} 當沖 Top10（收盤 ${fp(b2.close)}）`);
+  } else {
+    html += `<div class="empty">隔日 ${esc(nd.date)} 的分點資料還沒有或抓取失敗。</div>`;
+  }
+  box.innerHTML = html;
+  wireBubble(box, [B2]);
 }
 
 P.nextday = async (date) => {
@@ -299,6 +393,7 @@ P.nextday = async (date) => {
   setTitle("漲停隔日表現");
   if (!data) { app.innerHTML = `<h1>漲停隔日表現</h1>${emptyBox("需要至少兩個交易日的資料")}`; return; }
   const s = data.summary;
+  let selN = "";
   const vs = v => v == null ? "" : `<div class="d">比近 20 次平均 ${v > 0 ? "高" : "低"} ${fx(Math.abs(v), 1)} 個百分點</div>`;
   let tag = "";
   app.innerHTML = `<h1>漲停隔日表現</h1>
@@ -308,13 +403,15 @@ P.nextday = async (date) => {
       <div class="kpi"><div class="l">開盤平均報酬</div><div class="v ${sign(s.open_avg)}">${pc(s.open_avg)}</div><div class="d">勝率 ${fx(s.open_win, 1)}%</div>${vs(s.open_win_vs20)}</div>
       <div class="kpi"><div class="l">均價平均報酬</div><div class="v">${pc(s.avg_avg)}</div><div class="d">勝率 ${fx(s.avg_win, 1)}%</div>${vs(s.avg_win_vs20)}</div>
       <div class="kpi"><div class="l">收盤平均報酬</div><div class="v">${pc(s.close_avg)}</div><div class="d">勝率 ${fx(s.close_win, 1)}%</div>${vs(s.close_win_vs20)}</div>
+      <div class="kpi"><div class="l">加權平均報酬</div><div class="v">${pc(s.wavg_avg)}</div><div class="d">2/3 開盤賣＋1/3 均價賣</div></div>
       <div class="kpi"><div class="l">續漲停</div><div class="v up">${s.cont} 檔</div><div class="d">共 ${s.n} 檔漲停</div></div>
     </div>
     <h2>族群表現</h2><div id="g"></div>
     <h2>個股明細</h2>
     <div class="toolbar"><span class="chips" id="tags"></span></div>
     <div id="t"></div>
-    <p class="small muted">標籤依隔日實際開盤與收盤價格分類，只描述已發生的走勢。</p>`;
+    <p class="small muted">標籤依隔日實際開盤與收盤價格分類，只描述已發生的走勢。加權＝（2 × 開盤報酬 ＋ 均價報酬）÷ 3，假設三分之二在開盤賣、三分之一在均價賣。點個股看漲停日的主力買家隔天怎麼動。</p>
+    <section class="bk" id="bk" hidden></section>`;
   document.getElementById("ds").append(dateSelect(dates, date, v => location.hash = `#/nextday/${v}`));
   table(document.getElementById("g"), [
     {k: "theme", t: "族群", f: r => `${esc(r.emoji)} ${esc(r.theme)}`}, {k: "streak", t: "連續天數", n: 1, f: r => r.streak + " 天"},
@@ -325,10 +422,13 @@ P.nextday = async (date) => {
     {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
     {k: "ref", t: "漲停價", n: 1, f: r => fp(r.ref)}, {k: "vol_ratio", t: "量比", n: 1, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
     {k: "ret_open", t: "隔日開", n: 1, f: r => `${fp(r.open)} ${pc(r.ret_open)}`}, {k: "ret_avg", t: "隔日均價", n: 1, f: r => `${fp(r.avg)} ${pc(r.ret_avg)}`},
-    {k: "ret_close", t: "隔日收", n: 1, f: r => `${fp(r.close)} ${pc(r.ret_close)}`}, {k: "ret_high", t: "最高", n: 1, f: r => pc(r.ret_high)},
+    {k: "ret_close", t: "隔日收", n: 1, f: r => `${fp(r.close)} ${pc(r.ret_close)}`},
+    {k: "ret_wavg", t: '加權 <span class="info" title="（2 × 開盤報酬 ＋ 均價報酬）÷ 3">ⓘ</span>', n: 1, f: r => pc(r.ret_wavg)},
+    {k: "ret_high", t: "最高", n: 1, f: r => pc(r.ret_high)},
     {k: "tag", t: "標籤", f: r => `<span class="tag ${r.tag === "續漲停" || r.tag.endsWith("走高") ? "up" : "down"}">${esc(r.tag)}</span>`},
     {k: "theme", t: "族群"},
-  ], data.stocks, {sort: ["ret_close", -1]});
+  ], data.stocks, {sort: ["ret_close", -1], id: r => r.code, rowClass: r => r.code === selN ? "sel" : "",
+    rowClick: r => { selN = r.code; tt.set(data.stocks.filter(x => !tag || x.tag === tag)); showFollow(data, r, true); }});
   chips(document.getElementById("tags"), [["", `全部 ${s.n}`], ...Object.entries(data.tags).map(([k, v]) => [k, `${k} ${v}`])], tag,
     v => { tag = v; tt.set(data.stocks.filter(x => !v || x.tag === v)); });
 };

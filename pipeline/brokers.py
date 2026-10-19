@@ -107,18 +107,25 @@ def parse_rows(text: str) -> list[tuple[str, float, int, int]]:
 
 
 def aggregate(rows) -> list[list]:
-    """逐價成交 → 每家券商 [名稱, 買張, 賣張, 買均, 賣均]，依成交量排序"""
-    acc = defaultdict(lambda: [0, 0.0, 0, 0.0])
+    """逐價成交 → 每家券商 [名稱, 買張, 賣張, 買均, 賣均, 買價標準差, 賣價標準差]，依成交量排序。
+    標準差表示這家券商買（賣）的價格分散程度：0 代表都在同一價位成交。"""
+    acc = defaultdict(lambda: [0, 0.0, 0.0, 0, 0.0, 0.0])
     for br, px, b, s in rows:
         a = acc[br]
         a[0] += b
         a[1] += b * px
-        a[2] += s
-        a[3] += s * px
+        a[2] += b * px * px
+        a[3] += s
+        a[4] += s * px
+        a[5] += s * px * px
     out = []
-    for br, (b, bv, s, sv) in acc.items():
+    for br, (b, bv, bq, s, sv, sq) in acc.items():
+        bm, sm = (bv / b if b else None), (sv / s if s else None)
+        bsd = (max(bq / b - bm * bm, 0) ** .5) if b else None
+        ssd = (max(sq / s - sm * sm, 0) ** .5) if s else None
         out.append([br, round(b / 1000, 3), round(s / 1000, 3),
-                    round(bv / b, 2) if b else None, round(sv / s, 2) if s else None])
+                    round(bm, 2) if b else None, round(sm, 2) if s else None,
+                    round(bsd, 2) if b else None, round(ssd, 2) if s else None])
     out.sort(key=lambda x: -(x[1] + x[2]))
     return out
 
@@ -204,26 +211,38 @@ def fetch_tpex(code: str, target: date) -> tuple[list | None, str]:
 
 # ------------------------------------------------------------------ 主流程
 
-def build(d: date, daily: dict, inst: dict | None = None, only_twse_today: bool = True) -> dict:
-    """抓當日所有漲停股的分點資料。daily 是 limitup.build_daily 的結果。"""
+def target(q: dict, name: str | None = None, inst: dict | None = None, role: str = "limit") -> dict:
+    """把行情整理成要抓分點的股票資訊。role：limit＝當日漲停、next＝昨日漲停（看隔日動向）"""
+    from .util import limit_up
+    return {"code": q["code"], "name": name or q["name"], "market": q["market"], "close": q["close"],
+            "prev_close": q["prev_close"], "open": q.get("open"), "high": q.get("high"), "low": q.get("low"),
+            "avg": q.get("avg"), "lots": int(q.get("volume", 0)) // 1000, "limit": limit_up(q["prev_close"]),
+            "inst": inst, "role": role}
+
+
+def _write(folder, d: date, t: dict, branches: list) -> None:
+    write_json(folder / f"{t['code']}.json", {
+        "date": d.isoformat(), **{k: t[k] for k in ("code", "name", "market", "close", "prev_close", "open", "high",
+                                                   "low", "avg", "lots", "limit", "inst", "role")},
+        "branches": branches})
+
+
+def build(d: date, targets: list[dict]) -> dict:
+    """抓 targets 每一檔的分點資料（證交所網站只保留最近一個交易日，所以 d 必須是今天的交易日）。"""
     folder = OUT / d.isoformat()
     status = read_json(folder / "_status.json", {}) or {}
     st = status.setdefault("stocks", {})
-    for stock in daily.get("stocks", []):
-        code = stock["code"]
+    for t in targets:
+        code = t["code"]
         if st.get(code, {}).get("ok") and (folder / f"{code}.json").exists():
             continue
-        fn = fetch_twse if stock["market"] == "TWSE" else fetch_tpex
+        fn = fetch_twse if t["market"] == "TWSE" else fetch_tpex
         rows, msg = fn(code, d)
-        st[code] = {"ok": rows is not None, "msg": msg, "market": stock["market"]}
-        log.info("分點 %s %s：%s", code, stock["name"], msg)
+        st[code] = {"ok": rows is not None, "msg": msg, "market": t["market"], "role": t["role"]}
+        log.info("分點 %s %s：%s", code, t["name"], msg)
         if rows is None:
             continue
-        write_json(folder / f"{code}.json", {
-            "date": d.isoformat(), "code": code, "name": stock["name"], "market": stock["market"],
-            "close": stock["close"], "prev_close": stock["prev_close"], "lots": stock["lots"],
-            "inst": (inst or {}).get(code) or stock.get("inst"), "branches": aggregate(rows),
-        })
+        _write(folder, d, t, aggregate(rows))
         time.sleep(config.BROKER_DELAY)
     status["date"] = d.isoformat()
     status["ok"] = sum(v["ok"] for v in st.values())
@@ -232,23 +251,43 @@ def build(d: date, daily: dict, inst: dict | None = None, only_twse_today: bool 
     return status
 
 
-def build_mock(d: date, daily: dict, seed: int = 7) -> None:
-    """模擬資料：產生看起來合理的分點進出，供離線預覽前端"""
+NAMES = ["凱基台北", "富邦", "元大", "摩根士丹利", "美商高盛亞", "港商野村", "星洲瑞銀", "摩根大通", "美林證券",
+         "統一", "國票天祥", "永豐金敦北", "永昌麻豆", "永豐金", "國泰敦南", "凱基桃園", "新光", "永豐金中正",
+         "兆豐台中", "新光台中", "台新敦南", "國泰館前", "康和仁愛", "合庫桃園", "第一金證券", "富邦建國",
+         "國泰板橋", "國泰台中", "玉山台中", "凱基信義", "凱基城中", "元大內湖民", "台新", "華南永昌",
+         "群益金鼎", "元富", "兆豐", "統一城中", "凱基松山", "富邦台北", "元大土城永寧", "犇亞", "宏遠"]
+
+
+def build_mock(d: date, targets: list[dict], prev: date | None = None, seed: int = 7) -> None:
+    """模擬資料：產生看起來合理的分點進出（隔日股會讓前一天的大買家賣出），供離線預覽前端"""
     import random
-    names = ["凱基台北", "富邦", "元大", "摩根士丹利", "美商高盛亞", "港商野村", "星洲瑞銀", "摩根大通", "美林證券",
-             "統一", "國票天祥", "永豐金敦北", "永昌麻豆", "永豐金", "國泰敦南", "凱基桃園", "新光", "永豐金中正",
-             "兆豐台中", "新光台中", "台新敦南", "國泰館前", "康和仁愛", "合庫桃園", "第一金證券", "富邦建國",
-             "國泰板橋", "國泰台中", "玉山台中", "凱基信義", "凱基城中", "元大內湖民", "台新", "華南永昌",
-             "群益金鼎", "元富", "兆豐", "統一城中", "凱基松山", "富邦台北", "元大土城永寧", "犇亞", "宏遠"]
     folder = OUT / d.isoformat()
     st = {}
-    for stock in daily.get("stocks", []):
-        rnd = random.Random(f"{seed}-{d}-{stock['code']}")
-        lots = max(stock["lots"], 50)
-        pc, c = stock["prev_close"], stock["close"]
-        lo = pc + (c - pc) * rnd.uniform(0.1, 0.6)
-        pool = rnd.sample(names, min(len(names), rnd.randint(28, 42)))
-        w = [(rnd.random() ** 3 if rnd.random() > .3 else 0, rnd.random() ** 3 if rnd.random() > .3 else 0) for _ in pool]
+    for t in targets:
+        rnd = random.Random(f"{seed}-{d}-{t['code']}")
+        lots = max(t["lots"], 50)
+        lo = t.get("low") or t["prev_close"]
+        hi = t.get("high") or t["close"]
+        if t["role"] == "limit":
+            lo = t["prev_close"] + (t["close"] - t["prev_close"]) * rnd.uniform(0.1, 0.6)
+        pool = rnd.sample(NAMES, min(len(NAMES), rnd.randint(28, 42)))
+        bias = {}
+        if t["role"] == "next" and prev:
+            old = read_json(OUT / prev.isoformat() / f"{t['code']}.json")
+            if old:
+                buyers = sorted(old["branches"], key=lambda x: -(x[1] - x[2]))[:15]
+                for x in buyers:
+                    if rnd.random() < .7:
+                        bias[x[0]] = max(x[1] - x[2], 0)
+                pool = list(dict.fromkeys(list(bias) + pool))
+        w = []
+        for n in pool:
+            wb = rnd.random() ** 3 if rnd.random() > .3 else 0
+            ws = rnd.random() ** 3 if rnd.random() > .3 else 0
+            if n in bias:
+                ws = bias[n] / lots * rnd.uniform(.6, 1.6)
+                wb = wb * .3
+            w.append((wb, ws))
         sb = sum(x[0] for x in w) or 1
         ss = sum(x[1] for x in w) or 1
         rows = []
@@ -256,12 +295,11 @@ def build_mock(d: date, daily: dict, seed: int = 7) -> None:
             b, s = round(lots * wb / sb), round(lots * ws / ss)
             if b + s == 0:
                 continue
-            px = lambda: round(c - (c - lo) * rnd.random() ** 1.6, 2)  # noqa: E731
-            rows.append([n, b, s, px() if b else None, px() if s else None])
+            px = lambda: round(hi - (hi - lo) * rnd.random() ** 1.4, 2)  # noqa: E731
+            rows.append([n, b, s, px() if b else None, px() if s else None,
+                         round(rnd.random() * (hi - lo) * .2, 2) if b else None, round(rnd.random() * (hi - lo) * .2, 2) if s else None])
         rows.sort(key=lambda x: -(x[1] + x[2]))
-        inst = stock.get("inst") or {"f": rnd.randint(-lots // 8, lots // 4), "t": 0, "d": rnd.randint(-lots // 30, lots // 20)}
-        write_json(folder / f"{stock['code']}.json", {
-            "date": d.isoformat(), "code": stock["code"], "name": stock["name"], "market": stock["market"],
-            "close": c, "prev_close": pc, "lots": stock["lots"], "inst": inst, "branches": rows})
-        st[stock["code"]] = {"ok": True, "msg": "模擬資料", "market": stock["market"]}
+        t = dict(t, inst=t.get("inst") or {"f": rnd.randint(-lots // 8, lots // 4), "t": 0, "d": rnd.randint(-lots // 30, lots // 20)})
+        _write(folder, d, t, rows)
+        st[t["code"]] = {"ok": True, "msg": "模擬資料", "market": t["market"], "role": t["role"]}
     write_json(folder / "_status.json", {"date": d.isoformat(), "stocks": st, "ok": len(st), "total": len(st)})
