@@ -110,6 +110,9 @@ class Pipeline(unittest.TestCase):
             config.SITE_DIR, config.OUT_DIR = t / "site", t / "site/data"
             from pipeline import active_etf, announce as ann, brief, limitup, store
             limitup.OUT, ann.OUT, brief.OUT = config.OUT_DIR, config.OUT_DIR / "announce", config.OUT_DIR
+            from pipeline import brokers as bk
+            old_bk = (bk.OUT, bk.DEBUG_DIR)
+            bk.OUT, bk.DEBUG_DIR = config.OUT_DIR / "brokers", config.STATE_DIR / "brokers_debug"
             active_etf.SNAP = config.DATA_DIR / "etf"
             store.trading_days.cache_clear()
             store.load_day.cache_clear()
@@ -130,6 +133,7 @@ class Pipeline(unittest.TestCase):
                 for s in daily["stocks"]:
                     self.assertGreaterEqual(s["close"], limit_up(s["prev_close"]))
             finally:
+                bk.OUT, bk.DEBUG_DIR = old_bk
                 for k, v in old.items():
                     setattr(config, k, v)
                 limitup.OUT, ann.OUT, brief.OUT = config.OUT_DIR, config.OUT_DIR / "announce", config.OUT_DIR
