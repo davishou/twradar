@@ -14,7 +14,7 @@ SITE_NAME = os.getenv("SITE_NAME", "盤後雷達")
 SITE_URL = os.getenv("SITE_URL", "https://example.github.io/twradar/")
 
 # ---- AI（選用）：設定 ANTHROPIC_API_KEY 即啟用 AI 族群分類、公告評分、盤後氣氛 ----
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 AI_MODEL = os.getenv("AI_MODEL", "claude-haiku-5-5")  # 便宜快速；想要更好的文字品質可設 claude-sonnet-5-5
 
 # ---- 資料源 ----
