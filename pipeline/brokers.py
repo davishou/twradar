@@ -197,12 +197,9 @@ def fetch_twse(code: str, target: date) -> tuple[list | None, str]:
                 urljoin(U["twse_bsr_menu"], "bsContent.aspx?v=t")
             r = s.get(url, timeout=config.HTTP_TIMEOUT)
             text = decode(r.content)
-            # 確認資料日期就是要的那天（網站只保留最近一個交易日）。日期可能是西元或民國格式
+            # 報表本身沒有日期；若網頁上有日期就比對，沒有就交給 build() 用價量比對
             found = site_dates(text + html)
-            if not found:
-                _debug(f"twse_{code}_nodate.txt", text[:5000] + "\n----- html -----\n" + html)
-                return None, "找不到報表日期，為避免存錯日期而略過"
-            if target not in found:
+            if found and target not in found:
                 return None, f"網站資料日期是 {sorted(found)[-1]}，不是 {target}"
             rows = parse_rows(text)
             if not rows:  # CSV 失敗時改讀 HTML 表格
@@ -241,6 +238,23 @@ def fetch_tpex(code: str, target: date) -> tuple[list | None, str]:
 
 # ------------------------------------------------------------------ 主流程
 
+def matches_day(rows, t: dict) -> str:
+    """確認逐價資料屬於 t 這一天：成交價都在當天高低價之間，買進總量與當天成交量相符。
+    回傳空字串代表通過，否則回傳原因。"""
+    hi, lo, lots = t.get("high"), t.get("low"), t.get("lots") or 0
+    # 報表含零股成交，零股的價格可能超出整股高低價，所以只用 1000 股以上的列比對
+    board = [(px, b, s) for _, px, b, s in rows if b >= 1000 or s >= 1000]
+    if hi and lo and board:
+        out = sum(b + s for px, b, s in board if px > hi + 1e-6 or px < lo - 1e-6)
+        tot = sum(b + s for _, b, s in board) or 1
+        if out / tot > 0.02:
+            return f"有 {out / tot:.0%} 的成交價超出當天 {lo}~{hi}，可能不是同一天的資料"
+    buy = sum(b for _, _, b, _ in rows) / 1000
+    if lots >= 20 and abs(buy - lots) / lots > 0.10:
+        return f"報表買進合計 {buy:,.0f} 張與當天成交量 {lots:,} 張不符，可能不是同一天的資料"
+    return ""
+
+
 def target(q: dict, name: str | None = None, inst: dict | None = None, role: str = "limit") -> dict:
     """把行情整理成要抓分點的股票資訊。role：limit＝當日漲停、next＝昨日漲停（看隔日動向）"""
     from .util import limit_up
@@ -268,6 +282,10 @@ def build(d: date, targets: list[dict]) -> dict:
             continue
         fn = fetch_twse if t["market"] == "TWSE" else fetch_tpex
         rows, msg = fn(code, d)
+        if rows is not None:
+            bad = matches_day(rows, t)
+            if bad:
+                rows, msg = None, bad
         st[code] = {"ok": rows is not None, "msg": msg, "market": t["market"], "role": t["role"]}
         log.info("分點 %s %s：%s", code, t["name"], msg)
         if rows is None:
