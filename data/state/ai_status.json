@@ -1,1 +1,1 @@
-{"time":"2026-10-20 07:12","enabled":true,"model":"claude-haiku-5-5","key_prefix":"sk-ant-…","ok":true,"input_tokens":639,"output_tokens":800}
+{"enabled":true,"model":"claude-haiku-5-5","key_prefix":"sk-ant-…","calls":[{"time":"2026-10-20 07:16","tag":"classify","ok":true,"stop":"end_turn","input_tokens":1318,"output_tokens":2893},{"time":"2026-10-20 07:16","tag":"why","ok":true,"stop":"end_turn","input_tokens":1600,"output_tokens":2280},{"time":"2026-10-20 07:16","tag":"why","ok":true,"stop":"max_tokens","input_tokens":617,"output_tokens":800}]}
