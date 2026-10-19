@@ -15,6 +15,8 @@ SITE_URL = os.getenv("SITE_URL", "https://example.github.io/twradar/")
 
 # ---- AI（選用）：設定 ANTHROPIC_API_KEY 即啟用 AI 族群分類、公告評分、盤後氣氛 ----
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+# 金鑰沒有綁定工作區時，填工作區 ID（wrkspc_ 開頭）；綁定工作區的金鑰不用填
+ANTHROPIC_WORKSPACE_ID = os.getenv("ANTHROPIC_WORKSPACE_ID", "").strip()
 AI_MODEL = os.getenv("AI_MODEL", "claude-haiku-5-5")  # 便宜快速；想要更好的文字品質可設 claude-sonnet-5-5
 
 # ---- 資料源 ----

@@ -19,7 +19,8 @@ def _get():
     global _client
     if _client is None:
         import anthropic  # 延遲匯入，未安裝也不影響其他功能
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        headers = {"anthropic-workspace-id": config.ANTHROPIC_WORKSPACE_ID} if config.ANTHROPIC_WORKSPACE_ID else None
+        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, default_headers=headers)
     return _client
 
 
