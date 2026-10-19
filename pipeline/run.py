@@ -1,6 +1,8 @@
 """命令列入口。
 
-  python -m pipeline.run daily          收盤後：行情、漲停族群、隔日表現、統計、氣氛（17:05）
+  python -m pipeline.run daily          收盤後：行情、漲停族群、法人、券商分點、隔日表現、統計、氣氛（17:05）
+  python -m pipeline.run daily 2026-10-16   重跑指定日（補漏抓的資料；分點只能抓最近一個交易日）
+  python -m pipeline.run brokers        只重抓最近一個交易日失敗的分點
   python -m pipeline.run disposal       處置預測（19:30）
   python -m pipeline.run borrow         券差借券費率（20:08）
   python -m pipeline.run etf            主動 ETF 持股異動（22:30）
@@ -18,7 +20,7 @@ import shutil
 import sys
 from datetime import date, timedelta
 
-from . import active_etf, announce, borrow, brief, config, disposal, limitup, sources, store
+from . import active_etf, announce, borrow, brief, brokers, config, disposal, limitup, sources, store
 from .util import now_tw
 
 log = logging.getLogger("twradar")
@@ -47,19 +49,69 @@ def job_daily(src, d: date | None = None, light: bool = False) -> date | None:
         return None
     store.save_day(td, quotes)
     comp = companies(src)
+    if not light and src is sources:
+        heal_missing_tpex(td, comp)
     context: dict[str, list[str]] = {}
     if not light:
         for m in src.fetch_material():
-            context.setdefault(m["code"], []).append(m["subject"])
-    daily = limitup.build_daily(td, quotes, comp, context, src=src)
+            if not m.get("date") or m["date"] == td.isoformat():
+                context.setdefault(m["code"], []).append(m["subject"])
+    inst = src.fetch_institutional(td) if hasattr(src, "fetch_institutional") else {}
+    daily = limitup.build_daily(td, quotes, comp, context, src=src, inst=inst)
     nd = limitup.build_nextday(td, quotes)
+    nxt = store.next_day(td)
+    if nxt:  # 重跑過去某天時，順便更新下一天的隔日表現
+        limitup.build_nextday(nxt, list(store.load_day(nxt).values()))
     if not light:
         limitup.build_stats()
         brief.commentary(daily, nd)
         brief.touch_meta("daily", td)
         brief.line_copy()
-    log.info("%s 漲停 %d 檔、%d 族群", td, daily["count"], daily["n_groups"])
+    log.info("%s 漲停 %d 檔（上市 %d、上櫃 %d）、%d 族群", td, daily["count"], daily["twse"], daily["tpex"], daily["n_groups"])
+    if not light:
+        job_brokers(src, td, daily, inst)
     return td
+
+
+def heal_missing_tpex(td: date, comp: dict, lookback: int = 10) -> None:
+    """近幾個交易日如果整批缺櫃買行情，補抓並重建該日漲停與隔日表現"""
+    for d in [x for x in store.trading_days()[-lookback:] if x < td]:
+        day = store.load_day(d)
+        if any(q["market"] == "TPEX" for q in day.values()):
+            continue
+        tp = sources._tpex_by_date(d)
+        if not tp:
+            log.warning("補抓 %s 櫃買行情仍失敗", d)
+            continue
+        quotes = [q for q in day.values() if q["market"] != "TPEX"] + tp
+        store.save_day(d, quotes)
+        limitup.build_daily(d, quotes, comp, {}, full=False)
+        limitup.build_nextday(d, quotes)
+        nxt = store.next_day(d)
+        if nxt:
+            limitup.build_nextday(nxt, list(store.load_day(nxt).values()))
+        log.info("已補上 %s 櫃買行情 %d 檔並重建當日資料", d, len(tp))
+
+
+def job_brokers(src, td: date | None = None, daily: dict | None = None, inst: dict | None = None) -> None:
+    """券商分點：證交所網站只保留最近一個交易日，所以只對最新一天抓"""
+    td = td or latest_day()
+    if not td:
+        return
+    if td != latest_day():
+        log.info("%s 不是最近一個交易日，略過券商分點", td)
+        return
+    daily = daily or limitup.load_daily(td)
+    if not daily:
+        return
+    if src is not sources:
+        brokers.build_mock(td, daily)
+        return
+    try:
+        st = brokers.build(td, daily, inst)
+        log.info("券商分點 %s：成功 %d／%d 檔", td, st["ok"], st["total"])
+    except Exception as e:  # noqa: BLE001  分點失敗不影響其他資料
+        log.exception("券商分點失敗：%s", e)
 
 
 def job_disposal(src) -> None:
@@ -68,6 +120,10 @@ def job_disposal(src) -> None:
         log.warning("尚無歷史行情，請先執行 daily 或 backfill")
         return
     quotes = list(store.load_day(today).values())
+    if src is sources and quotes and not any(q["market"] == "TPEX" for q in quotes):
+        log.info("%s 缺櫃買行情（17:05 時可能尚未公布），重跑當日", today)
+        job_daily(src, today)
+        quotes = list(store.load_day(today).values())
     notices = src.fetch_notices(today - timedelta(days=50), today)
     punish = src.fetch_punish(today - timedelta(days=45), today)
     res = disposal.build(today, quotes, notices, punish, src.fetch_holidays(), src.fetch_valuation())
@@ -124,7 +180,7 @@ def backfill(n: int) -> None:
     comp = companies(sources)
     for td in store.trading_days()[-30:]:
         q = list(store.load_day(td).values())
-        limitup.build_daily(td, q, comp, {})
+        limitup.build_daily(td, q, comp, {}, full=False)
         limitup.build_nextday(td, q)
     limitup.build_stats()
     brief.touch_meta("backfill")
@@ -155,6 +211,7 @@ def build_mock() -> None:
     limitup.build_stats()
     last = src.days[-1]
     brief.commentary(limitup.load_daily(last), limitup.build_nextday(last, src.quotes[last]))
+    job_brokers(src, last)
     brief.touch_meta("daily", last)
     job_disposal(src)
     job_announce(src)
@@ -181,6 +238,12 @@ def main(argv: list[str]) -> int:
     src = sources
     if cmd not in ("mock", "serve", "reset"):
         clear_mock_if_needed()
+    if cmd == "daily" and len(argv) > 1:
+        job_daily(src, date.fromisoformat(argv[1]))
+        return 0
+    if cmd == "brokers":
+        job_brokers(src)
+        return 0
     jobs = {"daily": lambda: job_daily(src), "disposal": lambda: job_disposal(src), "announce": lambda: job_announce(src),
             "borrow": lambda: job_borrow(src), "etf": lambda: job_etf(src)}
     if cmd in jobs:

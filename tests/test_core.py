@@ -140,3 +140,17 @@ class Pipeline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Brokers(unittest.TestCase):
+    def test_parse_and_aggregate(self):
+        from pipeline.brokers import aggregate, parse_rows
+        text = ('序號,證券商,成交單價,買進股數,賣出股數,,序號,證券商,成交單價,買進股數,賣出股數\n'
+                '1,9268凱基台北,139.50,"12,000",0,,2,9268凱基台北,140.00,5000,1000\n'
+                '3,1020合　　庫,138.00,0,3000,,\n')
+        rows = parse_rows(text)
+        self.assertEqual(rows[2], ("合庫", 138.0, 0, 3000))
+        agg = {r[0]: r for r in aggregate(rows)}
+        self.assertEqual(agg["凱基台北"][1:3], [17.0, 1.0])
+        self.assertAlmostEqual(agg["凱基台北"][3], 139.65)
+        self.assertIsNone(agg["合庫"][3])

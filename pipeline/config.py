@@ -52,7 +52,20 @@ URLS = {
     # 應付現股當日沖銷券差借券費率
     "twse_borrow_fee": "https://www.twse.com.tw/rwd/zh/dayTrading/BFIF8U?date={yyyymmdd}&response=json",
     "tpex_borrow_fee": "https://www.tpex.org.tw/www/zh-tw/dayTrading/fee?date={yyyy}/{mm}/{dd}&response=json",
+    # 三大法人買賣超（個股）
+    "twse_inst": "https://www.twse.com.tw/rwd/zh/fund/T86?date={yyyymmdd}&selectType=ALLBUT0999&response=json",
+    "tpex_inst": "https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date={yyyy}/{mm}/{dd}&response=json",
+    # 券商買賣證券日報表（分點進出）。證交所版只提供最近一個交易日，且每次查詢要輸入驗證碼
+    "twse_bsr_menu": "https://bsr.twse.com.tw/bshtm/bsMenu.aspx",
+    "tpex_bsr_menu": "https://www.tpex.org.tw/web/stock/aftertrading/broker_trading/brokerBS.php?l=zh-tw",
+    # 公司基本資料（主要經營業務），給 AI 判斷族群用
+    "mops_profile": "https://mopsov.twse.com.tw/mops/web/ajax_t05st03",
 }
+
+# ---- 券商分點 ----
+BROKER_RETRIES = 6          # 每檔驗證碼最多嘗試次數
+BROKER_DELAY = 1.5          # 每次查詢間隔（秒）
+BROKER_DEBUG = True         # 失敗時把網頁存到 data/state/brokers_debug，方便調整解析
 
 # ---- 處置規則參數（依交易所現行規定，可自行調整）----
 # 第一款：最近六個營業日累積收盤漲跌幅，且與全體平均差幅 ≥ diff

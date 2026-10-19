@@ -32,17 +32,24 @@ def is_limit_up(q: dict) -> bool:
     return q["close"] >= limit_up(pc) - 1e-9
 
 
-def build_daily(d: date, quotes: list[dict], companies: dict, context: dict[str, list[str]], src=None) -> dict:
+def build_daily(d: date, quotes: list[dict], companies: dict, context: dict[str, list[str]], src=None,
+                inst: dict | None = None, full: bool = True) -> dict:
+    """full=False（補歷史時）：不抓營業項目、不用 AI 寫漲停原因"""
     lus = [q for q in quotes if is_limit_up(q)]
     prev = store.prev_day(d)
     prev_daily = load_daily(prev) if prev else None
     prev_streak = {s["code"]: s["streak"] for s in (prev_daily or {}).get("stocks", [])}
+    old = {s["code"]: s for s in (load_daily(d) or {}).get("stocks", [])}  # 重跑同一天時保留已有的法人與原因
+    inst = inst or {}
 
     info = [{"code": q["code"], "name": q["name"], "industry": companies.get(q["code"], {}).get("industry", "")} for q in lus]
+    biz: dict[str, str] = {}
     if src is not None and hasattr(src, "theme_of"):
         cls = {q["code"]: {"theme": src.theme_of(q["code"]), "source": "manual", "reason": "模擬資料"} for q in lus}
     else:
-        cls = themes.classify(info, context)
+        if full:
+            biz = themes.businesses([q["code"] for q in lus], getattr(src, "fetch_business", None))
+        cls = themes.classify(info, context, biz)
 
     stocks = []
     for q in lus:
@@ -57,8 +64,15 @@ def build_daily(d: date, quotes: list[dict], companies: dict, context: dict[str,
             "locked": q["high"] == q["close"] and q["low"] != q["high"], "one_price": q["low"] == q["high"],
             "streak": prev_streak.get(q["code"], 0) + 1, "industry": c.get("industry", ""),
             "theme": cls[q["code"]]["theme"], "theme_source": cls[q["code"]]["source"], "reason": cls[q["code"]].get("reason", ""),
+            "inst": inst.get(q["code"]) or old.get(q["code"], {}).get("inst"),
         })
     stocks.sort(key=lambda s: (-s["streak"], -s["value_e"]))
+
+    # 漲停原因
+    why = themes.explain(stocks, context or {}, biz, use_ai=full)
+    for s in stocks:
+        o = old.get(s["code"], {})
+        s["why"] = why.get(s["code"], "") if (full or not o.get("why")) else o["why"]
 
     # 族群
     prev_dates = [x for x in daily_dates() if x < d][-30:]

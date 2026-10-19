@@ -52,7 +52,7 @@ function table(el, columns, rows, opts = {}) {
     const head = columns.map(c => `<th class="${c.n ? "n" : ""} ${c.k && c.sortable !== false ? "s" : ""}" data-k="${c.k || ""}" scope="col"${c.k && c.sortable !== false ? ' tabindex="0"' : ""}>${c.t}${sk === c.k ? `<span class="ar">${sd > 0 ? "▲" : "▼"}</span>` : ""}</th>`).join("");
     const body = data.map((r, i) => {
       const id = opts.id ? opts.id(r) : i;
-      const tr = `<tr class="${opts.expand || opts.rowClick ? "click" : ""}" data-i="${esc(id)}"${opts.expand ? ` aria-expanded="${open.has(String(id))}"` : ""}>${columns.map(c =>
+      const tr = `<tr class="${opts.expand || opts.rowClick ? "click" : ""} ${opts.rowClass ? opts.rowClass(r) : ""}" data-i="${esc(id)}"${opts.expand ? ` aria-expanded="${open.has(String(id))}"` : ""}>${columns.map(c =>
         `<td class="${c.n ? "n" : ""} ${c.w ? "wrap" : ""}">${c.f ? c.f(r) : esc(r[c.k] ?? "—")}</td>`).join("")}</tr>`;
       const ex = opts.expand && open.has(String(id)) ? `<tr class="detail"><td colspan="${columns.length}">${opts.expand(r)}</td></tr>` : "";
       return tr + ex;
@@ -144,42 +144,153 @@ P.daily = async (date) => {
   const dates = META.daily_dates || [];
   date = date || dates[0];
   const data = date && await load(`daily/${date}.json`);
-  setTitle(`${date || ""} 漲停族群`);
+  setTitle(`${date || ""} 漲停當日`);
   if (!data) { app.innerHTML = `<h1>當日漲停</h1>${emptyBox("沒有這天的資料")}`; return; }
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
-  let theme = q.get("t") || "", market = "";
-  app.innerHTML = `<h1>當日漲停族群</h1>
-    <p class="sub">${data.date} 共 ${data.count} 檔漲停（上市 ${data.twse}、上櫃 ${data.tpex}），${data.n_groups} 個族群；全市場上漲 ${data.market_up} 家、下跌 ${data.market_down} 家。</p>
+  let theme = q.get("t") || "", market = "", sel = q.get("s") || "";
+  app.innerHTML = `<h1>當日漲停</h1>
+    <p class="sub">${data.date} 共 ${data.count} 檔漲停（上市 ${data.twse}、上櫃 ${data.tpex}），${data.n_groups} 個族群；全市場上漲 ${data.market_up} 家、下跌 ${data.market_down} 家。點個股看法人與券商分點。</p>
     <div class="toolbar"><span id="ds"></span><span class="chips" id="mk"></span></div>
-    <div class="groups" id="groups"></div>
-    <h2>個股明細</h2>
-    <div class="toolbar"><span class="chips" id="th"></span></div>
+    <div class="chips" id="th" style="margin-bottom:12px"></div>
     <div id="tbl"></div>
-    <p class="small muted">族群分類來源：themes.json 指定、關鍵字、AI 判斷或官方產業別（滑過族群名稱可看理由）。量比為成交量除以前 5 日均量。</p>`;
+    <p class="small muted">族群來源：<span class="tsrc">設定</span> themes.json 指定、<span class="tsrc ai">AI</span> AI 判斷後寫回 themes.json、<span class="tsrc">關鍵字</span>、<span class="tsrc">產業別</span> 官方產業別。法人單位為張；量比為成交量除以前 5 日均量。</p>
+    <section class="bk" id="bk" hidden></section>`;
   document.getElementById("ds").append(dateSelect(dates, date, v => location.hash = `#/daily/${v}`));
+  const instCell = k => r => r.inst ? `<span class="${sign(r.inst[k])}">${r.inst[k] > 0 ? "+" : ""}${fi(r.inst[k])}</span>` : '<span class="muted">—</span>';
+  const srcTag = {manual: ["設定", ""], ai: ["AI", "ai"], keyword: ["關鍵字", ""], industry: ["產業別", ""]};
   const cols = [
     {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
-    {k: "theme", t: "族群", f: r => `<span title="${esc(r.reason)}（${esc(r.theme_source)}）">${esc(r.theme)}</span>`},
-    {k: "close", t: "收盤", n: 1, f: r => fp(r.close)}, {k: "chg", t: "漲幅", n: 1, f: r => pc(r.chg)},
-    {k: "streak", t: "連板", n: 1, f: r => r.streak > 1 ? `<span class="tag up">${r.streak} 連板</span>` : "1"},
-    {k: "lots", t: "成交張數", n: 1, f: r => fi(r.lots)}, {k: "vol_ratio", t: "量比", n: 1, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
-    {k: "value_e", t: "成交值(億)", n: 1, f: r => fx(r.value_e)}, {k: "turnover", t: "週轉率", n: 1, f: r => r.turnover == null ? "—" : fx(r.turnover) + "%"},
-    {k: "locked", t: "型態", f: r => r.one_price ? '<span class="tag up">一價到底</span>' : r.locked ? "鎖住" : '<span class="muted">打開過</span>'},
-    {k: "industry", t: "產業"},
+    {k: "close", t: "收盤", n: 1, f: r => `<span class="up">${fp(r.close)}</span>`}, {k: "lots", t: "量(張)", n: 1, f: r => fi(r.lots)},
+    {k: "inst_f", t: "外資", n: 1, s: r => r.inst?.f, f: instCell("f")}, {k: "inst_t", t: "投信", n: 1, s: r => r.inst?.t, f: instCell("t")},
+    {k: "inst_d", t: "自營", n: 1, s: r => r.inst?.d, f: instCell("d")},
+    {k: "streak", t: "連板", n: 1, f: r => (r.streak > 1 ? `<span class="tag up">${r.streak} 連板</span>` : "1") + (r.one_price ? ' <span class="tag up">一價</span>' : !r.locked ? ' <span class="muted small">打開過</span>' : "")},
+    {k: "vol_ratio", t: "量比", n: 1, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
+    {k: "why", t: "漲停原因", w: 1, sortable: false, f: r => `<span class="why">${esc(r.why || r.reason || "")}</span>`},
+    {k: "theme", t: "族群", f: r => { const [l, c] = srcTag[r.theme_source] || [r.theme_source, ""]; return `<span class="nowrap" title="${esc(r.reason)}">${esc(themeEmoji(r.theme))} ${esc(r.theme)} <span class="tsrc ${c}">${l}</span></span>`; }},
   ];
-  const t = table(document.getElementById("tbl"), cols, [], {sort: ["streak", -1]});
-  function refresh() {
-    const rows = data.stocks.filter(s => (!theme || s.theme === theme) && (!market || s.market === market));
-    t.set(rows);
-    const gs = data.groups.filter(g => !market || data.stocks.some(s => s.theme === g.theme && s.market === market));
-    document.getElementById("groups").innerHTML = gs.map(g => `<div class="grp-card">
-      <h3><span>${esc(g.emoji)} ${esc(g.theme)}</span><span class="muted small">${g.count} 檔${g.streak > 1 ? `，連 ${g.streak} 天` : ""}</span></h3>
-      <ul>${data.stocks.filter(s => s.theme === g.theme && (!market || s.market === market)).map(s => `<li><span>${stockLink(s.code, s.name)} <span class="muted small">${s.code}</span></span><span>${s.streak > 1 ? `<span class="tag up">${s.streak}連板</span> ` : ""}${fp(s.close)}</span></li>`).join("")}</ul></div>`).join("");
+  const emo = Object.fromEntries(data.groups.map(g => [g.theme, g.emoji]));
+  function themeEmoji(t) { return emo[t] || ""; }
+  const t = table(document.getElementById("tbl"), cols, [], {sort: ["streak", -1], id: r => r.code,
+    rowClass: r => r.code === sel ? "sel" : "", rowClick: r => pick(r.code, true)});
+  const rowsNow = () => data.stocks.filter(s => (!theme || s.theme === theme) && (!market || s.market === market));
+  function refresh() { t.set(rowsNow()); }
+  function pick(code, scroll) {
+    sel = code;
+    const qs = new URLSearchParams(); if (theme) qs.set("t", theme); qs.set("s", code);
+    history.replaceState(null, "", `#/daily/${data.date}?${qs}`);
+    refresh();
+    showBrokers(data, data.stocks.find(s => s.code === code), scroll);
   }
   chips(document.getElementById("mk"), [["", "全部"], ["TWSE", "上市"], ["TPEX", "上櫃"]], market, v => { market = v; refresh(); });
-  chips(document.getElementById("th"), [["", "全部族群"], ...data.groups.map(g => [g.theme, `${g.theme} ${g.count}`])], theme, v => { theme = v; refresh(); });
+  chips(document.getElementById("th"), [["", `全部 ${data.count}`], ...data.groups.map(g => [g.theme, `${g.emoji} ${g.theme} ${g.count}`])], theme, v => { theme = v; refresh(); });
   refresh();
+  if (sel && data.stocks.some(s => s.code === sel)) pick(sel, true);
 };
+
+/* ---------- 券商分點：前 15 大、泡泡圖、當沖 Top10 ---------- */
+async function showBrokers(daily, stock, scroll) {
+  const box = document.getElementById("bk");
+  if (!box || !stock) return;
+  box.hidden = false;
+  box.innerHTML = `<p class="muted">載入 ${esc(stock.code)} ${esc(stock.name)} 分點資料…</p>`;
+  const bk = await load(`brokers/${daily.date}/${stock.code}.json`);
+  if (scroll) box.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
+  const inst = (bk && bk.inst) || stock.inst;
+  const pill = (l, v) => `<span class="ipill ${sign(v)}">${l} ${v == null ? "—" : (v > 0 ? "+" : "") + fi(v)}</span>`;
+  const head = `<div class="bk-head"><h2>法人買賣 <span class="muted">${esc(stock.code)} ${esc(stock.name)}</span></h2>
+    <div class="ipills">${pill("外資", inst?.f)}${pill("投信", inst?.t)}${pill("自營", inst?.d)}</div></div>`;
+  if (!bk) {
+    const st = await load(`brokers/${daily.date}/_status.json`);
+    const why = st?.stocks?.[stock.code]?.msg;
+    box.innerHTML = head + `<div class="empty">${esc(why ? `這檔沒有分點資料：${why}` : "這天還沒有分點資料。分點只能在收盤當天抓取，較早的日期沒有。")}</div>`;
+    return;
+  }
+  const B = bk.branches.map(([n, b, s, ba, sa]) => ({n, b, s, ba, sa, net: b - s, tot: b + s}));
+  const buys = B.filter(x => x.net > 0).sort((a, c) => c.net - a.net).slice(0, 15);
+  const sells = B.filter(x => x.net < 0).sort((a, c) => a.net - c.net).slice(0, 15);
+  const p2 = v => v == null ? "—" : fx(v, 2);
+  const topT = (rows, side) => `<div class="bk-side ${side}"><div class="cap">${side === "b" ? "買超" : "賣超"} Top15</div><div class="tw"><table>
+    <thead><tr><th scope="col">券商</th><th class="n" scope="col">${side === "b" ? "買超" : "賣超"}</th><th class="n" scope="col">買均</th><th class="n" scope="col">買張</th><th class="n" scope="col">賣張</th><th class="n" scope="col">賣均</th></tr></thead>
+    <tbody>${rows.map(x => `<tr data-n="${esc(x.n)}"><td>${esc(x.n)}</td><td class="n ${sign(x.net)}">${x.net > 0 ? "+" : ""}${fi(x.net)}</td><td class="n">${p2(x.ba)}</td><td class="n ${x.b ? "up" : "muted"}">${x.b ? "+" + fi(x.b) : "0"}</td><td class="n ${x.s ? "down" : "muted"}">${x.s ? "+" + fi(x.s) : "0"}</td><td class="n">${p2(x.sa)}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">無</td></tr>'}</tbody></table></div></div>`;
+  const dt = B.filter(x => x.b && x.s).map(x => ({...x, dq: Math.min(x.b, x.s), pl: (x.s * x.sa - x.b * x.ba + (x.b - x.s) * bk.close) * 1000}))
+    .sort((a, c) => c.dq - a.dq).slice(0, 10);
+  const plTip = "以收盤價計算：賣出金額 − 買進金額 ＋ 未沖銷張數 × 收盤價，未扣手續費與證交稅";
+  box.innerHTML = head + `<div class="bk-pair">${topT(buys, "b")}${topT(sells, "s")}</div>
+    <div class="bk-chart"><div class="bk-scroll">${bubbleSVG(bk, B)}</div></div>
+    <p class="small muted">每家券商最多兩顆泡泡：左邊買進、右邊賣出，越外側張數越多；高度是成交均價，泡泡大小是張數。同一家券商又買又賣會用虛線相連。滑過或點選券商可對照。</p>
+    <h3 class="bk-dt">${esc(bk.code)} ${esc(bk.name)} ${md(bk.date)} 當沖 Top10（收盤 ${fp(bk.close)}）</h3>
+    <div class="tw"><table><thead><tr><th scope="col">券商</th><th class="n" scope="col">交易張數</th><th class="n" scope="col">總損益 <span class="info" title="${plTip}" aria-label="${plTip}">ⓘ</span></th><th class="n" scope="col">買張數</th><th class="n" scope="col">買均價</th><th class="n" scope="col">賣張數</th><th class="n" scope="col">賣均價</th></tr></thead>
+    <tbody>${dt.map(x => `<tr data-n="${esc(x.n)}"><td>${esc(x.n)}</td><td class="n">${fi(x.tot)}</td><td class="n ${sign(x.pl)}">${x.pl > 0 ? "+" : ""}${fi(x.pl)}</td><td class="n up">${fi(x.b)}</td><td class="n">@${p2(x.ba)}</td><td class="n down">${fi(x.s)}</td><td class="n">@${p2(x.sa)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">沒有同時買賣的券商</td></tr>'}</tbody></table></div>
+    <p class="small muted">排序依當沖張數（買進與賣出較小的一方）。總損益${plTip.slice(2)}。</p>`;
+  wireBubble(box, B, bk);
+}
+
+function bubbleSVG(bk, B) {
+  const W = 1000, H = 480, ml = 74, mr = 24, mt = 26, mb = 44, cx = ml + (W - ml - mr) / 2, half = (W - ml - mr) / 2 - 34;
+  const top = B.slice().sort((a, c) => c.tot - a.tot).slice(0, 40);
+  const maxV = Math.max(1, ...top.map(x => Math.max(x.b, x.s)));
+  const X = (v, side) => cx + side * (8 + Math.sqrt(v / maxV) * half);
+  const R = v => 3 + Math.sqrt(v / maxV) * 24;
+  const prices = top.flatMap(x => [x.b ? x.ba : null, x.s ? x.sa : null]).filter(v => v != null);
+  let lo = Math.min(bk.prev_close, ...prices), hi = Math.max(bk.close, ...prices);
+  const pad = (hi - lo) * .06 || hi * .01; lo -= pad; hi += pad;
+  const Y = v => mt + (hi - v) / (hi - lo) * (H - mt - mb);
+  const step = (() => { const raw = (hi - lo) / 6, m = Math.pow(10, Math.floor(Math.log10(raw))), e = raw / m; return (e >= 5 ? 10 : e >= 2 ? 5 : e >= 1 ? 2 : 1) * m; })();
+  let g = "";
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) g += `<line class="grid" x1="${ml}" x2="${W - mr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${ml - 8}" y="${Y(v) + 4}" text-anchor="end">${+v.toFixed(2)}</text>`;
+  const xt = [0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000].filter(v => v <= maxV * 1.02);
+  const xtk = xt.filter((v, i) => i === 0 || Math.sqrt(v / maxV) - Math.sqrt(xt[i - 1] / maxV) > .07);
+  xtk.forEach(v => [-1, 1].forEach(sd => { if (v === 0 && sd > 0) return; const x = v === 0 ? cx : X(v, sd);
+    g += `<line class="grid" x1="${x}" x2="${x}" y1="${mt}" y2="${H - mb}"/><text class="ax" x="${x}" y="${H - mb + 18}" text-anchor="middle">${v}</text>`; }));
+  g += `<line class="mid" x1="${cx}" x2="${cx}" y1="${mt}" y2="${H - mb}"/>`;
+  g += `<line class="lim" x1="${ml}" x2="${W - mr}" y1="${Y(bk.close)}" y2="${Y(bk.close)}"/><text class="limt" x="${ml - 8}" y="${Y(bk.close) + 4}" text-anchor="end">漲停 ${fp(bk.close)}</text>`;
+  g += `<line class="flat" x1="${ml}" x2="${W - mr}" y1="${Y(bk.prev_close)}" y2="${Y(bk.prev_close)}"/><text class="flatt" x="${ml - 8}" y="${Y(bk.prev_close) + 4}" text-anchor="end">平盤 ${fp(bk.prev_close)}</text>`;
+  g += `<text class="side up" x="${ml + 8}" y="${mt + 4}">← 買進</text><text class="side down" x="${W - mr - 8}" y="${mt + 4}" text-anchor="end">賣出 →</text>`;
+  const links = [], dots = [], labels = [];
+  top.forEach(x => {
+    const a = x.b ? {cx: X(x.b, -1), cy: Y(x.ba), r: R(x.b)} : null, c = x.s ? {cx: X(x.s, 1), cy: Y(x.sa), r: R(x.s)} : null;
+    const n = esc(x.n);
+    if (a && c) links.push(`<line class="lk" data-n="${n}" x1="${a.cx.toFixed(1)}" y1="${a.cy.toFixed(1)}" x2="${c.cx.toFixed(1)}" y2="${c.cy.toFixed(1)}"/>`);
+    [[a, "b"], [c, "s"]].forEach(([p, sd]) => { if (!p) return;
+      dots.push([p.r, `<circle class="bb ${sd}" data-n="${n}" cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" r="${p.r.toFixed(1)}"/>`]);
+      labels.push(`<text class="lb" data-n="${n}" x="${p.cx.toFixed(1)}" y="${(p.cy - p.r - 4).toFixed(1)}" text-anchor="middle">${n}</text>`); });
+  });
+  dots.sort((a, c) => c[0] - a[0]);
+  g += `<g class="lks">${links.join("")}</g><g>${dots.map(d => d[1]).join("")}</g><g class="lbs">${labels.join("")}</g>`;
+  g += `<text class="info up" id="bkiB1" x="${ml + 8}" y="${H - mb - 26}"></text><text class="info up" id="bkiB2" x="${ml + 8}" y="${H - mb - 8}"></text>`;
+  g += `<text class="info down" id="bkiS1" x="${W - mr - 8}" y="${H - mb - 26}" text-anchor="end"></text><text class="info down" id="bkiS2" x="${W - mr - 8}" y="${H - mb - 8}" text-anchor="end"></text>`;
+  return `<svg class="bubble" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(bk.name)} 券商分點泡泡圖">${g}</svg>`;
+}
+
+function wireBubble(box, B, bk) {
+  const svg = box.querySelector("svg.bubble");
+  const byName = new Map(B.map(x => [x.n, x]));
+  let pinned = "";
+  const info = (id, t) => { const el = svg.querySelector("#" + id); if (el) el.textContent = t; };
+  function hl(n) {
+    svg.classList.toggle("focus", !!n);
+    svg.querySelectorAll(".hl").forEach(e => e.classList.remove("hl"));
+    box.querySelectorAll("tr.hl").forEach(e => e.classList.remove("hl"));
+    ["bkiB1", "bkiB2", "bkiS1", "bkiS2"].forEach(i => info(i, ""));
+    if (!n) return;
+    svg.querySelectorAll("[data-n]").forEach(e => { if (e.dataset.n === n) { e.classList.add("hl"); if (e.tagName === "text") e.parentNode.appendChild(e); } });
+    box.querySelectorAll("tr[data-n]").forEach(e => { if (e.dataset.n === n) e.classList.add("hl"); });
+    const x = byName.get(n);
+    if (x) {
+      if (x.b) { info("bkiB1", `買均 ${fx(x.ba, 2)}`); info("bkiB2", `買量 ${fi(x.b)}張`); }
+      if (x.s) { info("bkiS1", `賣均 ${fx(x.sa, 2)}`); info("bkiS2", `賣量 ${fi(x.s)}張`); }
+    }
+  }
+  const nameOf = e => e.target.closest("[data-n]")?.dataset.n || "";
+  svg.addEventListener("pointerover", e => { const n = nameOf(e); if (n && !pinned) hl(n); });
+  svg.addEventListener("pointerleave", () => { if (!pinned) hl(""); });
+  svg.addEventListener("click", e => { const n = nameOf(e); pinned = n && n !== pinned ? n : ""; hl(pinned); });
+  box.querySelectorAll("tbody").forEach(tb => {
+    tb.addEventListener("pointerover", e => { const n = nameOf(e); if (n && !pinned) hl(n); });
+    tb.addEventListener("pointerleave", () => { if (!pinned) hl(""); });
+    tb.addEventListener("click", e => { const n = nameOf(e); if (!n) return; pinned = n !== pinned ? n : ""; hl(pinned); });
+  });
+}
 
 P.nextday = async (date) => {
   const dates = META.nextday_dates || [];

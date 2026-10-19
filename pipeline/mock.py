@@ -87,6 +87,16 @@ class MockSource:
         d = d or self.days[-1]
         return (d, self.quotes[d]) if d in self.quotes else (None, [])
 
+    def fetch_institutional(self, d: date):
+        import random
+        rnd = random.Random(f"inst-{d}")
+        out = {}
+        for q in self.quotes.get(d, []):
+            lots = max(q["volume"] // 1000, 1)
+            out[q["code"]] = {"f": rnd.randint(-lots // 6, lots // 4), "t": rnd.choice([0, 0, rnd.randint(-lots // 20, lots // 10)]),
+                              "d": rnd.randint(-lots // 30, lots // 20)}
+        return out
+
     def fetch_holidays(self):
         return set()
 

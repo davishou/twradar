@@ -107,31 +107,44 @@ def fetch_quotes(d: date | None = None) -> tuple[date | None, list[dict]]:
     # --- 上櫃 ---
     tp: list[dict] = []
     if d is not None:
-        js = get_json(U["tpex_quotes_by_date"].format(yyyy=d.year, mm=f"{d.month:02d}", dd=f"{d.day:02d}"))
-        rows = table_rows(js or {}, must_have="代號")
-        if not rows:  # 舊版端點備援（無欄名，固定欄位順序）
-            js = get_json(U["tpex_quotes_by_date_legacy"].format(roc=roc(d)))
-            cols = ["代號", "名稱", "收盤", "漲跌", "開盤", "最高", "最低", "均價", "成交股數", "成交金額", "成交筆數"]
-            rows = [dict(zip(cols, r)) for r in (js or {}).get("aaData", [])]
-        for r in rows:
-            q = _quote(pick(r, "代號"), pick(r, "名稱"), "TPEX", pick(r, "開盤"), pick(r, "最高"), pick(r, "最低"),
-                       pick(r, "收盤"), pick(r, "漲跌"), pick(r, "成交股數"), pick(r, "成交金額"),
-                       pick(r, "成交筆數"), pick(r, "均價"))
-            if q:
-                tp.append(q)
+        tp = _tpex_by_date(d)
     else:
+        tp_date = None
         for r in get_json(U["tpex_quotes"]) or []:
-            trade_date = trade_date or parse_date(r.get("Date"))
+            tp_date = tp_date or parse_date(r.get("Date"))
             q = _quote(pick(r, "SecuritiesCompanyCode"), pick(r, "CompanyName"), "TPEX", pick(r, "Open"),
                        pick(r, "High"), pick(r, "Low"), pick(r, "Close"), pick(r, "Change"),
                        pick(r, "TradingShares", "TradeVolume"), pick(r, "TransactionAmount", "TradeValue"),
                        pick(r, "TransactionNumber"), pick(r, "Average", contains=False))
             if q:
                 tp.append(q)
+        # 櫃買 OpenAPI 常比證交所晚更新：日期不同或沒資料時，改用依日期查詢，避免混入前一天或整批漏掉
+        if trade_date and (not tp or tp_date != trade_date):
+            log.info("櫃買最新行情日期 %s 與上市 %s 不符，改用依日期查詢", tp_date, trade_date)
+            tp = _tpex_by_date(trade_date)
+            if not tp:
+                log.warning("櫃買 %s 行情抓取失敗，本次只有上市資料", trade_date)
     out.extend(tp)
     if d is not None and out:
         trade_date = trade_date or d
     return trade_date, out
+
+
+def _tpex_by_date(d: date) -> list[dict]:
+    js = get_json(U["tpex_quotes_by_date"].format(yyyy=d.year, mm=f"{d.month:02d}", dd=f"{d.day:02d}"))
+    rows = table_rows(js or {}, must_have="代號")
+    if not rows:  # 舊版端點備援（無欄名，固定欄位順序）
+        js = get_json(U["tpex_quotes_by_date_legacy"].format(roc=roc(d)))
+        cols = ["代號", "名稱", "收盤", "漲跌", "開盤", "最高", "最低", "均價", "成交股數", "成交金額", "成交筆數"]
+        rows = [dict(zip(cols, r)) for r in (js or {}).get("aaData", [])]
+    out = []
+    for r in rows:
+        q = _quote(pick(r, "代號"), pick(r, "名稱"), "TPEX", pick(r, "開盤"), pick(r, "最高"), pick(r, "最低"),
+                   pick(r, "收盤"), pick(r, "漲跌"), pick(r, "成交股數"), pick(r, "成交金額"),
+                   pick(r, "成交筆數"), pick(r, "均價"))
+        if q:
+            out.append(q)
+    return out
 
 
 def fetch_holidays() -> set[date]:
@@ -255,6 +268,62 @@ def fetch_material() -> list[dict]:
                 "clause": str(pick(r, "符合條款", "Clause", default="")).strip(),
             })
     return [x for x in out if x["code"]]
+
+
+def _lots(v) -> int | None:
+    x = num(v)
+    return None if x is None else int(round(x / 1000))
+
+
+def fetch_institutional(d: date) -> dict[str, dict]:
+    """三大法人買賣超（張）：{code: {f: 外資, t: 投信, d: 自營商}}。外資含外資自營商。"""
+    out: dict[str, dict] = {}
+    js = get_json(U["twse_inst"].format(yyyymmdd=d.strftime("%Y%m%d")))
+    if js and js.get("stat", "OK") == "OK":
+        for r in table_rows(js, must_have="證券代號"):
+            code = str(r.get("證券代號", "")).strip()
+            if not is_common_stock(code):
+                continue
+            f = num(pick(r, "外陸資買賣超股數(不含外資自營商)", "外陸資買賣超股數", "外資買賣超股數"), 0) or 0
+            f += num(pick(r, "外資自營商買賣超股數", contains=False), 0) or 0
+            out[code] = {"f": int(round(f / 1000)), "t": _lots(pick(r, "投信買賣超股數")) or 0,
+                         "d": _lots(pick(r, "自營商買賣超股數", contains=False)) or 0}
+    js = get_json(U["tpex_inst"].format(yyyy=d.year, mm=f"{d.month:02d}", dd=f"{d.day:02d}"))
+    for r in table_rows(js or {}, must_have="代號"):
+        code = str(pick(r, "代號", default="")).strip()
+        if not is_common_stock(code):
+            continue
+        f = pick(r, "外資及陸資-買賣超股數", "外資及陸資買賣超股數", contains=False)
+        if f is None:  # 沒有合計欄時自己加總
+            f = (num(pick(r, "外資及陸資(不含外資自營商)-買賣超股數", "不含外資自營商)-買賣超"), 0) or 0) + \
+                (num(pick(r, "外資自營商-買賣超股數"), 0) or 0)
+        dd = pick(r, "自營商-買賣超股數", "自營商買賣超股數", contains=False)
+        if dd is None:
+            dd = (num(pick(r, "自營商(自行買賣)-買賣超股數"), 0) or 0) + (num(pick(r, "自營商(避險)-買賣超股數"), 0) or 0)
+        out[code] = {"f": _lots(f) or 0, "t": _lots(pick(r, "投信-買賣超股數", "投信買賣超股數")) or 0, "d": _lots(dd) or 0}
+    if not out:
+        log.warning("三大法人 %s 抓取失敗或尚未公布", d)
+    return out
+
+
+def fetch_business(code: str) -> str:
+    """公開資訊觀測站公司基本資料的『主要經營業務』，抓不到回空字串。"""
+    from .http import session
+    data = {"encodeURIComponent": "1", "step": "1", "firstin": "1", "off": "1", "queryName": "co_id",
+            "inpuType": "co_id", "TYPEK": "all", "co_id": code}
+    try:
+        r = session().post(U["mops_profile"], data=data, timeout=config.HTTP_TIMEOUT)
+        r.encoding = "utf-8"
+        html = r.text
+    except Exception as e:  # noqa: BLE001
+        log.warning("公司基本資料 %s 抓取失敗：%s", code, e)
+        return ""
+    m = re.search(r"主要經營業務.*?<td[^>]*>(.*?)</td>", html, re.S)
+    if not m:
+        return ""
+    txt = re.sub(r"<[^>]+>", " ", m.group(1))
+    txt = re.sub(r"&nbsp;?", " ", txt)
+    return re.sub(r"\s+", " ", txt).strip()[:300]
 
 
 def fetch_revenue() -> list[dict]:
