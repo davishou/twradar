@@ -86,6 +86,7 @@ def _daily(src, td, quotes, light: bool = False, d=None) -> date | None:
         brief.line_copy()
     log.info("%s 漲停 %d 檔（上市 %d、上櫃 %d）、%d 族群", td, daily["count"], daily["twse"], daily["tpex"], daily["n_groups"])
     if not light:
+        retheme_history(src)
         job_brokers(src, td, daily, inst)
     return td
 
@@ -126,6 +127,26 @@ def broker_targets(td: date, daily: dict | None, inst: dict | None) -> list[dict
         if q and s["code"] not in seen:
             out.append(brokers.target(q, s["name"], inst.get(s["code"]), "next"))
     return out
+
+
+def retheme_history(src, days: int = 30) -> None:
+    """有 AI 之後，一次性把近 N 天仍用官方產業別的漲停股重新分類（結果寫回 themes.json），再重建隔日與統計"""
+    from . import ai
+    if src is not sources or not ai.enabled() or (store.state("retheme", {}) or {}).get("v") == 1:
+        return
+    comp = companies(src)
+    dates = limitup.daily_dates()[-days:]
+    for d in dates:
+        dj = limitup.load_daily(d) or {}
+        if any(s.get("theme_source") == "industry" for s in dj.get("stocks", [])):
+            limitup.build_daily(d, list(store.load_day(d).values()), comp, {}, full=False)
+    for d in dates:
+        nxt = store.next_day(d)
+        if nxt:
+            limitup.build_nextday(nxt, list(store.load_day(nxt).values()))
+    limitup.build_stats()
+    store.save_state("retheme", {"v": 1})
+    log.info("已用 AI 重新分類近 %d 天的漲停股", len(dates))
 
 
 def job_brokers(src, td: date | None = None, daily: dict | None = None, inst: dict | None = None) -> None:

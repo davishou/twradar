@@ -84,7 +84,7 @@ def _hidden(html: str) -> dict[str, str]:
 def _clean_broker(s: str) -> str:
     """'9268凱基台北' / '1020合　　庫' → '凱基台北' / '合庫'"""
     s = re.sub(r"[\s　]+", "", str(s))
-    m = re.match(r"^[0-9A-Z]{4}(.+)$", s)
+    m = re.match(r"^[0-9A-Za-z]{4}(.+)$", s)
     return m.group(1) if m else s
 
 

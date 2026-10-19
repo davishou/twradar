@@ -47,8 +47,7 @@ def build_daily(d: date, quotes: list[dict], companies: dict, context: dict[str,
     if src is not None and hasattr(src, "theme_of"):
         cls = {q["code"]: {"theme": src.theme_of(q["code"]), "source": "manual", "reason": "模擬資料"} for q in lus}
     else:
-        if full:
-            biz = themes.businesses([q["code"] for q in lus], getattr(src, "fetch_business", None))
+        biz = themes.businesses([q["code"] for q in lus], getattr(src, "fetch_business", None) if full else None)
         cls = themes.classify(info, context, biz)
 
     stocks = []
@@ -106,13 +105,14 @@ def build_daily(d: date, quotes: list[dict], companies: dict, context: dict[str,
 
 
 def _tag(ref, o, c, lu_today):
+    """與原網站一致的 5 種標籤（以漲停價 ref 為基準）：
+    續漲停：收在漲停；強續漲：開高且收盤 ≥ 開盤；弱續漲：收紅但不屬強續漲；
+    開高走低：開高但收黑；直接跌：沒開高且收黑（含平盤）"""
     if c >= lu_today - 1e-9:
         return "續漲停"
-    if o > ref:
-        return "開高走高" if c > o else "開高走低"
-    if o < ref:
-        return "開低走高" if c > o else "開低走低"
-    return "平開走高" if c > ref else "平開走低"
+    if c > ref:
+        return "強續漲" if (o > ref and c >= o) else "弱續漲"
+    return "開高走低" if o > ref else "直接跌"
 
 
 def build_nextday(d: date, quotes: list[dict]) -> dict | None:
@@ -147,12 +147,14 @@ def build_nextday(d: date, quotes: list[dict]) -> dict | None:
     for x in rows:
         g[x["theme"]].append(x)
     dgroups = {gg["theme"]: gg["streak"] for gg in pd["groups"]}
+    wv_ = lambda xs: [x["ret_wavg"] for x in xs if x["ret_wavg"] is not None]  # noqa: E731
     groups = [{"theme": t, "emoji": themes.emoji(t), "streak": dgroups.get(t, 1), "n": len(xs),
-               "win": win([x["ret_close"] for x in xs]), "wins": sum(x["ret_close"] > 0 for x in xs),
+               "win": win(wv_(xs)), "wins": sum(v > 0 for v in wv_(xs)),
+               "close_win": win([x["ret_close"] for x in xs]),
                "open": mean([x["ret_open"] for x in xs]), "avg": mean([x["ret_avg"] for x in xs]),
-               "close": mean([x["ret_close"] for x in xs])} for t, xs in g.items()]
-    groups.sort(key=lambda x: -(x["close"] or 0))
-    rows.sort(key=lambda x: -(x["ret_close"] or 0))
+               "close": mean([x["ret_close"] for x in xs]), "wavg": mean(wv_(xs))} for t, xs in g.items()]
+    groups.sort(key=lambda x: -(x["avg"] or 0))
+    rows.sort(key=lambda x: -(x["ret_avg"] or 0))
     tags = defaultdict(int)
     for x in rows:
         tags[x["tag"]] += 1
@@ -164,8 +166,13 @@ def build_nextday(d: date, quotes: list[dict]) -> dict | None:
     wv = [x["ret_wavg"] for x in rows if x["ret_wavg"] is not None]
     summ = {"n": len(rows), "open_avg": mean(o), "avg_avg": mean(a), "close_avg": mean(c), "wavg_avg": mean(wv),
             "open_win": win(o), "avg_win": win(a), "close_win": win(c), "cont": tags.get("續漲停", 0)}
+    summ["wavg_win"] = win(wv)
     for k in ("open_win", "avg_win", "close_win"):
         summ[k + "_vs20"] = round(summ[k] - base[k], 1) if base.get(k) is not None else None
+    # 與前一次（前一個漲停日）比較，原網站卡片上的 ↑↓
+    last = hist[-1]["summary"] if hist else {}
+    for k in ("open_win", "avg_win", "close_win"):
+        summ[k + "_prev"] = round(summ[k] - last[k], 1) if last.get(k) is not None and summ[k] is not None else None
     res = {"limit_date": prev.isoformat(), "date": d.isoformat(), "summary": summ,
            "groups": groups, "stocks": rows, "tags": dict(tags)}
     write_json(OUT / "nextday" / f"{d.isoformat()}.json", res)

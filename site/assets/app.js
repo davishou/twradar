@@ -61,7 +61,7 @@ function table(el, columns, rows, opts = {}) {
     el._rows = new Map(data.map((r, i) => [String(opts.id ? opts.id(r) : i), r]));
   }
   el.onclick = e => {
-    if (e.target.closest("a")) return;
+    if (e.target.closest("a") || e.target.closest(".tipbtn")) return;
     const th = e.target.closest("th.s");
     if (th) { const k = th.dataset.k; sd = sk === k ? -sd : (columns.find(c => c.k === k).n ? -1 : 1); sk = k; draw(); return; }
     const tr = e.target.closest("tr[data-i]");
@@ -188,7 +188,15 @@ P.daily = async (date) => {
 };
 
 /* ---------- 券商分點（當日頁、隔日頁共用） ---------- */
-const PL_TIP = "以收盤價計算：賣出金額 − 買進金額 ＋ 未沖銷張數 × 收盤價，未扣手續費與證交稅";
+const PL_TIP = "總損益 = 已沖銷 + 未沖銷 − 手續費 − 交易稅\n已沖銷 = (賣均價 − 買均價) × 配對張數\n未沖銷 = (收盤價 − 成本均價) × 剩餘張數（空單反向）\n手續費 = 成交金額 × 0.1425% × 1.4 折\n交易稅 = 當沖賣出 0.15%／一般賣出 0.3%";
+function dayPL(x, close) {
+  const m = Math.min(x.b, x.s);
+  const realized = (x.sa - x.ba) * m;
+  const open = x.b > x.s ? (close - x.ba) * (x.b - x.s) : (x.sa - close) * (x.s - x.b);
+  const fee = (x.b * x.ba + x.s * x.sa) * 0.001425 * 0.14;
+  const tax = m * x.sa * 0.0015 + (x.s - m) * x.sa * 0.003;
+  return (realized + open - fee - tax) * 1000;
+}
 const p2 = v => v == null ? "—" : fx(v, 2);
 const sgnI = v => `${v > 0 ? "+" : ""}${fi(v)}`;
 function parseBranches(bk) {
@@ -221,12 +229,12 @@ function topPairHTML(B) {
   return `<div class="bk-pair">${side(buys, "b")}${side(sells, "s")}</div>`;
 }
 function dtHTML(bk, B, title) {
-  const dt = B.filter(x => x.b && x.s).map(x => ({...x, dq: Math.min(x.b, x.s), pl: (x.s * x.sa - x.b * x.ba + (x.b - x.s) * bk.close) * 1000}))
+  const dt = B.filter(x => x.b && x.s).map(x => ({...x, dq: Math.min(x.b, x.s), pl: dayPL(x, bk.close)}))
     .sort((a, c) => c.dq - a.dq).slice(0, 10);
   return `<h3 class="bk-dt">${title}</h3>
-    <div class="tw"><table><thead><tr><th scope="col">券商</th><th class="n" scope="col">交易張數</th><th class="n" scope="col">總損益 <span class="info" title="${PL_TIP}" aria-label="${PL_TIP}">ⓘ</span></th><th class="n" scope="col">買張數</th><th class="n" scope="col">買均價</th><th class="n" scope="col">賣張數</th><th class="n" scope="col">賣均價</th><th class="n" scope="col">留倉</th><th class="n" scope="col">當沖比</th></tr></thead>
+    <div class="tw"><table><thead><tr><th scope="col">券商</th><th class="n" scope="col">交易張數</th><th class="n" scope="col">總損益 ${tipBtn(PL_TIP)}</th><th class="n" scope="col">買張數</th><th class="n" scope="col">買均價</th><th class="n" scope="col">賣張數</th><th class="n" scope="col">賣均價</th><th class="n" scope="col">留倉</th><th class="n" scope="col">當沖比</th></tr></thead>
     <tbody>${dt.map(x => `<tr data-n="${esc(x.n)}"><td>${esc(x.n)}</td><td class="n">${fi(x.tot)}</td><td class="n ${sign(x.pl)}">${sgnI(x.pl)}</td><td class="n up">${fi(x.b)}</td><td class="n">@${p2(x.ba)}</td><td class="n down">${fi(x.s)}</td><td class="n">@${p2(x.sa)}</td><td class="n ${sign(x.net)}">${sgnI(x.net)}</td><td class="n">${Math.round(x.dt * 100)}%</td></tr>`).join("") || '<tr><td colspan="9" class="muted">沒有同時買賣的券商</td></tr>'}</tbody></table></div>
-    <p class="small muted">排序依當沖張數（買進與賣出較小的一方）。總損益${PL_TIP.slice(2)}。當沖比＝較小方 ÷ 較大方。</p>`;
+    <p class="small muted">排序依當沖張數（買進與賣出較小的一方）。總損益含手續費（1.4 折）與證交稅，以收盤價結算未沖銷部位。當沖比＝較小方 ÷ 較大方。</p>`;
 }
 function allHTML(B, key) {
   const rows = B.slice().sort((a, c) => key === "net" ? c.net - a.net : key === "dt" ? c.dt - a.dt : c.tot - a.tot).slice(0, 30);
@@ -378,7 +386,7 @@ async function showFollow(nd, row, scroll) {
     const w = Math.round(Math.abs(y.net) / maxN * 46);
     const out = x.net ? Math.min(y.s / x.net, 9.99) : 0;
     return `<tr data-n="${esc(x.n)}">${left}<td class="n"><span class="${sign(y.net)}">${sgnI(y.net)}</span><span class="bar ${y.net >= 0 ? "up" : "down"}" style="width:${w}px"></span></td>
-      <td class="n">${p2(y.sa)}</td><td class="n down">${fi(y.s)}</td><td class="n up">${fi(y.b)}</td><td class="n">${p2(y.ba)}</td><td class="n">${y.s ? Math.round(out * 100) + "%" : "—"}</td></tr>`;
+      <td class="n">${p2(y.sa)}${y.ssd ? `<small class="muted"> ±${fx(y.ssd, 2)}</small>` : ""}</td><td class="n down">${fi(y.s)}</td><td class="n up">${fi(y.b)}</td><td class="n">${p2(y.ba)}${y.bsd ? `<small class="muted"> ±${fx(y.bsd, 2)}</small>` : ""}</td><td class="n">${y.s ? Math.round(out * 100) + "%" : "—"}</td></tr>`;
   }).join("");
   const tbl = `<div class="tw"><table class="follow"><thead>
     <tr class="grp"><th colspan="2"></th><th colspan="2" class="g1">漲停日 ${md(nd.limit_date)}</th><th colspan="6">隔日 ${md(nd.date)}</th></tr>
@@ -398,51 +406,87 @@ async function showFollow(nd, row, scroll) {
   wireBubble(box, [B2]);
 }
 
+const TAG_ORDER = ["續漲停", "強續漲", "弱續漲", "開高走低", "直接跌"];
+const TAG_CLS = {"續漲停": "up strong", "強續漲": "up", "弱續漲": "up soft", "開高走低": "warn", "直接跌": "down"};
+const TAG_TIP = "續漲停：收在漲停｜強續漲：開高且收盤 ≥ 開盤｜弱續漲：收紅但不是強續漲｜開高走低：開高但收黑｜直接跌：沒開高且收黑";
+function tipBtn(text) { return `<button type="button" class="tipbtn" data-tip="${esc(text)}" aria-label="說明">ⓘ</button>`; }
+document.addEventListener("click", e => {
+  const b = e.target.closest(".tipbtn");
+  document.querySelectorAll(".tippop").forEach(x => x.remove());
+  if (!b) return;
+  e.stopPropagation();
+  const p = document.createElement("div");
+  p.className = "tippop"; p.textContent = b.dataset.tip; p.setAttribute("role", "tooltip");
+  document.body.append(p);
+  const r = b.getBoundingClientRect();
+  p.style.left = Math.max(8, Math.min(window.innerWidth - p.offsetWidth - 8, r.left + r.width / 2 - p.offsetWidth / 2)) + "px";
+  p.style.top = (r.bottom + window.scrollY + 6) + "px";
+});
+
 P.nextday = async (date) => {
   const dates = META.nextday_dates || [];
   date = date || dates[0];
   const data = date && await load(`nextday/${date}.json`);
   setTitle("漲停隔日表現");
-  if (!data) { app.innerHTML = `<h1>漲停隔日表現</h1>${emptyBox("需要至少兩個交易日的資料")}`; return; }
+  if (!data) { app.innerHTML = `<h1>漲停隔日</h1>${emptyBox("需要至少兩個交易日的資料")}`; return; }
   const s = data.summary;
-  let selN = "";
-  const vs = v => v == null ? "" : `<div class="d">比近 20 次平均 ${v > 0 ? "高" : "低"} ${fx(Math.abs(v), 1)} 個百分點</div>`;
-  let tag = "";
-  app.innerHTML = `<h1>漲停隔日表現</h1>
-    <p class="sub">${data.limit_date} 漲停的 ${s.n} 檔，在 ${data.date} 的表現。報酬以前一日漲停價為基準；勝率為報酬大於 0 的比例。</p>
+  const q = new URLSearchParams(location.hash.split("?")[1] || "");
+  let selN = q.get("s") || "", tag = "", theme = q.get("t") || "";
+  const md2 = d => d.slice(5).replace("-", "/");
+  const diff = v => v == null ? "" : `<span class="dif ${v > 0 ? "up" : v < 0 ? "down" : ""}" title="與前一個漲停日比較（百分點）">${v > 0 ? "↑" : v < 0 ? "↓" : ""}${fx(Math.abs(v), 1)}</span>`;
+  app.innerHTML = `<h1>漲停隔日</h1>
+    <p class="sub">漲停日 ${data.limit_date} → 隔日 ${data.date}。報酬以漲停日收盤價為基準。</p>
     <div class="toolbar"><span id="ds"></span></div>
     <div class="kpis">
-      <div class="kpi"><div class="l">開盤平均報酬</div><div class="v ${sign(s.open_avg)}">${pc(s.open_avg)}</div><div class="d">勝率 ${fx(s.open_win, 1)}%</div>${vs(s.open_win_vs20)}</div>
-      <div class="kpi"><div class="l">均價平均報酬</div><div class="v">${pc(s.avg_avg)}</div><div class="d">勝率 ${fx(s.avg_win, 1)}%</div>${vs(s.avg_win_vs20)}</div>
-      <div class="kpi"><div class="l">收盤平均報酬</div><div class="v">${pc(s.close_avg)}</div><div class="d">勝率 ${fx(s.close_win, 1)}%</div>${vs(s.close_win_vs20)}</div>
-      <div class="kpi"><div class="l">加權平均報酬</div><div class="v">${pc(s.wavg_avg)}</div><div class="d">2/3 開盤賣＋1/3 均價賣</div></div>
-      <div class="kpi"><div class="l">續漲停</div><div class="v up">${s.cont} 檔</div><div class="d">共 ${s.n} 檔漲停</div></div>
+      <div class="kpi"><div class="l">開盤均報酬</div><div class="v">${pc(s.open_avg)}</div><div class="d">當日勝率 ${fx(s.open_win, 1)}% ${diff(s.open_win_prev)}</div></div>
+      <div class="kpi"><div class="l">均價均報酬</div><div class="v">${pc(s.avg_avg)}</div><div class="d">當日勝率 ${fx(s.avg_win, 1)}% ${diff(s.avg_win_prev)}</div></div>
+      <div class="kpi"><div class="l">收盤均報酬</div><div class="v">${pc(s.close_avg)}</div><div class="d">當日勝率 ${fx(s.close_win, 1)}% ${diff(s.close_win_prev)}</div></div>
+      <div class="kpi"><div class="l">續漲停</div><div class="v up">${s.cont} 檔</div><div class="d">${s.n} 檔漲停</div></div>
     </div>
-    <h2>族群表現</h2><div id="g"></div>
-    <h2>個股明細</h2>
+    <h2>族群 ${md2(data.limit_date)} 漲停 vs ${md2(data.date)} 隔日</h2>
+    <div id="g"></div>
+    <p class="small muted">點族群篩選下方個股，再點一次取消。</p>
+    <h2 id="stockHead">個股明細（${s.n} 檔）</h2>
+    <p class="small muted">標籤根據隔日實際開盤與收盤價格分類，僅描述已發生之走勢。 ${tipBtn(TAG_TIP)}</p>
     <div class="toolbar"><span class="chips" id="tags"></span></div>
     <div id="t"></div>
-    <p class="small muted">標籤依隔日實際開盤與收盤價格分類，只描述已發生的走勢。加權＝（2 × 開盤報酬 ＋ 均價報酬）÷ 3，假設三分之二在開盤賣、三分之一在均價賣。點個股看漲停日的主力買家隔天怎麼動。</p>
+    <p class="small muted">加權＝（2 × 開盤報酬 ＋ 均價報酬）÷ 3，假設三分之二在開盤賣、三分之一在均價賣。點個股看漲停日的主力買家隔天怎麼動。</p>
     <section class="bk" id="bk" hidden></section>`;
   document.getElementById("ds").append(dateSelect(dates, date, v => location.hash = `#/nextday/${v}`));
-  table(document.getElementById("g"), [
-    {k: "theme", t: "族群", f: r => `${esc(r.emoji)} ${esc(r.theme)}`}, {k: "streak", t: "連續天數", n: 1, f: r => r.streak + " 天"},
-    {k: "win", t: "收盤勝率", n: 1, f: r => `${fx(r.win, 1)}% <span class="muted small">${r.wins}/${r.n}</span>`},
+  const gt = table(document.getElementById("g"), [
+    {k: "theme", t: "族群", f: r => `${esc(r.emoji)} ${esc(r.theme)}`},
+    {k: "streak", t: `連續 ${tipBtn("該族群連續幾天出現在漲停板上（含漲停日），代表市場對該題材的關注持續性")}`, n: 1,
+      f: r => r.streak > 1 ? `<span class="tag warn">${r.streak}天</span>` : '<span class="muted">—</span>'},
+    {k: "win", t: `當日勝率 ${tipBtn("以漲停日收盤價為基準，⅔ 開盤報酬 + ⅓ 均價報酬 > 0 的比例")}`, n: 1,
+      f: r => `${fx(r.win, 1)}% <span class="muted small">${r.wins}/${r.n}</span>`},
     {k: "open", t: "開盤", n: 1, f: r => pc(r.open)}, {k: "avg", t: "均價", n: 1, f: r => pc(r.avg)}, {k: "close", t: "收盤", n: 1, f: r => pc(r.close)},
-  ], data.groups, {sort: ["close", -1]});
+  ], data.groups, {sort: ["avg", -1], id: r => r.theme, rowClass: r => r.theme === theme ? "sel" : "",
+    rowClick: r => { theme = theme === r.theme ? "" : r.theme; gt.set(data.groups); refresh(); }});
+  const emo = Object.fromEntries(data.groups.map(g => [g.theme, g.emoji]));
   const tt = table(document.getElementById("t"), [
     {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
     {k: "ref", t: "漲停價", n: 1, f: r => fp(r.ref)}, {k: "vol_ratio", t: "量比", n: 1, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
     {k: "ret_open", t: "隔日開", n: 1, f: r => `${fp(r.open)} ${pc(r.ret_open)}`}, {k: "ret_avg", t: "隔日均價", n: 1, f: r => `${fp(r.avg)} ${pc(r.ret_avg)}`},
     {k: "ret_close", t: "隔日收", n: 1, f: r => `${fp(r.close)} ${pc(r.ret_close)}`},
-    {k: "ret_wavg", t: '加權 <span class="info" title="（2 × 開盤報酬 ＋ 均價報酬）÷ 3">ⓘ</span>', n: 1, f: r => pc(r.ret_wavg)},
-    {k: "ret_high", t: "最高", n: 1, f: r => pc(r.ret_high)},
-    {k: "tag", t: "標籤", f: r => `<span class="tag ${r.tag === "續漲停" || r.tag.endsWith("走高") ? "up" : "down"}">${esc(r.tag)}</span>`},
-    {k: "theme", t: "族群"},
-  ], data.stocks, {sort: ["ret_close", -1], id: r => r.code, rowClass: r => r.code === selN ? "sel" : "",
-    rowClick: r => { selN = r.code; tt.set(data.stocks.filter(x => !tag || x.tag === tag)); showFollow(data, r, true); }});
-  chips(document.getElementById("tags"), [["", `全部 ${s.n}`], ...Object.entries(data.tags).map(([k, v]) => [k, `${k} ${v}`])], tag,
-    v => { tag = v; tt.set(data.stocks.filter(x => !v || x.tag === v)); });
+    {k: "ret_wavg", t: "加權", n: 1, f: r => pc(r.ret_wavg)},
+    {k: "tag", t: "標籤", s: r => TAG_ORDER.indexOf(r.tag), f: r => `<span class="tag ${TAG_CLS[r.tag] || ""}">${esc(r.tag)}</span>`},
+    {k: "theme", t: "族群", f: r => `${esc(emo[r.theme] || "")} ${esc(r.theme)}`},
+  ], [], {sort: ["ret_avg", -1], id: r => r.code, rowClass: r => r.code === selN ? "sel" : "",
+    rowClick: r => { selN = r.code; refresh(); showFollow(data, r, true); }});
+  function refresh() {
+    const rows = data.stocks.filter(x => (!tag || x.tag === tag) && (!theme || x.theme === theme));
+    tt.set(rows);
+    document.getElementById("stockHead").textContent = theme ? `個股明細：${theme}（${rows.length} 檔）` : `個股明細（${rows.length} 檔）`;
+  }
+  const tagItems = TAG_ORDER.filter(k => data.tags[k]).map(k => [k, `${k} ${data.tags[k]}`]);
+  chips(document.getElementById("tags"), [["", `全部 ${s.n}`], ...tagItems], tag, v => { tag = v; refresh(); });
+  refresh();
+  // 預設展開第一檔有分點資料的股票
+  const first = selN ? data.stocks.find(x => x.code === selN) : null;
+  if (first) { showFollow(data, first, false); return; }
+  const st = await load(`brokers/${data.limit_date}/_status.json`);
+  const pick = data.stocks.find(x => st?.stocks?.[x.code]?.ok);
+  if (pick) { selN = pick.code; refresh(); showFollow(data, pick, false); }
 };
 
 P.stats = async () => {
