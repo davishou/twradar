@@ -126,7 +126,8 @@ def classify(stocks: list[dict], context: dict[str, list[str]] | None = None,
             f"優先使用這些既有族群：{known}。\n"
             "都不適合時才自創 2~6 字的題材名（例如『玻纖』『光學鏡頭』），同時給一個代表的 emoji。\n"
             "不要用『其他』這種籠統名稱；資料不足時用官方產業別，並在 reason 註明。\n"
-            f"{lines}\n\n格式：{{\"代號\": {{\"theme\": \"族群\", \"emoji\": \"只有新族群才填\", \"reason\": \"一句話理由\"}}}}")
+            f"{lines}\n\n格式：{{\"代號\": {{\"theme\": \"族群\", \"emoji\": \"只有新族群才填\", \"reason\": \"20 字內理由\"}}}}",
+            tag="classify", max_tokens=6000)
         if isinstance(res, dict):
             today = date.today().isoformat()
             for s in pending:
@@ -184,7 +185,7 @@ def explain(stocks: list[dict], context: dict[str, list[str]], biz: dict[str, st
         "以下是今日漲停的台股。請為每檔寫一句 50 字內的漲停原因。\n"
         "規則：有今日重大訊息就依訊息說明（例如營收創新高、接獲訂單）；沒有訊息就寫主要業務，"
         "同族群多檔漲停時寫『族群連動』。只能根據提供的資料，不可編造新聞、數字或客戶名稱。\n"
-        f"{lines}\n\n格式：{{\"代號\": \"原因\"}}", max_tokens=4000)
+        f"{lines}\n\n格式：{{\"代號\": \"原因\"}}", tag="why", max_tokens=6000)
     if isinstance(res, dict):
         for k, v in res.items():
             if k in rule and isinstance(v, str) and v.strip():

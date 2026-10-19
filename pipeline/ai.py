@@ -24,13 +24,20 @@ def _get():
     return _client
 
 
+_tag = ""
+
+
 def _status(**kw) -> None:
-    """把最近一次 AI 呼叫的狀態寫到 data/state/ai_status.json（不含金鑰），方便排查"""
+    """把最近 20 次 AI 呼叫的狀態寫到 data/state/ai_status.json（不含金鑰），方便排查"""
     try:
-        from .util import now_tw, write_json
-        write_json(config.STATE_DIR / "ai_status.json", {
-            "time": now_tw().strftime("%Y-%m-%d %H:%M"), "enabled": enabled(), "model": config.AI_MODEL,
-            "key_prefix": (config.ANTHROPIC_API_KEY[:7] + "…") if config.ANTHROPIC_API_KEY else "", **kw})
+        from .util import now_tw, read_json, write_json
+        p = config.STATE_DIR / "ai_status.json"
+        old = read_json(p, {}) or {}
+        calls = old.get("calls", []) if isinstance(old.get("calls"), list) else []
+        calls.append({"time": now_tw().strftime("%Y-%m-%d %H:%M"), "tag": _tag, **kw})
+        write_json(p, {"enabled": enabled(), "model": config.AI_MODEL,
+                       "key_prefix": (config.ANTHROPIC_API_KEY[:7] + "…") if config.ANTHROPIC_API_KEY else "",
+                       "calls": calls[-20:]})
     except Exception:  # noqa: BLE001
         pass
 
@@ -46,7 +53,8 @@ def ask(prompt: str, system: str = "", max_tokens: int = 2000) -> str | None:
             messages=[{"role": "user", "content": prompt}],
         )
         u = getattr(msg, "usage", None)
-        _status(ok=True, input_tokens=getattr(u, "input_tokens", None), output_tokens=getattr(u, "output_tokens", None))
+        _status(ok=True, stop=getattr(msg, "stop_reason", None),
+                input_tokens=getattr(u, "input_tokens", None), output_tokens=getattr(u, "output_tokens", None))
         return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
     except Exception as e:  # noqa: BLE001
         log.warning("AI 呼叫失敗：%s", e)
@@ -54,8 +62,10 @@ def ask(prompt: str, system: str = "", max_tokens: int = 2000) -> str | None:
         return None
 
 
-def ask_json(prompt: str, **kw):
+def ask_json(prompt: str, tag: str = "", **kw):
     """要求模型輸出 JSON；擷取第一個 JSON 區塊並解析"""
+    global _tag
+    _tag = tag
     txt = ask(prompt + "\n\n只輸出 JSON，不要其他文字。", **kw)
     if not txt:
         return None
