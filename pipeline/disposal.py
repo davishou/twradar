@@ -438,7 +438,9 @@ def describe_ext(c: dict) -> list[str]:
         out.append(f"③ {_pc_txt(c3['price'])}；量≥{c3['lots']:,}張（60日均量{c3['mult']:g}倍）")
     if c4.get("status") in OK:
         out.append(f"④ {_pc_txt(c4['price'])}；量≥{c4['lots']:,}張（週轉率≥{c4['to']:g}%）")
-    if c6.get("status") in OK:
+    if c6.get("status") == "跌停仍符合":
+        out.append(f"⑥ 本益比、淨值比已達標；量≥{c6['lots']:,}張")
+    elif c6.get("status") in OK:
         out.append(f"⑥ 收盤≥{c6['price']}（{c6['pct']:+.1f}%）；量≥{c6['lots']:,}張")
     elif c6.get("status") == "需集中度":
         out.append(f"⑥ 收盤≥{c6['price']}（{c6['pct']:+.1f}%）；量≥{c6['lots']:,}張，且需單一券商或投資人占比過高")

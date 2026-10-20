@@ -812,7 +812,7 @@ function dispX(c) {
   return `<div><h4>③ 量放大 ${xTag(c3.status)}</h4>${c3.lots ? `<p>${pcTxt(c3.price)}</p><p>量 ≥ <b>${fi(c3.lots)}</b> 張（60 日均量 ${fi(c3.avg60)} 張的 ${c3.mult} 倍；全市場今日 ${c3.mkt_mult} 倍）</p><p class="small muted">今日為均量 ${c3.today_mult} 倍</p>` : "<p class='muted'>資料不足</p>"}${pTxt}</div>
     <div><h4>④ 週轉率 ${xTag(c4.status)}</h4>${c4.lots ? `<p>${pcTxt(c4.price)}</p><p>量 ≥ <b>${fi(c4.lots)}</b> 張（週轉率 ≥ ${c4.to}%；全市場平均 ${c4.mkt_to}%）</p><p class="small muted">今日週轉率 ${c4.today_to}%</p>` : "<p class='muted'>資料不足</p>"}</div>
     <div><h4>⑤ 單一券商占比</h4><p class="muted">需要全市場每檔股票的券商分點資料（櫃買分點有真人驗證、上市每檔都要解驗證碼），無法每天估算。</p></div>
-    <div><h4>⑥ 本益比／淨值比 ${xTag(c6.status)}</h4>${c6.price ? `<p>收盤 ≥ <b>${fp(c6.price)}</b> ${pc(c6.pct, 1)}，量 ≥ ${fi(c6.lots)} 張</p>
+    <div><h4>⑥ 本益比／淨值比 ${xTag(c6.status)}</h4>${c6.price ? `<p>${c6.status === "跌停仍符合" ? "本益比、淨值比已達標（跌停仍符合）" : `收盤 ≥ <b>${fp(c6.price)}</b> ${pc(c6.pct, 1)}`}，量 ≥ ${fi(c6.lots)} 張</p>
       <p class="small">本益比 ${c6.loss ? "虧損（已符合）" : `${c6.pe} → 需 ≥ ${c6.pe_th}`}；淨值比 ${c6.pb} → 需 ≥ ${c6.pb_th}</p>
       <p class="small muted">另需：淨值比 ≥ 產業平均${c6.ind_pb ? ` ${c6.ind_pb}` : ""} 的 ${c6.ind_mult} 倍，或單一券商／投資人成交占比過高${c6.status === "需集中度" ? "（產業條件達不到，只剩集中度，無法估算）" : ""}</p>` : `<p class="muted">${esc(c6.status || "資料不足")}</p>`}</div>
     <div><h4>⑦ 券資比 ${xTag(c7.status)}</h4>${c7.ratio != null ? `<p>今日券資比 ${c7.ratio}%（6 日最低 ${c7.min6 ?? "—"}%），融資使用率 ${c7.fin_use}%、融券使用率 ${c7.short_use}%</p>

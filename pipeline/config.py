@@ -11,7 +11,7 @@ SITE_DIR = ROOT / "site"
 OUT_DIR = SITE_DIR / "data"         # 前端讀取的 JSON
 
 SITE_NAME = os.getenv("SITE_NAME", "盤後雷達")
-SITE_URL = os.getenv("SITE_URL", "https://example.github.io/twradar/")
+SITE_URL = os.getenv("SITE_URL") or "https://davishou.github.io/twradar/"
 
 # ---- AI（選用）：設定 ANTHROPIC_API_KEY 即啟用 AI 族群分類、公告評分、盤後氣氛 ----
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()

@@ -174,13 +174,17 @@ def fetch_companies() -> dict[str, dict]:
                 continue
             ind = str(pick(r, "產業別", "SecuritiesIndustryCode", default="")).strip()
             ind = ind.zfill(2) if ind.isdigit() else INDUSTRY_BY_NAME.get(ind.replace("業", ""), ind)
-            capital = num(pick(r, "實收資本額", "Paidin.Capital.NTDollars", "PaidInCapital"), 0) or 0
-            shares = num(pick(r, "已發行普通股數", "IssueShares"), 0) or capital / 10
+            capital = num(pick(r, "實收資本額", "Paidin.Capital.NTDollars", "PaidInCapital", "Capital"), 0) or 0
+            shares = num(pick(r, "已發行普通股數", "IssueShares", "普通股數", "Shares"), 0) or capital / 10
             out[code] = {
                 "code": code, "name": str(pick(r, "公司簡稱", "CompanyAbbreviation", "公司名稱", "CompanyName", default=code)),
                 "market": market, "industry_code": ind, "industry": INDUSTRY.get(ind, ind or "其他"),
                 "capital": capital, "shares": shares,
             }
+        if js and isinstance(js, list):
+            from .util import write_json
+            write_json(config.STATE_DIR / f"companies_fields_{market}.json", {"keys": list(js[0].keys()), "sample": js[0],
+                       "with_shares": sum(1 for v in out.values() if v["market"] == market and v["shares"])})
         if len(out) == before:
             log.warning("%s 公司基本資料抓取失敗或格式改變（%s）", market, U[key])
             from .util import write_json
@@ -221,10 +225,15 @@ def fetch_valuation() -> dict[str, dict]:
     for r in get_json(U["twse_pe"]) or []:
         out[str(r.get("Code", "")).strip()] = {"pe": num(r.get("PEratio")), "pb": num(r.get("PBratio")),
                                                 "dy": num(r.get("DividendYield"))}
-    for r in get_json(U["tpex_pe"]) or []:
+    tp = get_json(U["tpex_pe"]) or []
+    for r in tp:
         code = str(pick(r, "SecuritiesCompanyCode", default="")).strip()
-        out[code] = {"pe": num(pick(r, "PriceEarningRatio", "PEratio")), "pb": num(pick(r, "PriceBookRatio", "PBratio")),
-                     "dy": num(pick(r, "YieldRatio", "DividendYield"))}
+        out[code] = {"pe": num(pick(r, "PriceEarningRatio", "PEratio", "本益比")), "pb": num(pick(r, "PriceBookRatio", "PBratio", "淨值比")),
+                     "dy": num(pick(r, "YieldRatio", "DividendYield", "殖利率"))}
+    if tp:
+        from .util import write_json
+        write_json(config.STATE_DIR / "valuation_fields_TPEX.json", {"keys": list(tp[0].keys()), "sample": tp[0],
+                   "with_pb": sum(1 for r in tp if num(pick(r, "PriceBookRatio", "PBratio", "淨值比")))})
     return out
 
 # ------------------------------------------------------------------ 注意、處置

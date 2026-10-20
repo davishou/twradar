@@ -28,7 +28,7 @@ log = logging.getLogger("twradar")
 
 def companies(src) -> dict:
     st = store.state("companies", {}) or {}
-    has_tpex = any(v.get("market") == "TPEX" for v in (st.get("data") or {}).values())
+    has_tpex = any(v.get("market") == "TPEX" and v.get("shares") for v in (st.get("data") or {}).values())
     if src is sources and has_tpex and st.get("_date", "") >= (date.today() - timedelta(days=7)).isoformat():
         return st["data"]
     data = src.fetch_companies()
