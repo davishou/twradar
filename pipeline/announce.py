@@ -163,7 +163,7 @@ def parse_att(subject: str, body: str) -> dict:
     if "注意交易資訊" in subject or "財務業務資訊" in body:
         m = re.search(r"(\d{2,3})\s*年\s*(\d{1,2})\s*月", body)
         out["period"], out["months"] = (f"{int(m.group(2))}月", 1) if m else ("", 1)
-        mq = re.search(r"(\d{2,3})\s*年?\s*第\s*(\d)\s*季", body)
+        mq = re.search(r"(\d{2,3})\s*年?\s*第\s*(\d)\s*季(?!\s*至)", body)  # 避開「114年第3季至」
         out["q_label"] = f"Q{mq.group(2)}" if mq else ""
     else:
         out["period"], out["months"] = _period_of(subject + " " + body[:300])
@@ -204,14 +204,16 @@ def is_fin(subject: str, body: str) -> bool:
     return ("財務報告" in subject or "財務報表" in subject) and "累計至本期止" in body
 
 
-PURPOSE = [("員工", "員工"), ("維護公司信用", "護盤"), ("股東權益", "護盤"), ("註銷", "銷除"), ("銷除", "銷除")]
+PURPOSE = [("員工", "員工"), ("轉讓", "員工"), ("維護公司信用", "護盤"), ("股東權益", "護盤"), ("註銷", "銷除"), ("銷除", "銷除")]
 
 
 def parse_treasury(body: str) -> dict | None:
+    if "已買回股份數量" in body or "原預定買回" in body:   # 這是執行結果，不是新決議
+        return None
     n = re.search(r"預定買回之數量[^:：]*[:：]\s*([\d,]+)", body)
     if not n:
         return None
-    pm = re.search(r"買回股份目的[:：]\s*([^\n\r]+)", body)
+    pm = re.search(r"買回[^\n:：]{0,6}目的[^:：]{0,4}[:：]\s*([^\n\r]+)", body)
     purpose = next((v for k, v in PURPOSE if pm and k in pm.group(1)), (pm.group(1).strip()[:6] if pm else ""))
     rng = re.search(r"買回區間價格[^:：]*[:：]\s*([\d.]+)\s*[~～至-]\s*([\d.]+)", body)
     per = re.search(r"預定買回之期間[:：]\s*(\d{2,3}/\d{1,2}/\d{1,2})\s*[~～至-]\s*(\d{2,3}/\d{1,2}/\d{1,2})", body)
@@ -223,13 +225,21 @@ def parse_treasury(body: str) -> dict | None:
 
 
 def parse_treasury_done(body: str) -> dict | None:
-    done = re.search(r"實際已買回股數[^:：\d]*[:：]?\s*([\d,]+)", body)
-    plan = re.search(r"預定買回[^\d]{0,12}股數[^:：\d]*[:：]?\s*([\d,]+)", body)
+    """買回期間屆滿或執行完畢的公告：原預定數量、實際買回數量、均價、期間"""
+    g = lambda pat: re.search(pat, body)  # noqa: E731
+    done = g(r"(?:本次已買回股份數量|實際已買回股數)[^:：\d]*[:：]?\s*([\d,]+)")
+    plan = g(r"原預定買回之數量[^:：]*[:：]\s*([\d,]+)") or g(r"預定買回[^\d]{0,12}股數[^:：\d]*[:：]?\s*([\d,]+)")
     if not done:
         return None
     d = int(done.group(1).replace(",", ""))
     p = int(plan.group(1).replace(",", "")) if plan else None
-    return {"done": d, "plan": p, "pct": round(d / p * 100) if p else None}
+    rng = g(r"原預定買回區間價格[^:：]*[:：]\s*([\d.]+)\s*[~～至-]\s*([\d.]+)")
+    per = g(r"原預定買回之期間[:：]\s*(\d{2,3}/\d{1,2}/\d{1,2})\s*[~～至-]\s*(\d{2,3}/\d{1,2}/\d{1,2})")
+    avg = g(r"平均每股買回價格[^:：]*[:：]\s*([\d.]+)")
+    return {"done": d, "plan": p, "pct": round(d / p * 100) if p else None,
+            "low": float(rng.group(1)) if rng else None, "high": float(rng.group(2)) if rng else None,
+            "start": str(roc_date(per.group(1))) if per else None, "end": str(roc_date(per.group(2))) if per else None,
+            "avg_price": float(avg.group(1)) if avg else None}
 
 
 def parse_event(subject: str, body: str) -> dict | None:
@@ -391,7 +401,7 @@ def build(material: list[dict], revenue: list[dict], quotes: list[dict], last_cl
                                     "prev_nonop_pct": (prev or {}).get("nonop_pct")}))
         elif re.search(r"買回", s) and parse_treasury(b):
             treasury_new.append({**base, **parse_treasury(b)})
-        elif re.search(r"買回", s) and re.search(r"屆滿|執行完畢|執行情形", s + b[:200]) and parse_treasury_done(b):
+        elif re.search(r"買回|庫藏", s) and parse_treasury_done(b):
             treasury_done.append({**base, **parse_treasury_done(b)})
         else:
             ev = parse_event(s, b)
@@ -439,14 +449,23 @@ def build(material: list[dict], revenue: list[dict], quotes: list[dict], last_cl
     _ai_score("rev", rev)
 
     # ---------- 庫藏股：決議與執行結果合併成「買回計畫」
-    programs = store.state("treasury_db", {}) or {}
+    programs = {k: v for k, v in (store.state("treasury_db", {}) or {}).items()
+                if "原預定買回" not in (v.get("body") or "") and "已買回股份數量" not in (v.get("body") or "")}
     for t in treasury_new:
         programs.setdefault(t["key"], {k: t[k] for k in ("key", "code", "name", "market", "date", "time", "subject", "body",
                                                          "shares", "purpose", "low", "high", "start", "end", "board")})
-    for d in treasury_done:  # 對到同公司最近一個計畫
-        cands = sorted((p for p in programs.values() if p["code"] == d["code"] and p["date"] <= d["date"]), key=lambda p: p["date"])
+    for d in treasury_done:  # 對到同公司、期間相同的計畫；沒有（決議太早不在資料庫）就用執行結果建一筆
+        cands = sorted((p for p in programs.values() if p["code"] == d["code"] and p["date"] <= d["date"]
+                        and (not d.get("start") or p.get("start") == d["start"])), key=lambda p: p["date"])
         if cands:
-            cands[-1].update({"done_shares": d["done"], "progress": d["pct"], "done_date": d["date"], "done_body": d["body"][:3000]})
+            p = cands[-1]
+        else:
+            p = programs.setdefault(_key("tr", d["code"], d.get("start")), {
+                "key": _key("tr", d["code"], d.get("start")), "code": d["code"], "name": d["name"], "market": d["market"],
+                "date": d["date"], "time": d["time"], "subject": d["subject"], "body": "", "shares": d.get("plan") or d["done"],
+                "purpose": "", "low": d.get("low"), "high": d.get("high"), "start": d.get("start"), "end": d.get("end"), "board": None})
+        p.update({"done_shares": d["done"], "progress": d["pct"], "avg_price": d.get("avg_price"),
+                  "done_date": d["date"], "done_body": d["body"][:3000]})
     cut = (today - timedelta(days=180)).isoformat()
     programs = {k: v for k, v in programs.items() if v["date"] >= cut}
     store.save_state("treasury_db", programs)
