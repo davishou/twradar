@@ -8,6 +8,7 @@
   python -m pipeline.run etf            主動 ETF 持股異動（22:30）
   python -m pipeline.run announce       自結/季報/營收/庫藏/事件（每 5 分鐘）
   python -m pipeline.run all            以上全部
+  python -m pipeline.run history 40     長期資料庫：回補 5 年歷史（每次跑 40 分鐘，續跑）
   python -m pipeline.run backfill 120   補抓最近 120 個交易日歷史行情（第一次部署必跑）
   python -m pipeline.run mock           以模擬資料產生完整示範網站（離線可用）
   python -m pipeline.run serve [port]   本機預覽網站
@@ -20,7 +21,7 @@ import shutil
 import sys
 from datetime import date, timedelta
 
-from . import active_etf, announce, borrow, brief, brokers, config, disposal, limitup, sources, store
+from . import active_etf, announce, archive, borrow, brief, brokers, config, disposal, limitup, sources, store
 from .util import now_tw
 
 log = logging.getLogger("twradar")
@@ -75,6 +76,11 @@ def _daily(src, td, quotes, light: bool = False, d=None) -> date | None:
                 context.setdefault(m["code"], []).append(m["subject"])
     inst = src.fetch_institutional(td) if hasattr(src, "fetch_institutional") else {}
     daily = limitup.build_daily(td, quotes, comp, context, src=src, inst=inst)
+    if src is sources:  # 長期資料庫（回測用）
+        archive.save_quotes(td, quotes)
+        if inst:
+            archive.save_inst(td, inst)
+        archive.save_limitup(td, daily)
     nd = limitup.build_nextday(td, quotes)
     nxt = store.next_day(td)
     if nxt:  # 重跑過去某天時，順便更新下一天的隔日表現
@@ -201,6 +207,11 @@ def job_disposal(src) -> None:
     notices = src.fetch_notices(today - timedelta(days=50), today)
     punish = src.fetch_punish(today - timedelta(days=45), today)
     margin = update_margin(src, today)
+    if src is sources:
+        for d, m in margin["data"].items():
+            archive.save_margin(date.fromisoformat(d), m)
+        archive.save_notices(notices)
+        archive.save_punish(punish)
     res = disposal.build(today, quotes, notices, punish, src.fetch_holidays(), src.fetch_valuation(),
                          companies(src), margin)
     brief.touch_meta("disposal", today)
@@ -273,6 +284,15 @@ def backfill(n: int) -> None:
     brief.touch_meta("backfill")
 
 
+def job_history(minutes: float = 40) -> None:
+    """長期資料庫：分批回補 5 年行情／法人／融資融券、上市注意處置股、同步漲停族群、重算還原因子"""
+    st = archive.backfill(sources, years=5, minutes=minutes)
+    archive.backfill_notices(sources, years=5)
+    archive.sync_limitup()
+    n = archive.build_adjust()
+    log.info("還原因子 %d 筆；回補完成：%s", n, st.get("complete"))
+
+
 def reset() -> None:
     """清掉所有產生的資料（不會動 themes.json、etf_inbox）"""
     for p in (config.HISTORY_DIR, config.STATE_DIR, config.DATA_DIR / "etf", config.OUT_DIR):
@@ -339,6 +359,8 @@ def main(argv: list[str]) -> int:
     elif cmd == "all":
         for f in jobs.values():
             f()
+    elif cmd == "history":
+        job_history(float(argv[1]) if len(argv) > 1 else 40)
     elif cmd == "backfill":
         backfill(int(argv[1]) if len(argv) > 1 else 120)
     elif cmd == "reset":

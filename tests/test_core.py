@@ -187,3 +187,24 @@ class Brokers(unittest.TestCase):
         self.assertEqual(agg["凱基台北"][1:3], [17.0, 1.0])
         self.assertAlmostEqual(agg["凱基台北"][3], 139.65)
         self.assertIsNone(agg["合庫"][3])
+
+
+class ArchiveTest(unittest.TestCase):
+    def test_write_read_adjust(self):
+        import tempfile
+        from pathlib import Path
+        from pipeline import archive
+        old = archive.ROOT
+        archive.ROOT = Path(tempfile.mkdtemp())
+        try:
+            q = lambda c, ref: {"code": "1101", "name": "台泥", "market": "TWSE", "open": c, "high": c, "low": c,
+                                "close": c, "change": round(c - ref, 2), "prev_close": ref, "volume": 1000, "value": 1, "trades": 1}
+            archive.save_quotes(date(2026, 7, 1), [q(40.0, 40.0)])
+            archive.save_quotes(date(2026, 7, 2), [q(39.0, 38.5)])   # 除息 1.5 元
+            b1 = archive.path("quotes", "2026-07-02").read_bytes()
+            archive.save_quotes(date(2026, 7, 2), [q(39.0, 38.5)])
+            self.assertEqual(b1, archive.path("quotes", "2026-07-02").read_bytes())  # 內容相同檔案不變
+            self.assertEqual(archive.read("quotes", "2026-07-02")[0]["ref"], "38.5")
+            self.assertEqual(archive.build_adjust(), 1)
+        finally:
+            archive.ROOT = old

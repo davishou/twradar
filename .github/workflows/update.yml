@@ -10,10 +10,11 @@ on:
     - cron: "8 12 * * 1-5"       # 20:08 券差
     - cron: "30 14 * * 1-5"      # 22:30 主動 ETF
     - cron: "*/5 0-15 * * 1-5"   # 08:00~23:55 每 5 分鐘公告偵測
+    - cron: "30 16 * * *"        # 00:30 長期資料庫回補 5 年歷史（補完後幾秒就結束）
   workflow_dispatch:
     inputs:
       job:
-        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / all / backfill；重跑某天：daily 2026-10-16）"
+        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / all / backfill / history；重跑某天：daily 2026-10-16）"
         default: "all"
 
 permissions:
@@ -28,7 +29,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event.schedule == '30 16 * * *' || github.event.inputs.job == 'history') && 300 || 30 }}
     environment:
       name: github-pages
     env:
@@ -55,13 +56,27 @@ jobs:
             "8 12 * * 1-5")     JOB=borrow ;;
             "30 14 * * 1-5")    JOB=etf ;;
             "*/5 0-15 * * 1-5") JOB=announce ;;
+            "30 16 * * *")      JOB=history ;;
             *)                  JOB="${{ github.event.inputs.job || 'all' }}" ;;
           esac
           echo "job=$JOB" >> "$GITHUB_OUTPUT"
 
       - name: 執行
         run: |
-          if [ "${{ steps.pick.outputs.job }}" = "backfill" ]; then
+          if [ "${{ steps.pick.outputs.job }}" = "history" ]; then
+            git config user.name "data-bot"
+            git config user.email "data-bot@users.noreply.github.com"
+            # 每 45 分鐘存一次，萬一中途被中斷也不會白跑
+            for i in 1 2 3 4 5; do
+              python -m pipeline.run history 45
+              git add data
+              if ! git diff --cached --quiet; then
+                git commit -m "data: history $(TZ=Asia/Taipei date '+%F %R')"
+                git pull --rebase --autostash && git push
+              fi
+              python -c "import json,sys; sys.exit(0 if json.load(open('data/archive/progress.json')).get('stopped')=='時間到' else 1)" || break
+            done
+          elif [ "${{ steps.pick.outputs.job }}" = "backfill" ]; then
             python -m pipeline.run backfill 120 && python -m pipeline.run all
           else
             python -m pipeline.run ${{ steps.pick.outputs.job }}

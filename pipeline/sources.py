@@ -76,6 +76,9 @@ def _quote(code, name, market, o, h, l, c, chg, vol, val, trades=None, avg=None)
     return q
 
 
+LAST_TWSE_STAT: str | None = None  # 依日期查詢上市行情的回應狀態（None＝連線失敗；非 OK＝休市）
+
+
 def fetch_quotes(d: date | None = None) -> tuple[date | None, list[dict]]:
     """全市場收盤行情。d=None 抓最新交易日。
     回傳 (交易日, [{code,name,market,open,high,low,close,change,prev_close,volume,value,trades,avg}])"""
@@ -83,8 +86,10 @@ def fetch_quotes(d: date | None = None) -> tuple[date | None, list[dict]]:
     trade_date: date | None = None
 
     # --- 上市 ---
+    global LAST_TWSE_STAT
     if d is not None:
         js = get_json(U["twse_quotes_by_date"].format(yyyymmdd=d.strftime("%Y%m%d")))
+        LAST_TWSE_STAT = None if not js else js.get("stat")
         if js and js.get("stat") == "OK":
             trade_date = parse_date(js.get("date")) or d
             for r in table_rows(js, must_have="證券代號"):
@@ -238,7 +243,7 @@ def fetch_valuation() -> dict[str, dict]:
 
 # ------------------------------------------------------------------ 注意、處置
 
-def fetch_notices(start: date, end: date) -> list[dict]:
+def fetch_notices(start: date, end: date, tpex: bool = True) -> list[dict]:
     """注意股公告 [{date,code,name,market,clauses:[int],text}]"""
     out = []
     js = get_json(U["twse_notice"].format(start=start.strftime("%Y%m%d"), end=end.strftime("%Y%m%d")))
@@ -249,7 +254,7 @@ def fetch_notices(start: date, end: date) -> list[dict]:
         if is_common_stock(code) and d:
             out.append({"date": d.isoformat(), "code": code, "name": str(pick(r, "證券名稱", default="")).strip(),
                         "market": "TWSE", "clauses": parse_clauses(text), "text": text})
-    for r in get_json(U["tpex_notice"]) or []:
+    for r in (get_json(U["tpex_notice"]) or []) if tpex else []:
         code = str(pick(r, "SecuritiesCompanyCode", "證券代號", "Code", default="")).strip()
         text = str(pick(r, "TradingInformation", "注意交易資訊", "Information", default=""))
         d = parse_date(pick(r, "Date", "日期", default=""))
@@ -266,7 +271,7 @@ def _period(text: str) -> tuple[date | None, date | None]:
     return (ds[0], ds[-1]) if len(ds) >= 2 else (None, None)
 
 
-def fetch_punish(start: date, end: date) -> list[dict]:
+def fetch_punish(start: date, end: date, tpex: bool = True) -> list[dict]:
     """處置股 [{code,name,market,announce,start,end,minutes,reason,times}]"""
     out = []
     js = get_json(U["twse_punish"].format(start=start.strftime("%Y%m%d"), end=end.strftime("%Y%m%d")))
@@ -281,7 +286,7 @@ def fetch_punish(start: date, end: date) -> list[dict]:
                     "start": str(s or ""), "end": str(e or ""), "minutes": parse_minutes(body),
                     "reason": str(pick(r, "處置條件", default="")).strip(),
                     "times": cn_int(re.search(r"第([一二三四五\d]+)次", body).group(1)) if re.search(r"第([一二三四五\d]+)次", body) else 1})
-    for r in get_json(U["tpex_punish"]) or []:
+    for r in (get_json(U["tpex_punish"]) or []) if tpex else []:
         code = str(pick(r, "SecuritiesCompanyCode", "證券代號", "Code", default="")).strip()
         if not is_common_stock(code):
             continue
