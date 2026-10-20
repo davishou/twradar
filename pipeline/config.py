@@ -47,6 +47,9 @@ URLS = {
     # 季報 EPS
     "twse_eps": "https://openapi.twse.com.tw/v1/opendata/t187ap14_L",
     "tpex_eps": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap14_O",
+    # 除權除息預告表
+    "twse_exright": "https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL",
+    "tpex_exright": "https://www.tpex.org.tw/openapi/v1/tpex_exright_prepost",
     # 休市日
     "holidays": "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
     # 櫃買舊版依日期行情（新版失敗時備援）

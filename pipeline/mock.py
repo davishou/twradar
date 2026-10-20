@@ -171,23 +171,42 @@ class MockSource:
         out = []
         pick = rnd.sample(self.stocks, 40)
         m = (d.month - 2) % 12 + 1
+        roc = lambda x: f"{x.year - 1911}/{x.month:02d}/{x.day:02d}"  # noqa: E731
         for i, s in enumerate(pick):
             t = f"{rnd.randint(13, 21):02d}:{rnd.randint(0, 59):02d}"
-            base = {"date": d.isoformat(), "time": t, "code": s["code"], "name": s["name"], "market": s["market"], "clause": "第51款"}
+            base = {"date": d.isoformat(), "time": t, "code": s["code"], "name": s["name"], "market": s["market"], "clause": ""}
+            q_eps = round(s["eps"] / 4 * rnd.uniform(0.6, 1.4), 2)
             if i < 8:
-                eps = round(s["eps"] / 12 * rnd.uniform(0.4, 2.2), 2)
-                out.append({**base, "subject": f"本公司{d.year - 1911}年{m}月份自結損益公告",
-                            "body": f"1.事實發生日：{d.isoformat()}\n2.自結期間：{m}月\n3.營業收入：{rnd.randint(80, 900)}百萬元\n"
-                                    f"4.稅後淨利：{rnd.randint(-50, 300)}百萬元\n5.每股盈餘(元)：{eps}"})
-            elif i < 12:
+                eps = round(q_eps / 3 * rnd.uniform(0.4, 2.2), 2)
+                out.append({**base, "subject": "本公司有價證券於集中交易市場達公布注意交易資訊標準 故公布相關財務業務等重大訊息",
+                            "body": f"3.財務業務資訊:\n     科目       115年 {m}月    同期增減   115年第2季   同期增減   最近四季\n"
+                                    f"營業收入(百萬)   {rnd.randint(80, 900)}   {rnd.uniform(-30, 80):.2f}   {rnd.randint(300, 2500)}   12.3   4,000\n"
+                                    f"每股(虧損)盈餘(元)  {eps}   {rnd.uniform(-50, 120):.2f}   {q_eps}   15.2   {round(s['eps'], 2)}\n"})
+            elif i < 11:
                 lo = round(s["p0"] * 0.9, 1)
-                out.append({**base, "subject": "本公司董事會決議買回本公司股份",
-                            "body": f"1.買回股份目的：轉讓股份予員工\n2.買回股份種類：普通股\n3.預定買回股數：{rnd.randint(5, 30) * 100}張\n"
-                                    f"4.買回價格區間：{lo}元至{round(lo * 1.6, 1)}元\n5.預定買回期間：自{d.isoformat()}起兩個月"})
+                out.append({**base, "subject": "公告本公司董事會決議買回庫藏股事宜",
+                            "body": f"1.董事會決議日期:{roc(d)}\n2.買回股份目的:{rnd.choice(['轉讓股份予員工', '維護公司信用及股東權益', '註銷股份'])}\n"
+                                    f"5.預定買回之期間:{roc(d + timedelta(days=1))}~{roc(d + timedelta(days=60))}\n"
+                                    f"6.預定買回之數量(股):{rnd.randint(5, 30) * 100000:,}\n7.買回區間價格(元):{lo}~{round(lo * 1.6, 1)}"})
+            elif i < 15:
+                cum = round(q_eps * 3, 2)
+                out.append({**base, "subject": "公告本公司115年第3季合併財務報告業經董事會決議通過",
+                            "body": f"3.財務報告或年度自結財務資訊報導期間\n起訖日期(XXX/XX/XX~XXX/XX/XX):115/01/01~115/09/30\n"
+                                    f"4.1月1日累計至本期止營業收入(仟元):{rnd.randint(500000, 9000000):,}\n"
+                                    f"5.1月1日累計至本期止營業毛利(毛損) (仟元):{rnd.randint(100000, 900000):,}\n"
+                                    f"6.1月1日累計至本期止營業利益(損失) (仟元):{rnd.randint(50000, 500000):,}\n"
+                                    f"7.1月1日累計至本期止稅前淨利(淨損) (仟元):{rnd.randint(60000, 600000):,}\n"
+                                    f"10.1月1日累計至本期止基本每股盈餘(損失) (元):{cum}"})
+            elif i < 22:
+                ev = d + timedelta(days=rnd.randint(1, 15))
+                kind = rnd.choice(["法", "財", "息"])
+                subj, body = {"法": ("本公司受邀參加法人說明會", f"1.召開法人說明會之日期：{roc(ev)}"),
+                              "財": ("115年第3季財務報告董事會預計召開日期", f"2.董事會預計召開日期:{roc(ev)}"),
+                              "息": ("公告本公司訂定除息基準日", f"2.除權、息類別（請填入「除權」、「除息」或「除權息」）:除息\n4.除權（息）交易日:{roc(ev)}")}[kind]
+                out.append({**base, "subject": subj, "body": body})
             else:
-                subj = rnd.choice(["本公司受邀參加法人說明會", "公告本公司董事會決議發行國內第一次無擔保轉換公司債",
-                                   "澄清媒體報導", "公告本公司取得機器設備", "代子公司公告取得使用權資產",
-                                   "公告本公司董事會通過合併案", "公告本公司重要人事異動", "公告本公司董事會決議現金增資"])
+                subj = rnd.choice(["公告本公司董事會決議發行國內第一次無擔保轉換公司債", "澄清媒體報導", "公告本公司取得機器設備",
+                                   "代子公司公告取得使用權資產", "公告本公司董事會通過合併案", "公告本公司重要人事異動"])
                 out.append({**base, "subject": subj, "body": f"說明：{subj}，詳見公開資訊觀測站。"})
         return out
 

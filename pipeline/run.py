@@ -190,12 +190,23 @@ def job_disposal(src) -> None:
 
 
 def job_announce(src) -> None:
+    from . import findb
     today = latest_day()
     quotes = list(store.load_day(today).values()) if today else []
-    res = announce.build(src.fetch_material(), src.fetch_revenue(), src.fetch_eps(), quotes, today)
+    if src is sources:
+        st = store.state("findb_run", {}) or {}
+        if st.get("d") != date.today().isoformat():   # 財報資料庫一天更新一次
+            findb.update()
+            store.save_state("findb_run", {"d": date.today().isoformat()})
+        db = announce.update_material(sources.fetch_material_mops, now_tw().date())
+        material = [v for k, v in db.items() if not k.startswith("_")]
+        exr = sources.fetch_exrights()
+    else:
+        material, exr = src.fetch_material(), []
+    res = announce.build(material, src.fetch_revenue(), quotes, today, exr)
     brief.touch_meta("announce")
     brief.line_copy()
-    log.info("公告：自結 %d、季報 %d、營收 %d、庫藏 %d、事件 %d", *(len(res[k]) for k in ("att", "fin", "rev", "treasury", "events")))
+    log.info("公告：自結 %d、季報 %d、營收 %d、庫藏 %d、事件 %d、其他 %d", *(len(res[k]) for k in ("att", "fin", "rev", "treasury", "events", "others")))
 
 
 def job_borrow(src) -> None:

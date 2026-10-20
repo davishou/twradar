@@ -275,3 +275,31 @@ svg.bubble.focus .lk.quiet.hl{opacity:1}
 svg.bubble.focus .lb.hid.hl{opacity:1}
 svg.bubble.focus .lb.hid:not(.hl),svg.bubble.focus .lk.quiet:not(.hl){opacity:0}
 svg.bubble .vwt{paint-order:stroke;stroke:var(--bg);stroke-width:4px}
+
+/* 公告頁 */
+.ann-group{margin-top:18px}
+.ann-group .ann-h{font-size:17px;margin:0 0 8px;display:flex;align-items:baseline;gap:6px}
+.ann-group.hot .ann-h span:first-child{color:var(--warn)}
+.ann-group.hot .tw{border-color:var(--warn)}
+.ann-detail{padding:4px 2px;display:flex;flex-direction:column;gap:8px}
+.ann-detail h4{margin:0;font-size:14px}
+.ann-detail .btn{font-size:12px}
+pre.raw{margin:0;max-height:340px;overflow:auto;white-space:pre-wrap;font-size:12.5px;line-height:1.55;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.calc table{width:auto;min-width:420px}
+.score{display:inline-block;min-width:2.2em;text-align:center;font-weight:700;border-radius:4px;padding:0 5px;font-variant-numeric:tabular-nums}
+.score.s3{background:var(--up);color:#fff} .score.s2{background:var(--up-bg);color:var(--up);border:1px solid var(--up)} .score.s1{color:var(--up)}
+.score.n3{background:var(--down);color:#fff} .score.n2{background:var(--down-bg);color:var(--down);border:1px solid var(--down)} .score.n1{color:var(--down)}
+.score.z{color:var(--ink-3)}
+.code{font-variant-numeric:tabular-nums;color:var(--brand-2)}
+.numf{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--ink-2)}
+.numf input{width:5em;font:inherit;padding:2px 6px;border:1px solid var(--line);border-radius:4px;background:var(--paper);color:var(--ink)}
+#q{font:inherit;padding:3px 8px;border:1px solid var(--line);border-radius:4px;background:var(--paper);color:var(--ink)}
+.tag.ok{background:var(--down-bg);color:var(--down)} .tag.pur{background:var(--line-2);color:var(--brand-2)}
+.tag.ev-財{background:var(--warn-bg);color:var(--warn)} .tag.ev-法{background:var(--line-2);color:var(--brand-2)}
+.tag[class*="ev-息"],.tag[class*="ev-權"]{background:var(--up-bg);color:var(--up)}
+.prog{display:inline-block;width:46px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--down)}
+.revbars{display:flex;gap:10px;align-items:flex-end;padding:6px 0}
+.rb{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--ink-3)}
+.rb .rbv{width:26px;background:var(--brand-2);border-radius:3px 3px 0 0;min-height:2px}
+.rb b{color:var(--ink);font-weight:600}

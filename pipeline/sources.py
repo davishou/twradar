@@ -398,6 +398,27 @@ def fetch_material_mops(d: date) -> list[dict] | None:
     return out
 
 
+def fetch_exrights() -> list[dict]:
+    """上市、上櫃除權除息預告表 [{code,name,market,kind,from,to,detail}]"""
+    out = []
+    for r in get_json(U["twse_exright"]) or []:
+        d = parse_date(r.get("Date"))
+        code = str(r.get("Code", "")).strip()
+        if d and is_common_stock(code):
+            k = str(r.get("Exdividend", "")).replace("除", "")
+            out.append({"code": code, "name": str(r.get("Name", "")).strip(), "market": "TWSE", "kind": k or "息",
+                        "from": d.isoformat(), "to": d.isoformat(), "detail": f"現金股利 {r.get('CashDividend') or '—'}"})
+    for r in get_json(U["tpex_exright"]) or []:
+        d = parse_date(pick(r, "ExRrightsExDividendDate", "Date", default=""))
+        code = str(pick(r, "SecuritiesCompanyCode", default="")).strip()
+        if d and is_common_stock(code):
+            k = str(pick(r, "ExRrightsExDividend", default="")).replace("除", "")
+            out.append({"code": code, "name": str(pick(r, "CompanyName", default="")).strip(), "market": "TPEX",
+                        "kind": k or "息", "from": d.isoformat(), "to": d.isoformat(),
+                        "detail": f"現金股利 {num(pick(r, 'CashDividend', default=None)) or '—'}"})
+    return out
+
+
 def fetch_revenue() -> list[dict]:
     """月營收 [{ym,code,name,market,industry,rev,rev_prev,rev_ly,mom,yoy,cum,cum_yoy,note}]（單位：千元）"""
     out = []

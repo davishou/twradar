@@ -550,65 +550,156 @@ P.commentary = async (date) => {
 };
 
 // ---- 公告類 ----
-const tradedTag = r => r.traded ? '<span class="tag">已交易過</span>' : '<span class="tag warn" title="公告在最近一次收盤之後，股價還沒反應">尚未交易</span>';
 const newTag = r => r.new ? '<span class="tag new">新</span>' : "";
-const scoreTag = r => `<span class="tag ${r.score > 0 ? "up" : r.score < 0 ? "down" : ""}" title="${r.score_src === "ai" ? "AI 評分" : "規則評分"}${r.why ? "：" + esc(r.why) : ""}">${r.score > 0 ? "+" : ""}${r.score}</span>`;
-const baseCols = [
-  {k: "new", t: "", f: newTag, s: r => r.new ? 1 : 0},
-  {k: "time", t: "公告時間", f: r => `${md(r.date)} ${esc(r.time)}`, s: r => (r.date || "") + (r.time || "")},
-  {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
-];
-const pxCols = [{k: "close", t: "股價", n: 1, f: r => fp(r.close)}, {k: "chg", t: "當日漲跌", n: 1, f: r => pc(r.chg)}];
+const SCALE_TIP = "AI 依公告數字逐筆判斷，-9 ~ +9：\n+8~9 高度超預期｜+6~7 值得關注｜+4~5 有亮點待觀察\n+1~3 符合預期｜0 無特別資訊｜負分＝衰退警示\n\n沒有 AI 時改用規則分數（標示「規則」）。評分僅供參考。";
+const RUBRIC_TIP = {
+  att: "自結驚喜度：① 單月 EPS 對比上季月均（上季 EPS÷3）② 獲利趨勢能否延續 ③ 本業驅動優於業外",
+  fin: "季報驚喜度：① 單季 EPS 對比上季 ② 延續性 ③ 毛利率、營益率改善且業外占比低較佳",
+  rev: "營收：① 同樣成長率，營收規模越大越驚人；低基期的高年增扣分 ② 月增連續加速優於單月跳升 ③ 備註有具體產品/客戶/訂單加分",
+};
+function scoreTag(r) {
+  if (r.score == null) return '<span class="muted">—</span>';
+  const lv = r.score >= 6 ? "s3" : r.score >= 3 ? "s2" : r.score > 0 ? "s1" : r.score <= -6 ? "n3" : r.score <= -3 ? "n2" : r.score < 0 ? "n1" : "z";
+  return `<span class="score ${lv}" title="${r.score_src === "ai" ? "AI" : "規則"}評分${r.why ? "：" + esc(r.why) : ""}">${r.score > 0 ? "+" : ""}${r.score}</span>${r.score_src === "rule" ? '<span class="muted small"> 規則</span>' : ""}`;
+}
+const v2 = (x, d = 2) => x == null ? '<span class="muted">—</span>' : fx(x, d);
+const pct = x => x == null ? '<span class="muted">—</span>' : fx(x, 2) + "%";
+const MOPS = "https://mopsov.twse.com.tw/mops/web/t05sr01_1";
+const timeCol = {k: "time", t: "時間", f: r => `${md(r.date)} ${esc(r.time || "")}`, s: r => (r.date || "") + (r.time || "")};
+const idCols = [{k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`}, {k: "name", t: "名稱", f: r => `${stockLink(r.code, r.name)} ${newTag(r)}`}];
+const pxCols = [{k: "close", t: "股價", n: 1, f: r => fp(r.close)}, {k: "chg", t: "漲跌", n: 1, f: r => pc(r.chg)}];
+function rawBlock(r, extra = "") {
+  return `<div class="ann-detail">${extra}
+    <div class="row" style="justify-content:space-between"><h4>公告原文 <span class="muted small">${esc(r.date)} ${esc(r.time || "")}｜${esc(r.subject || "")}</span></h4>
+    <a class="btn" href="${MOPS}" target="_blank" rel="noopener">到觀測站查證</a></div>
+    <pre class="raw">${esc(r.body || "（沒有原文）")}</pre></div>`;
+}
 
+/* 公告頁共用：上方篩選，依「市場未反映／歷史」分組，點列展開原文與計算 */
 async function annPage(kind, title, sub, cols, opts = {}) {
   setTitle(title);
   const js = await load(`announce/${kind}.json`);
   const items = js?.items || [];
+  const groups = opts.groups || [[`市場未反映（${js?.cutoff || "最近收盤"} 後公告）`, r => !r.traded, "hot"], ["歷史公告", r => r.traded, ""]];
   app.innerHTML = `<h1>${title}</h1><p class="sub">${sub}</p>
-    <div class="toolbar"><span class="chips" id="f"></span><input type="search" id="q" placeholder="代號或名稱" aria-label="搜尋代號或名稱"><span class="small muted">更新 ${esc(js?.updated || "—")}，共 ${items.length} 筆</span></div>
-    <div id="t"></div>`;
-  let flt = "", q = "";
-  const t = table(document.getElementById("t"), cols, items, {sort: opts.sort, expand: opts.expand, id: r => r.key, empty: "目前沒有符合的公告"});
-  const apply = () => t.set(items.filter(r => (!flt || (opts.filters.find(f => f[0] === flt)[2])(r)) && (!q || r.code.includes(q) || (r.name || "").includes(q))));
+    <div class="toolbar"><span class="chips" id="f"></span>${opts.extraFilter || ""}<input type="search" id="q" placeholder="代號或名稱" aria-label="搜尋代號或名稱">
+      <span class="small muted">更新 ${esc(js?.updated || "—")}</span></div>
+    <div id="groups"></div>
+    <p class="small muted">${opts.foot || "資料來源：公開資訊觀測站（上市＋上櫃）。表格數字由程式從公告原文抽取，可能有誤，請點列展開對照原文，或到觀測站查證。"}</p>`;
+  const box = document.getElementById("groups");
+  box.innerHTML = groups.map((g, i) => `<section class="ann-group ${g[2]}"><h2 class="ann-h"><span>${esc(g[0])}</span> <span class="muted small" id="gc${i}"></span></h2><div id="gt${i}"></div></section>`).join("");
+  const tables = groups.map((g, i) => table(document.getElementById(`gt${i}`), cols, [],
+    {sort: opts.sort, expand: opts.expand, id: r => r.key, empty: "沒有資料"}));
+  let flt = "", q = "", extra = {};
   const filters = opts.filters || [];
+  function apply() {
+    const base = items.filter(r => (!flt || filters.find(f => f[0] === flt)[2](r)) && (!q || r.code.includes(q) || (r.name || "").includes(q))
+      && (!opts.extraApply || opts.extraApply(r, extra)));
+    groups.forEach((g, i) => { const rows = base.filter(g[1]); tables[i].set(rows); document.getElementById(`gc${i}`).textContent = `（${rows.length} 筆）`; });
+  }
   chips(document.getElementById("f"), [["", "全部"], ...filters.map(f => [f[0], f[1]])], "", v => { flt = v; apply(); });
   document.getElementById("q").oninput = e => { q = e.target.value.trim(); apply(); };
+  if (opts.extraBind) opts.extraBind(extra, apply);
+  apply();
 }
-const commonFilters = [["new", "本次新增", r => r.new], ["untraded", "尚未交易", r => !r.traded]];
 
-P.att = () => annPage("att", "自結速報", "公司自行結算的月或季損益。評分比較本次每月 EPS 與上一季財報月均 EPS（有 AI 金鑰時由 AI 評分）。", [
-  ...baseCols, {k: "period", t: "期間"}, {k: "eps", t: "EPS", n: 1, f: r => fx(r.eps)},
-  {k: "eps_monthly", t: "月均 EPS", n: 1, f: r => fx(r.eps_monthly)}, {k: "last_q_monthly", t: "上季月均", n: 1, f: r => fx(r.last_q_monthly)},
-  {k: "score", t: "評分", n: 1, f: scoreTag}, ...pxCols, {k: "traded", t: "反應", f: tradedTag, s: r => r.traded ? 1 : 0},
-], {sort: ["score", -1], filters: [...commonFilters, ["pos", "評分為正", r => r.score > 0]],
-   expand: r => `<div class="detail-grid"><div><h4>主旨</h4><p>${esc(r.subject)}</p></div><div><h4>評分理由</h4><p>${esc(r.why || (r.score_src === "rule" ? "規則評分：月均 EPS 相對上季月均的變化" : ""))}</p></div></div>`});
+P.att = () => annPage("att", "自結", "公司自行結算的月或季損益，包含交易所要求注意股公布的財務業務資訊。上季數字來自已公布的財報。", [
+  timeCol, ...idCols,
+  {k: "score", t: `AI ${tipBtn(SCALE_TIP + "\n\n" + RUBRIC_TIP.att)}`, n: 1, f: scoreTag, s: r => r.score ?? -99},
+  {k: "period", t: "期間", f: r => esc(r.period || "—")}, {k: "eps", t: "EPS", n: 1, f: r => v2(r.eps)},
+  {k: "eps_m", t: "月均 EPS", n: 1, f: r => v2(r.eps_m)}, {k: "gm", t: "毛利率", n: 1, f: r => pct(r.gm)}, {k: "om", t: "營益率", n: 1, f: r => pct(r.om)},
+  {k: "base_label", t: "上季", f: r => esc(r.base_label || "—")}, {k: "base_eps_m", t: "上季 EPS÷3", n: 1, f: r => v2(r.base_eps_m)},
+  {k: "base_eps", t: "上季 EPS", n: 1, f: r => v2(r.base_eps)}, {k: "base_gm", t: "上季毛利率", n: 1, f: r => pct(r.base_gm)},
+  {k: "base_om", t: "上季營益率", n: 1, f: r => pct(r.base_om)}, ...pxCols,
+], {sort: ["time", -1],
+  filters: [["beat", "月 EPS > 上季÷3", r => r.eps_m != null && r.base_eps_m != null && r.eps_m > r.base_eps_m],
+            ["gm", "毛利率成長", r => r.gm != null && r.base_gm != null && r.gm > r.base_gm],
+            ["om", "營益率成長", r => r.om != null && r.base_om != null && r.om > r.base_om],
+            ["pos", "AI 正分", r => r.score > 0]],
+  expand: r => rawBlock(r, `<div class="calc"><table><thead><tr><th></th><th class="n">本期（${esc(r.period || "—")}）</th><th class="n">月均</th><th class="n">上季（${esc(r.base_label || "—")}）</th><th class="n">上季月均</th></tr></thead>
+    <tbody><tr><td>EPS</td><td class="n">${v2(r.eps)}</td><td class="n">${v2(r.eps_m)}</td><td class="n">${v2(r.base_eps)}</td><td class="n">${v2(r.base_eps_m)}</td></tr>
+    <tr><td>營收(百萬)</td><td class="n">${v2(r.rev, 0)}</td><td></td><td></td><td></td></tr>
+    <tr><td>毛利率</td><td class="n">${pct(r.gm)}</td><td></td><td class="n">${pct(r.base_gm)}</td><td></td></tr>
+    <tr><td>營益率</td><td class="n">${pct(r.om)}</td><td></td><td class="n">${pct(r.base_om)}</td><td></td></tr></tbody></table>
+    <p class="small muted">${r.why ? `評分理由：${esc(r.why)}｜` : ""}${r.extracted_by === "ai" ? "數字由 AI 從原文抽取｜" : ""}月均＝本期 EPS ÷ 期間月數；上季月均＝上季 EPS ÷ 3。</p></div>`)});
 
-P.fin = () => annPage("fin", "季報速報", "最新一季財報 EPS，與上一季、去年同季比較。", [
-  ...baseCols, {k: "period", t: "季別"}, {k: "eps", t: "EPS", n: 1, f: r => fx(r.eps)}, {k: "eps_prev_q", t: "上季", n: 1, f: r => fx(r.eps_prev_q)},
-  {k: "eps_ly", t: "去年同季", n: 1, f: r => fx(r.eps_ly)},
-  {k: "qoq", t: "季增", n: 1, s: r => r.eps_prev_q ? (r.eps - r.eps_prev_q) / Math.abs(r.eps_prev_q) : null, f: r => r.eps_prev_q ? pc((r.eps - r.eps_prev_q) / Math.abs(r.eps_prev_q) * 100, 1) : "—"},
-  {k: "score", t: "評分", n: 1, f: scoreTag}, ...pxCols,
-], {sort: ["score", -1], filters: [["new", "本次新增", r => r.new], ["pos", "評分為正", r => r.score > 0], ["loss", "虧損", r => r.eps < 0]]});
+P.fin = () => annPage("fin", "季報", "董事會通過的季度財報。單季數字＝本期累計 − 上一季累計；上季數字來自觀測站的綜合損益表彙總。", [
+  timeCol, ...idCols,
+  {k: "score", t: `AI ${tipBtn(SCALE_TIP + "\n\n" + RUBRIC_TIP.fin)}`, n: 1, f: scoreTag, s: r => r.score ?? -99},
+  {k: "period", t: "期間"}, {k: "eps", t: "單季 EPS", n: 1, f: r => r.single_ok ? v2(r.eps) : `<span class="muted" title="缺上一季累計，暫無法換算單季">累計 ${v2(r.cum_eps)}</span>`},
+  {k: "gm", t: "毛利率", n: 1, f: r => pct(r.gm)}, {k: "om", t: "營益率", n: 1, f: r => pct(r.om)}, {k: "nonop_pct", t: "業外%", n: 1, f: r => pct(r.nonop_pct)},
+  {k: "prev_label", t: "上季", f: r => esc(r.prev_label || "—")}, {k: "prev_eps", t: "EPS", n: 1, f: r => v2(r.prev_eps)},
+  {k: "prev_gm", t: "毛利率", n: 1, f: r => pct(r.prev_gm)}, {k: "prev_om", t: "營益率", n: 1, f: r => pct(r.prev_om)},
+  {k: "prev_nonop_pct", t: "業外%", n: 1, f: r => pct(r.prev_nonop_pct)}, ...pxCols,
+], {sort: ["time", -1],
+  filters: [["gm", "毛利率成長", r => r.gm != null && r.prev_gm != null && r.gm > r.prev_gm],
+            ["om", "營益率成長", r => r.om != null && r.prev_om != null && r.om > r.prev_om],
+            ["eps", "EPS 成長", r => r.eps != null && r.prev_eps != null && r.eps > r.prev_eps], ["pos", "AI 正分", r => r.score > 0]],
+  expand: r => rawBlock(r, `<p class="small muted">${r.why ? `評分理由：${esc(r.why)}｜` : ""}累計 EPS ${v2(r.cum_eps)}；業外% ＝（稅前淨利 − 營業利益）÷ 稅前淨利。</p>`)});
 
-P.rev = () => annPage("rev", "營收速報", "上市櫃公司月營收。金額單位千元；有備註的通常是公司主動說明增減原因。", [
-  ...baseCols.filter(c => c.k !== "time"), {k: "ym", t: "年月"}, {k: "industry", t: "產業"},
-  {k: "rev", t: "當月營收(千元)", n: 1, f: r => fi(r.rev)}, {k: "mom", t: "月增", n: 1, f: r => pc(r.mom, 1)}, {k: "yoy", t: "年增", n: 1, f: r => pc(r.yoy, 1)},
-  {k: "cum_yoy", t: "累計年增", n: 1, f: r => pc(r.cum_yoy, 1)}, {k: "note", t: "備註", w: 1, f: r => esc(r.note || "")}, ...pxCols,
-], {sort: ["yoy", -1], filters: [["new", "本次新增", r => r.new], ["note", "有備註", r => r.has_note], ["plain", "無備註", r => !r.has_note], ["yoy30", "年增逾 30%", r => r.yoy >= 30]]});
+P.rev = () => annPage("rev", "營收", "上市櫃公司月營收。營收單位百萬元；偵測時間是程式第一次看到該公司申報的時間（誤差約 10 分鐘），不是正式公告時間。", [
+  ...idCols, {k: "score", t: `AI ${tipBtn(SCALE_TIP + "\n\n" + RUBRIC_TIP.rev)}`, n: 1, f: scoreTag, s: r => r.score ?? -99},
+  {k: "first_seen", t: "偵測時間", f: r => esc((r.first_seen || "").slice(5))},
+  {k: "rev", t: "營收(M)", n: 1, f: r => r.rev == null ? "—" : fx(r.rev / 1000, 1)},
+  {k: "mom", t: "MoM%", n: 1, f: r => pc(r.mom)}, {k: "yoy", t: "YoY%", n: 1, f: r => pc(r.yoy)}, {k: "cum_yoy", t: "累計 YoY%", n: 1, f: r => pc(r.cum_yoy)},
+  {k: "note", t: "備註", w: 1, sortable: false, f: r => `<span class="why">${esc(r.note || "")}</span>`},
+], {sort: ["first_seen", -1],
+  groups: [["市場未反映（最近收盤後首次偵測）", r => !r.traded, "hot"], ["已反映", r => r.traded, ""]],
+  filters: [["new", "僅新申報", r => r.new], ["ai", "有 AI 評分", r => r.score_src === "ai"], ["note", "有備註", r => !!r.note]],
+  extraFilter: `<label class="numf">YoY &gt; <input type="number" id="fy" inputmode="numeric" aria-label="YoY 大於">%</label><label class="numf">MoM &gt; <input type="number" id="fm" inputmode="numeric" aria-label="MoM 大於">%</label>`,
+  extraApply: (r, x) => (x.y == null || (r.yoy ?? -1e9) > x.y) && (x.m == null || (r.mom ?? -1e9) > x.m),
+  extraBind: (x, apply) => {
+    const on = (id, k) => document.getElementById(id).oninput = e => { const v = e.target.value; x[k] = v === "" ? null : +v; apply(); };
+    on("fy", "y"); on("fm", "m");
+  },
+  expand: r => {
+    const h = r.hist || [];
+    const mx = Math.max(1, ...h.map(x => x[1] || 0));
+    const bars = h.map(([ym, v]) => `<div class="rb"><div class="rbv" style="height:${Math.round((v || 0) / mx * 60)}px"></div><span>${esc(ym.slice(-2))}月</span><b>${fx((v || 0) / 1000, 0)}</b></div>`).join("");
+    return `<div class="ann-detail"><h4>近幾個月營收（百萬）</h4>${h.length > 1 ? `<div class="revbars">${bars}</div>` : '<p class="muted small">歷史月營收會隨每月申報逐步累積。</p>'}
+      ${r.why ? `<p class="small">評分理由：${esc(r.why)}</p>` : ""}<p class="small">${esc(r.note || "沒有備註")}</p></div>`;
+  }});
 
-P.treasury = () => annPage("treasury", "庫藏股", "董事會決議買回自家股票的公告。", [
-  ...baseCols, {k: "lots", t: "預定買回(張)", n: 1, f: r => fi(r.lots)},
-  {k: "low", t: "價格區間", f: r => r.low ? `${fp(r.low)}～${fp(r.high)}` : "—"},
+P.treasury = () => annPage("treasury", "庫藏股", "董事會決議買回自家股票。進度取自公司公告的執行結果；期間尚未結束的進度可能還沒公告。", [
+  {k: "market", t: "所", f: r => mk(r.market)}, ...idCols,
+  {k: "purpose", t: "目的", f: r => `<span class="tag ${r.purpose === "銷除" ? "pur" : r.purpose === "護盤" ? "warn" : "ok"}">${esc(r.purpose || "—")}</span>`},
+  {k: "lots", t: "預定(萬股)", n: 1, f: r => fx(r.lots, r.lots < 10 ? 1 : 0)},
+  {k: "low", t: "價格區間", n: 1, f: r => r.low ? `${fp(r.low)}~${fp(r.high)}` : "—"},
   {k: "pos", t: "現價位置", n: 1, s: r => r.low && r.close ? (r.close - r.low) / (r.high - r.low) : null,
-   f: r => r.low && r.close ? (r.close < r.low ? '<span class="down">低於下限</span>' : r.close > r.high ? '<span class="muted">高於上限</span>' : "區間內") : "—"},
-  ...pxCols, {k: "traded", t: "反應", f: tradedTag, s: r => r.traded ? 1 : 0},
-], {sort: ["time", -1], filters: commonFilters, expand: r => `<p style="white-space:pre-wrap;margin:0">${esc(r.body)}</p>`});
+   f: r => r.low && r.close ? (r.close < r.low ? '<span class="tag up">低於下限</span>' : r.close > r.high ? '<span class="muted">高於上限</span>' : `區間 ${Math.round((r.close - r.low) / (r.high - r.low) * 100)}%`) : "—"},
+  {k: "start", t: "期間", f: r => r.start ? `${md(r.start)}~${md(r.end)}` : "—"},
+  {k: "progress", t: "進度", n: 1, s: r => r.progress ?? -1, f: r => r.progress == null ? '<span class="muted">—</span>' : `<span class="prog"><i style="width:${Math.min(100, r.progress)}%"></i></span> ${r.progress}%`},
+  {k: "board", t: "決議日", f: r => md(r.board || r.date)}, ...pxCols,
+], {sort: ["board", -1],
+  groups: [["市場未反映（最近收盤後決議）", r => !r.traded, "hot"], ["執行中", r => r.traded && r.status !== "完成", ""], ["近期完成", r => r.traded && r.status === "完成", ""]],
+  filters: [["emp", "員工", r => r.purpose === "員工"], ["cut", "銷除", r => r.purpose === "銷除"], ["def", "護盤", r => r.purpose === "護盤"], ["below", "低於區間下限", r => r.close && r.low && r.close < r.low]],
+  expand: r => rawBlock(r, r.done_body ? `<h4>執行結果（${esc(r.done_date || "")}）</h4><pre class="raw">${esc(r.done_body)}</pre>` : "")});
 
-P.events = () => annPage("events", "重大事件", "其他重大訊息，依主旨自動分類。點一列看說明。", [
-  ...baseCols, {k: "kind", t: "類別", f: r => `<span class="tag">${esc(r.kind)}</span>`},
-  {k: "subject", t: "主旨", w: 1}, ...pxCols, {k: "traded", t: "反應", f: tradedTag, s: r => r.traded ? 1 : 0},
-], {sort: ["time", -1], filters: [...commonFilters, ...["併購", "增資/可轉債", "資產交易", "澄清", "訂單/合約"].map(k => [k, k, r => r.kind === k])],
-   expand: r => `<p style="white-space:pre-wrap;margin:0">${esc(r.body)}</p>`});
+P.events = async () => {
+  await annPage("events", "事件", "財報董事會、法說會、除權息的日期，以及從宣布日到現在的股價變化。日期由程式從公告原文抽取。", [
+    {k: "from", t: "預定", f: r => r.to && r.to !== r.from ? `${md(r.from)}-${md(r.to)}` : md(r.from), s: r => r.from},
+    {k: "kind", t: "類", f: r => `<span class="tag ev-${esc(r.kind)}">${esc(r.kind)}</span>`},
+    ...idCols,
+    {k: "ann_close", t: "宣布日股價", n: 1, f: r => r.ann_close ? `${fp(r.ann_close)} <span class="muted small">${md(r.ann_day || "")}</span>` : "—"},
+    {k: "close", t: "目前股價", n: 1, f: r => r.close ? `${fp(r.close)} <span class="muted small">+${r.days_since ?? 0} 日</span>` : "—"},
+    {k: "chg_since", t: "宣布後漲跌", n: 1, f: r => pc(r.chg_since)},
+  ], {sort: ["from", 1],
+    groups: [["即將舉行", r => r.upcoming, "hot"], ["近 10 天已舉行", r => !r.upcoming, ""]],
+    filters: [["財", "財報", r => r.kind === "財"], ["法", "法說", r => r.kind === "法"], ["權", "除權", r => r.kind.includes("權")], ["息", "除息", r => r.kind.includes("息")]],
+    expand: r => rawBlock(r),
+    foot: "資料來源：公開資訊觀測站重大訊息、證交所與櫃買中心除權除息預告表。宣布日股價＝公告當天（或之前最近一個交易日）的收盤。"});
+  const js = await load("announce/others.json");
+  const items = js?.items || [];
+  const sec = document.createElement("section");
+  sec.innerHTML = `<h2>其他重大訊息 <span class="muted small">（近 ${items.length} 筆，依主旨分類）</span></h2><div class="toolbar"><span class="chips" id="of"></span></div><div id="ot"></div>`;
+  app.append(sec);
+  let k = "";
+  const t = table(document.getElementById("ot"), [timeCol, ...idCols, {k: "kind", t: "類別", f: r => `<span class="tag">${esc(r.kind)}</span>`},
+    {k: "subject", t: "主旨", w: 1}, ...pxCols, {k: "traded", t: "反應", f: r => r.traded ? '<span class="muted">已交易</span>' : '<span class="tag warn">未反映</span>', s: r => r.traded ? 1 : 0}],
+    items, {sort: ["time", -1], expand: r => rawBlock(r), id: r => r.key});
+  const kinds = [...new Set(items.map(x => x.kind))];
+  chips(document.getElementById("of"), [["", "全部"], ...kinds.map(x => [x, x])], "", v => { k = v; t.set(items.filter(x => !k || x.kind === k)); });
+};
 
 P.borrow = async () => {
   setTitle("券差借券費率");

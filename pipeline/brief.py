@@ -63,8 +63,10 @@ def line_copy() -> dict:
     T = (disp.get("target") or "")[5:].replace("-", "/")
     m1 = disp.get("minus1", [])
     new = {k: [x for x in v if x.get("new") or not x.get("traded", True)] for k, v in ann.items()}
-    rev_note = [x for x in new["rev"] if x.get("has_note")]
-    rev_plain = [x for x in new["rev"] if not x.get("has_note")]
+    rev_note = [x for x in new["rev"] if x.get("note")]
+    rev_plain = [x for x in new["rev"] if not x.get("note")]
+    sc = lambda x: -(x.get("score") if x.get("score") is not None else -99)  # noqa: E731
+    fs = lambda v: "—" if v is None else f"{v:+d}"  # noqa: E731
     L = [f"{config.SITE_NAME} 盤前 LINE 轉貼版", config.SITE_URL, "",
          f"適用交易日：{T}", f"生成時間：{now_tw().strftime('%m/%d %H:%M')}",
          f"摘要：差1次就處置 {len(m1)} 檔、自結 {len(new['att'])}、季報 {len(new['fin'])}、"
@@ -75,18 +77,18 @@ def line_copy() -> dict:
         L += ["", "【處置出關】"] + [f"{d[5:].replace('-', '/')}：" + "、".join(f"{p['name']}({p['code']})" for p in ps)
                                 for d, ps in sorted(disp["releases"].items())]
     L += ["", "【自結速報｜評分排序】"]
-    L += [f"{i}. {a['name']}({a['code']})｜{a['score']:+d}｜{a['period']} EPS {a['eps']}，上季月均 {a['last_q_monthly']}"
-          for i, a in enumerate(sorted(new["att"], key=lambda x: -x["score"])[:10], 1)] or ["無新自結資料"]
+    L += [f"{i}. {a['name']}({a['code']})｜{fs(a.get('score'))}｜{a.get('period')} EPS {a.get('eps')}，上季月均 {a.get('base_eps_m')}"
+          for i, a in enumerate(sorted(new["att"], key=sc)[:10], 1)] or ["無新自結資料"]
     L += ["", "【季報速報｜評分排序】"]
-    L += [f"{i}. {a['name']}({a['code']})｜{a['score']:+d}｜{a['period']} EPS {a['eps']}，上季 {a['eps_prev_q']}"
-          for i, a in enumerate(sorted(new["fin"], key=lambda x: -x["score"])[:10], 1)] or ["無新季報資料"]
+    L += [f"{i}. {a['name']}({a['code']})｜{fs(a.get('score'))}｜{a.get('period')} EPS {a.get('eps')}，上季 {a.get('prev_eps')}"
+          for i, a in enumerate(sorted(new["fin"], key=sc)[:10], 1)] or ["無新季報資料"]
     L += ["", "【營收速報｜有備註】"]
     L += [f"{i}. {r['name']}({r['code']})｜YoY {r['yoy']}%｜{r['note']}" for i, r in enumerate(rev_note[:10], 1)] or ["無"]
     L += ["", "【營收速報｜無備註】"]
     L += [f"{i}. {r['name']}({r['code']})｜YoY {r['yoy']}%、MoM {r['mom']}%"
           for i, r in enumerate(sorted(rev_plain, key=lambda x: -(x['yoy'] or 0))[:10], 1)] or ["無"]
     L += ["", "【庫藏股】"]
-    L += [f"{i}. {t['name']}({t['code']})｜{t['lots'] or '—'}張｜{t['low']}~{t['high']}元"
+    L += [f"{i}. {t['name']}({t['code']})｜{t.get('purpose', '')}｜{t.get('lots') or '—'}萬股｜{t.get('low')}~{t.get('high')}元"
           for i, t in enumerate(new["treasury"][:10], 1)] or ["無新庫藏股公告"]
     L += ["", "本資訊由程式自動整理，僅供參考，不構成投資建議；請以證交所、櫃買中心與公開資訊觀測站公告為準。"]
     text = "\n".join(L)

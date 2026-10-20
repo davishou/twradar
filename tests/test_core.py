@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from pipeline import config
-from pipeline.announce import RE_EPS, _months, _period, _traded
+from pipeline.announce import _period_of, _traded, parse_att, parse_event, parse_fin, parse_treasury, pnum
 from pipeline.disposal import Calendar
 from pipeline.sources import cn_int, parse_clauses, parse_minutes
 from pipeline.util import limit_down, limit_up, num, parse_date, table_rows
@@ -49,10 +49,39 @@ class Parse(unittest.TestCase):
         self.assertEqual(parse_minutes("每20分鐘撮合"), 20)
 
     def test_eps(self):
-        m = RE_EPS.search("5.每股盈餘(元)：-0.30")
-        self.assertEqual(float(m.group(1)), -0.30)
-        self.assertEqual(_months(_period("前三季自結")), 9)
-        self.assertEqual(_months(_period("9月份自結損益")), 1)
+        self.assertEqual(pnum("(0.04)"), -0.04)
+        self.assertEqual(pnum("1,675"), 1675)
+        self.assertEqual(_period_of("前三季自結")[1], 9)
+        self.assertEqual(_period_of("9月份自結損益"), ("9月", 1))
+        self.assertEqual(_period_of("公告本公司115年第三季合併報表自結數"), ("Q3", 3))
+
+    def test_attention_formats(self):
+        twse = ("3.財務業務資訊:\n     科目       115年 9月    同期增減   115年第2季   同期增減   115年第2季\n"
+                "營業收入(百萬)         148       40.95          411   (16.29)         1,675\n"
+                "每股(虧損)盈餘(元)  (0.04)     (84.62)       (0.12)  (126.67)          1.56\n")
+        a = parse_att("本公司有價證券於集中交易市場達公布注意交易資訊標準 故公布相關財務業務等重大訊息", twse)
+        self.assertEqual((a["eps"], a["q_eps"], a["rev"], a["period"], a["q_label"]), (-0.04, -0.12, 148, "9月", "Q2"))
+        tpex = ("3.財務業務資訊:\n(1)單月\n (115年9月) (114年9月)\n營業收入(百萬元)  188  130  44.62%\n"
+                "每股盈餘(元)  0.72  0.26  176.92%\n(2)單季\n (115第2季)\n每股盈餘 (元)  1.17  0.49  138.78%\n")
+        b = parse_att("本公司有價證券近期多次達公佈注意交易資訊標準，故公告相關訊息", tpex)
+        self.assertEqual((b["eps"], b["q_eps"], b["rev"]), (0.72, 1.17, 188))
+        c = parse_att("公告本公司115年第三季合併報表自結數", "單季合併營業利益：NTD84,431仟元\n單季每股稅後盈餘：NTD0.62元")
+        self.assertEqual((c["eps"], c["period"]), (0.62, "Q3"))
+
+    def test_fin_treasury_event(self):
+        f = parse_fin("起訖日期(XXX/XX/XX~XXX/XX/XX):115/01/01~115/09/30\n4.1月1日累計至本期止營業收入(仟元):759,950\n"
+                      "5.1月1日累計至本期止營業毛利(毛損) (仟元):414,301\n6.1月1日累計至本期止營業利益(損失) (仟元):205,316\n"
+                      "7.1月1日累計至本期止稅前淨利(淨損) (仟元):229,247\n10.1月1日累計至本期止基本每股盈餘(損失) (元):3.02")
+        self.assertEqual((f["year"], f["q"], f["rev"], f["gross"], f["eps"]), (115, 3, 759950, 414301, 3.02))
+        t = parse_treasury("1.董事會決議日期:115/10/19\n2.買回股份目的:轉讓股份予員工\n5.預定買回之期間:115/10/20~115/12/18\n"
+                           "6.預定買回之數量(股):750,000\n7.買回區間價格(元):22.00~36.00，公司股價低於區間價格下限")
+        self.assertEqual((t["shares"], t["purpose"], t["low"], t["high"], t["start"], t["end"]), (750000, "員工", 22.0, 36.0, "2026-10-20", "2026-12-18"))
+        e = parse_event("光寶科技115年第三季法人說明會", "1.召開法人說明會之日期：115/10/30\n2.召開法人說明會之時間：14 時 00 分")
+        self.assertEqual((e["kind"], e["from"]), ("法", "2026-10-30"))
+        e = parse_event("115年第3季財務報告董事會預計召開日期為115年10月27日", "2.董事會預計召開日期:115/10/27")
+        self.assertEqual((e["kind"], e["from"]), ("財", "2026-10-27"))
+        e = parse_event("公告本公司訂定除息基準日", "2.除權、息類別（請填入「除權」、「除息」或「除權息」）:除息\n4.除權（息）交易日:115/11/02")
+        self.assertEqual((e["kind"], e["from"]), ("息", "2026-11-02"))
 
     def test_traded(self):
         self.assertTrue(_traded("2026-10-16", "10:00", date(2026, 10, 16)))
