@@ -793,6 +793,31 @@ function trig(o, dir) {
   if (o.status === "明日不可達" || o.status === "資料不足" || o.status === "歷史不足") return `<span class="muted">${o.status}</span>`;
   return `<b>${fp(o.price)}</b> ${dir}${pc(o.pct, 1)}`;
 }
+const XOK = ["可能", "跌停仍符合", "漲停仍符合"];
+function pcTxt(p) {
+  if (!p) return "—";
+  if (p.status === "跌停仍符合" || p.status === "漲停仍符合") return `<span class="warn">${p.status}</span>`;
+  if (p.status === "明日不可達") return `<span class="muted">需${p.dir === "up" ? "≥" : "≤"}${fp(p.price)}，明日不可達</span>`;
+  return `收盤${p.dir === "up" ? "≥" : "≤"}<b>${fp(p.price)}</b> ${pc(p.pct, 1)}`;
+}
+function xTag(st) {
+  if (XOK.includes(st)) return `<span class="tag up">可能</span>`;
+  if (st === "需集中度") return `<span class="tag warn">看集中度</span>`;
+  return `<span class="tag">${esc(st || "—")}</span>`;
+}
+function dispX(c) {
+  const c3 = c.c3 || {}, c4 = c.c4 || {}, c6 = c.c6 || {}, c7 = c.c7 || {};
+  const p = c3.price || c4.price || c7.price;
+  const pTxt = p ? `<p class="small muted">價格條件：6 日累積漲跌超過 ${p.th}% 且與全體平均差 20 個百分點以上（起點 ${md(p.base_date)} 收 ${fp(p.base)}，目前 ${pc(p.cum)}）</p>` : "";
+  return `<div><h4>③ 量放大 ${xTag(c3.status)}</h4>${c3.lots ? `<p>${pcTxt(c3.price)}</p><p>量 ≥ <b>${fi(c3.lots)}</b> 張（60 日均量 ${fi(c3.avg60)} 張的 ${c3.mult} 倍；全市場今日 ${c3.mkt_mult} 倍）</p><p class="small muted">今日為均量 ${c3.today_mult} 倍</p>` : "<p class='muted'>資料不足</p>"}${pTxt}</div>
+    <div><h4>④ 週轉率 ${xTag(c4.status)}</h4>${c4.lots ? `<p>${pcTxt(c4.price)}</p><p>量 ≥ <b>${fi(c4.lots)}</b> 張（週轉率 ≥ ${c4.to}%；全市場平均 ${c4.mkt_to}%）</p><p class="small muted">今日週轉率 ${c4.today_to}%</p>` : "<p class='muted'>資料不足</p>"}</div>
+    <div><h4>⑤ 單一券商占比</h4><p class="muted">需要全市場每檔股票的券商分點資料（櫃買分點有真人驗證、上市每檔都要解驗證碼），無法每天估算。</p></div>
+    <div><h4>⑥ 本益比／淨值比 ${xTag(c6.status)}</h4>${c6.price ? `<p>收盤 ≥ <b>${fp(c6.price)}</b> ${pc(c6.pct, 1)}，量 ≥ ${fi(c6.lots)} 張</p>
+      <p class="small">本益比 ${c6.loss ? "虧損（已符合）" : `${c6.pe} → 需 ≥ ${c6.pe_th}`}；淨值比 ${c6.pb} → 需 ≥ ${c6.pb_th}</p>
+      <p class="small muted">另需：淨值比 ≥ 產業平均${c6.ind_pb ? ` ${c6.ind_pb}` : ""} 的 ${c6.ind_mult} 倍，或單一券商／投資人成交占比過高${c6.status === "需集中度" ? "（產業條件達不到，只剩集中度，無法估算）" : ""}</p>` : `<p class="muted">${esc(c6.status || "資料不足")}</p>`}</div>
+    <div><h4>⑦ 券資比 ${xTag(c7.status)}</h4>${c7.ratio != null ? `<p>今日券資比 ${c7.ratio}%（6 日最低 ${c7.min6 ?? "—"}%），融資使用率 ${c7.fin_use}%、融券使用率 ${c7.short_use}%</p>
+      ${c7.fails?.length ? `<p class="small muted">未達：${c7.fails.map(esc).join("、")}</p>` : `<p>融資券條件已符合，${pcTxt(c7.price)}</p>`}` : `<p class="muted">${esc(c7.status || "資料不足")}</p>`}</div>`;
+}
 function dispDetail(c) {
   const c1 = c.c1;
   return `<div class="detail-grid">
@@ -803,7 +828,7 @@ function dispDetail(c) {
     <div><h4>明日價格範圍</h4><p>平盤 ${fp(c.limits.flat)}，漲停 ${fp(c.limits.up)}，跌停 ${fp(c.limits.down)}</p>
       <p>本益比 ${c.pe ?? "虧損或無"}，淨值比 ${c.pb ?? "—"}</p></div>
     <div><h4>注意股紀錄</h4><p>${c.record.map(r => `${md(r.date)}（第${r.clauses.join("、")}款）`).join("，")}</p></div>
-    <div><h4>第三~八款</h4><p class="muted">需成交量放大倍數、單一券商占比、融資券使用率等資料，本專案未估算，請參考交易所公告。</p></div>
+    ${dispX(c)}
   </div>`;
 }
 P.disposal = async () => {
@@ -811,7 +836,7 @@ P.disposal = async () => {
   const js = await load("disposal.json");
   if (!js) { app.innerHTML = `<h1>處置預測</h1>${emptyBox("尚未產生")}`; return; }
   app.innerHTML = `<h1>明日處置預測</h1>
-    <p class="sub">適用 ${js.target} 交易日。依注意股累計次數判斷還差幾次會被處置，並估算第一、二款的明日觸發價。條件為程式估算，不是交易所預告。</p>
+    <p class="sub">適用 ${js.target} 交易日。依注意股累計次數判斷還差幾次會被處置，並估算第一～四、六、七款的明日觸發條件（點一檔看細節）。條件為程式估算，不是交易所預告。${js.margin_date ? "" : "<br><span class=\"warn\">今日融資融券尚未公布，第七款暫無法判斷。</span>"}</p>
     <div class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">LINE 轉貼版</h2><button class="btn" id="cp" type="button">複製文字</button></div>
       <pre class="copy">${esc(js.line_text)}</pre></div>
     <h2><span class="up">差 1 次就處置</span>（${js.minus1.length} 檔）</h2><div id="m1"></div>
@@ -823,6 +848,7 @@ P.disposal = async () => {
     {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
     {k: "close", t: "收盤", n: 1, f: r => fp(r.close)}, {k: "main", t: "最接近的條件", f: r => esc(COND[r.main])},
     {k: "c1u", t: "第一款觸發", s: r => r.c1?.up?.pct, f: r => r.c1 ? (["可能", "跌停仍符合"].includes(r.c1.up.status) ? trig(r.c1.up, "↑") : ["可能", "漲停仍符合"].includes(r.c1.down.status) ? trig(r.c1.down, "↓") : '<span class="muted">明日不符合</span>') : "—"},
+    {k: "xs", t: "其他款", sortable: false, f: r => ["c3", "c4", "c6", "c7"].filter(k => XOK.includes(r[k]?.status) || r[k]?.status === "需集中度").map(k => `<span class="tag ${r[k].status === "需集中度" ? "" : "up"}">${"③④⑤⑥⑦"["c3c4c5c6c7".indexOf(k) / 2]}</span>`).join(" ") || '<span class="muted">—</span>'},
     {k: "earliest", t: "最快處置", f: r => `${md(r.earliest)} 第${r.times}次`},
     {k: "p1", t: "連3①", f: r => prog(r.progress.c1), sortable: false}, {k: "p2", t: "連5", f: r => prog(r.progress.any), sortable: false},
     {k: "p3", t: "10日6次", f: r => prog(r.progress.w10), sortable: false}, {k: "p4", t: "30日12次", f: r => prog(r.progress.w30), sortable: false},

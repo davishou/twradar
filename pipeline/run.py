@@ -3,7 +3,7 @@
   python -m pipeline.run daily          收盤後：行情、漲停族群、法人、券商分點、隔日表現、統計、氣氛（17:05）
   python -m pipeline.run daily 2026-10-16   重跑指定日（補漏抓的資料；分點只能抓最近一個交易日）
   python -m pipeline.run brokers        只重抓最近一個交易日失敗的分點
-  python -m pipeline.run disposal       處置預測（19:30）
+  python -m pipeline.run disposal       處置預測（21:45，融資融券約 21:00 後公布）
   python -m pipeline.run borrow         券差借券費率（20:08）
   python -m pipeline.run etf            主動 ETF 持股異動（22:30）
   python -m pipeline.run announce       自結/季報/營收/庫藏/事件（每 5 分鐘）
@@ -170,6 +170,24 @@ def job_brokers(src, td: date | None = None, daily: dict | None = None, inst: di
         log.exception("券商分點失敗：%s", e)
 
 
+def update_margin(src, today: date) -> dict:
+    """融資融券餘額歷史（第七款要近 6 日券資比）。缺的日子補抓，保留 8 個交易日"""
+    st = store.state("margin_hist", {}) or {}
+    data = st.get("data") or {}
+    days = [d.isoformat() for d in store.days_before(today, 7)]
+    for d in days:
+        if d in data or not hasattr(src, "fetch_margin"):
+            continue
+        got = src.fetch_margin(date.fromisoformat(d))
+        if got:
+            got.pop("_n", None)
+            data[d] = got
+    data = {k: v for k, v in data.items() if k in days}
+    store.save_state("margin_hist", {"data": data})
+    have = sorted(data)
+    return {"today": today.isoformat() if today.isoformat() in data else None, "days": have, "data": data}
+
+
 def job_disposal(src) -> None:
     today = latest_day()
     if not today:
@@ -182,7 +200,9 @@ def job_disposal(src) -> None:
         quotes = list(store.load_day(today).values())
     notices = src.fetch_notices(today - timedelta(days=50), today)
     punish = src.fetch_punish(today - timedelta(days=45), today)
-    res = disposal.build(today, quotes, notices, punish, src.fetch_holidays(), src.fetch_valuation())
+    margin = update_margin(src, today)
+    res = disposal.build(today, quotes, notices, punish, src.fetch_holidays(), src.fetch_valuation(),
+                         companies(src), margin)
     brief.touch_meta("disposal", today)
     brief.line_copy()
     log.info("處置預測 → %s：差1次 %d 檔、差2次 %d 檔、處置中 %d 檔", res["target"], len(res["minus1"]),

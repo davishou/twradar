@@ -460,6 +460,44 @@ def fetch_eps() -> list[dict]:
 
 # ------------------------------------------------------------------ 券差借券費率
 
+def _margin_rows(js) -> dict[str, list]:
+    """融資融券彙總表 → {code: [資餘額, 資限額, 券餘額, 券限額]}（張）。
+    證交所表頭資、券兩段同名（今日餘額、限額），所以用位置判斷。"""
+    out: dict[str, list] = {}
+    tables = (js or {}).get("tables") or [js or {}]
+    for t in tables:
+        f = [re.sub(r"\s|\(.*?\)", "", str(x)) for x in (t.get("fields") or [])]
+        rows = t.get("data") or t.get("aaData") or []
+        if not f or not rows:
+            continue
+        if "資餘額" in f and "券餘額" in f:  # 櫃買
+            idx = [f.index("資餘額"), next((i for i, x in enumerate(f) if x == "資限額"), None),
+                   f.index("券餘額"), next((i for i, x in enumerate(f) if x == "券限額"), None)]
+        else:
+            bal = [i for i, x in enumerate(f) if x.endswith("今日餘額")]
+            lim = [i for i, x in enumerate(f) if x.endswith("限額")]
+            if len(bal) < 2 or len(lim) < 2:
+                continue
+            idx = [bal[0], lim[0], bal[1], lim[1]]
+        if None in idx:
+            continue
+        for r in rows:
+            code = str(r[0]).strip()
+            if is_common_stock(code):
+                out[code] = [num(r[i]) for i in idx]
+    return out
+
+
+def fetch_margin(d: date) -> dict[str, list] | None:
+    """指定日上市＋上櫃融資融券餘額與限額；當日尚未公布回 None"""
+    a = _margin_rows(get_json(U["twse_margin"].format(yyyymmdd=d.strftime("%Y%m%d"))))
+    b = _margin_rows(get_json(U["tpex_margin"].format(yyyy=d.year, mm=f"{d.month:02d}", dd=f"{d.day:02d}")))
+    log.info("融資融券 %s：上市 %d、上櫃 %d", d, len(a), len(b))
+    if not a and not b:
+        return None
+    return {**a, **b, "_n": [len(a), len(b)]}
+
+
 def fetch_borrow_fee(d: date) -> list[dict]:
     """[{date,code,name,market,lots,rate}]：rate 為日費率 %"""
     out = []

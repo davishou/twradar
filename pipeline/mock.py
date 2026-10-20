@@ -100,6 +100,21 @@ class MockSource:
     def fetch_holidays(self):
         return set()
 
+    def fetch_margin(self, d: date):
+        """融資融券：少數股票券資比在最近幾天放大"""
+        out = {}
+        for s in self.stocks:
+            rnd = random.Random(f"m{s['code']}")
+            hot = rnd.random() < 0.15
+            lim = s["shares"] / 1000 * 0.25
+            fin = lim * rnd.uniform(0.1, 0.5)
+            r = rnd.uniform(0.02, 0.06)
+            if hot:
+                k = (d.toordinal() % 7) / 6
+                r = r * (1 + 5 * k)
+            out[s["code"]] = [round(fin), round(lim), round(fin * r), round(lim * 0.4)]
+        return out
+
     def fetch_companies(self):
         return {s["code"]: {k: s[k] for k in ("code", "name", "market", "industry_code", "industry", "capital", "shares")}
                 for s in self.stocks}

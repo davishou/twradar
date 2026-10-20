@@ -55,6 +55,8 @@ URLS = {
     # 櫃買舊版依日期行情（新版失敗時備援）
     "tpex_quotes_by_date_legacy": "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc}&se=EW",
     # 應付現股當日沖銷券差借券費率
+    "twse_margin": "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={yyyymmdd}&selectType=ALL&response=json",
+    "tpex_margin": "https://www.tpex.org.tw/www/zh-tw/margin/balance?date={yyyy}/{mm}/{dd}&response=json",
     "twse_borrow_fee": "https://www.twse.com.tw/rwd/zh/dayTrading/BFIF8U?date={yyyymmdd}&response=json",
     "tpex_borrow_fee": "https://www.tpex.org.tw/www/zh-tw/dayTrading/fee?date={yyyy}/{mm}/{dd}&response=json",
     # 三大法人買賣超（個股）
@@ -88,6 +90,15 @@ DISPOSAL_RULES = {
         "c2": [(30, 1.00, 0.80), (60, 1.40, 0.80), (90, 1.60, 0.80)],
     },
     "c1_diff": 0.20,
+    # 第三、四、六、七款（交易所／櫃買『異常標準之詳細數據』）
+    "TWSE_X": {"cum": 0.25, "c3_mult": 5, "c3_mkt": 4, "c3_min_lots": 500, "c3_min_to": 0.001,
+               "c4_to": 0.10, "c4_mkt": 0.05,
+               "c6_pe": 60, "c6_pb": 6, "c6_to": 0.05, "c6_lots": 3000, "c6_ind": 4,
+               "c7_ratio": 0.20, "c7_fin": 0.25, "c7_short": 0.15, "c7_mult": 4},
+    "TPEX_X": {"cum": 0.27, "c3_mult": 5, "c3_mkt": 4, "c3_min_lots": 300, "c3_min_to": 0.01,
+               "c4_to": 0.05, "c4_mkt": 0.03,
+               "c6_pe": 65, "c6_pb": 4, "c6_to": 0.05, "c6_lots": 2000, "c6_ind": 2,
+               "c7_ratio": 0.10, "c7_fin": 0.20, "c7_short": 0.10, "c7_mult": 4},
     # 處置條件（次數）
     "consec_c1": 3,      # 連續 3 日第一款
     "consec_any": 5,     # 連續 5 日第 1~7 款
