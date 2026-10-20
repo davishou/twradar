@@ -129,7 +129,7 @@ def broker_targets(td: date, daily: dict | None, inst: dict | None) -> list[dict
     return out
 
 
-def retheme_history(src, days: int = 30) -> None:
+def retheme_history(src, days: int = 120) -> None:
     """有 AI 之後，一次性把近 N 天仍用官方產業別的漲停股重新分類（結果寫回 themes.json），再重建隔日與統計"""
     from . import ai
     if src is not sources or not ai.enabled() or (store.state("retheme", {}) or {}).get("v") == 1:

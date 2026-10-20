@@ -179,35 +179,78 @@ def build_nextday(d: date, quotes: list[dict]) -> dict | None:
     return res
 
 
-def build_stats(window: int = 60) -> dict:
+def build_stats(window: int = 150) -> dict:
+    """統計頁資料：每日漲停家數與隔日強度、族群跨日統計、族群輪動（近 14 日矩陣）、個股隔日報酬"""
     ds = daily_dates()[-window:]
-    series, theme_agg, stock_hist = [], defaultdict(lambda: {"days": 0, "total": 0, "nd": [], "last": ""}), {}
+    series, stock_hist = [], {}
+    theme_agg = defaultdict(lambda: {"days": 0, "total": 0, "o": [], "a": [], "c": [], "last": "", "emoji": "📈"})
+    stock_agg = defaultdict(lambda: {"name": "", "n": 0, "o": [], "a": [], "c": []})
     nd_by_limit = {}
     p = OUT / "nextday"
     for f in sorted(p.glob("*.json")) if p.exists() else []:
         js = read_json(f)
         if js:
             nd_by_limit[js["limit_date"]] = js
+    mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else None  # noqa: E731
+    matrix = defaultdict(dict)   # theme -> date -> {n, close}
+    recent = ds[-14:]
     for d in ds:
         dj = load_daily(d)
         if not dj:
             continue
         nd = nd_by_limit.get(d.isoformat())
         ndm = {x["code"]: x for x in (nd or {}).get("stocks", [])}
+        sm = (nd or {}).get("summary", {})
         series.append({"date": d.isoformat(), "count": dj["count"], "twse": dj["twse"], "tpex": dj["tpex"],
                        "groups": dj["n_groups"], "top": dj["groups"][0]["theme"] if dj["groups"] else "",
-                       "nd_close": (nd or {}).get("summary", {}).get("close_avg"),
-                       "nd_win": (nd or {}).get("summary", {}).get("close_win")})
+                       "cont": sm.get("cont"), "nd_open": sm.get("open_avg"), "nd_avg": sm.get("avg_avg"),
+                       "nd_close": sm.get("close_avg"), "nd_win": sm.get("close_win"),
+                       "nd_date": (nd or {}).get("date")})
         for gg in dj["groups"]:
             t = theme_agg[gg["theme"]]
             t["days"] += 1
             t["total"] += gg["count"]
             t["last"] = d.isoformat()
             t["emoji"] = gg["emoji"]
+        gnd = {g["theme"]: g for g in (nd or {}).get("groups", [])}
         for s in dj["stocks"]:
             n = ndm.get(s["code"])
             if n:
-                theme_agg[s["theme"]]["nd"].append(n["ret_close"])
+                t = theme_agg[s["theme"]]
+                t["o"].append(n["ret_open"]); t["a"].append(n["ret_avg"]); t["c"].append(n["ret_close"])
+                st = stock_agg[s["code"]]
+                st["name"] = s["name"]; st["n"] += 1
+                st["o"].append(n["ret_open"]); st["a"].append(n["ret_avg"]); st["c"].append(n["ret_close"])
+        if d in recent:
+            for gg in dj["groups"]:
+                matrix[gg["theme"]][d.isoformat()] = {"n": gg["count"], "close": (gnd.get(gg["theme"]) or {}).get("close")}
+    total_days = len(series)
+    themes_tbl = []
+    for t, v in theme_agg.items():
+        themes_tbl.append({"theme": t, "emoji": v["emoji"], "days": v["days"], "total": v["total"], "last": v["last"],
+                           "open": mean(v["o"]), "avg": mean(v["a"]), "close": mean(v["c"]), "nd_n": len(v["c"]),
+                           "nd_win": round(sum(x > 0 for x in v["c"]) / len(v["c"]) * 100, 1) if v["c"] else None})
+    themes_tbl.sort(key=lambda x: (-x["total"], -x["days"]))
+    stocks_tbl = [{"code": c, "name": v["name"], "n": v["n"], "open": mean(v["o"]), "avg": mean(v["a"]), "close": mean(v["c"])}
+                  for c, v in stock_agg.items()]
+    stocks_tbl.sort(key=lambda x: (-x["n"], -(x["close"] or -99)))
+    # 族群輪動：最新一天出現的族群 + 最近完成隔日統計日的收盤表現
+    rot = []
+    last_done = next((x for x in reversed(series) if x["nd_close"] is not None), None)
+    for t, cells in matrix.items():
+        v = theme_agg[t]
+        r14 = [cells.get(d.isoformat(), {}) for d in recent]
+        cl = [c["close"] for c in r14 if c.get("close") is not None]
+        rot.append({"theme": t, "emoji": v["emoji"], "today": cells.get(recent[-1].isoformat(), {}).get("n", 0) if recent else 0,
+                    "spark": [c.get("n", 0) for c in r14], "closes": [c.get("close") for c in r14],
+                    "last_close": cells.get(last_done["date"], {}).get("close") if last_done else None,
+                    "n14": sum(c.get("n", 0) for c in r14), "d14": sum(1 for c in r14 if c.get("n")), "avg14": mean(cl)})
+    rot.sort(key=lambda x: -(x["last_close"] if x["last_close"] is not None else -99))
+    res = {"window": total_days, "series": series, "themes": themes_tbl, "stocks": stocks_tbl[:400],
+           "rotation": {"dates": [d.isoformat() for d in recent], "last_done": last_done["date"] if last_done else None,
+                        "items": rot},
+           "avg_count": round(sum(s["count"] for s in series) / len(series), 1) if series else 0}
+    write_json(OUT / "stats.json", res)
     # 個股履歷用全部歷史
     for d in daily_dates():
         dj = load_daily(d)
@@ -218,15 +261,6 @@ def build_stats(window: int = 60) -> dict:
             n = ndm.get(s["code"], {})
             h["events"].append({"date": d.isoformat(), "theme": s["theme"], "streak": s["streak"], "close": s["close"],
                                 "nd_open": n.get("ret_open"), "nd_close": n.get("ret_close"), "tag": n.get("tag")})
-    themes_tbl = []
-    for t, v in theme_agg.items():
-        nd = v["nd"]
-        themes_tbl.append({"theme": t, "emoji": v.get("emoji", "📈"), "days": v["days"], "total": v["total"], "last": v["last"],
-                           "nd_n": len(nd), "nd_avg": round(sum(nd) / len(nd), 2) if nd else None,
-                           "nd_win": round(sum(x > 0 for x in nd) / len(nd) * 100, 1) if nd else None})
-    themes_tbl.sort(key=lambda x: (-x["total"], -x["days"]))
-    res = {"window": len(series), "series": series, "themes": themes_tbl,
-           "avg_count": round(sum(s["count"] for s in series) / len(series), 1) if series else 0}
-    write_json(OUT / "stats.json", res)
     write_json(OUT / "stock_history.json", stock_hist)
+    return res
     return res

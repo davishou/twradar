@@ -503,34 +503,93 @@ P.stats = async () => {
   setTitle("漲停統計");
   const st = await load("stats.json");
   if (!st || !st.series.length) { app.innerHTML = `<h1>統計</h1>${emptyBox("資料累積中")}`; return; }
-  const S = st.series, W = 900, H = 220, pad = 28, bw = (W - pad * 2) / S.length, mx = Math.max(...S.map(x => x.count), 1);
-  const bars = S.map((x, i) => {
-    const h = (H - pad * 2) * x.count / mx, X = pad + i * bw, Y = H - pad - h;
-    return `<rect x="${X + 1}" y="${Y}" width="${Math.max(bw - 2, 1)}" height="${h}" fill="var(--up)" opacity=".75"><title>${x.date}：${x.count} 檔（${esc(x.top)}）${x.nd_win != null ? `，隔日收盤勝率 ${x.nd_win}%` : ""}</title></rect>` +
-      (i % Math.ceil(S.length / 8) === 0 ? `<text x="${X + bw / 2}" y="${H - 8}" text-anchor="middle">${md(x.date)}</text>` : "");
-  }).join("");
-  const avgY = H - pad - (H - pad * 2) * st.avg_count / mx;
-  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="近 ${S.length} 個交易日漲停家數">
-    <line x1="${pad}" x2="${W - pad}" y1="${avgY}" y2="${avgY}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
-    <text x="${W - pad}" y="${avgY - 5}" text-anchor="end">平均 ${st.avg_count}</text>
-    <text x="${pad}" y="14">${mx}</text>${bars}</svg>`;
-  app.innerHTML = `<h1>漲停統計</h1><p class="sub">近 ${st.window} 個交易日的漲停家數，與各族群出現頻率、隔日表現。</p>
-    <div class="chart">${svg}</div>
-    <h2>族群排行</h2><div id="t"></div>
-    <h2>每日紀錄</h2><div id="d"></div>`;
-  const maxT = Math.max(...st.themes.map(t => t.total), 1);
-  table(document.getElementById("t"), [
+  const S = st.series;
+  const R = st.rotation || {dates: [], items: []};
+  const ld = R.last_done ? md(R.last_done) : "";
+  app.innerHTML = `<h1>漲停統計</h1><p class="sub">漲停日 ${S[0].date} ～ ${S[S.length - 1].date}，共 ${st.window} 個交易日。跨日看漲停家數、族群輪動與隔日延續力。</p>
+    <h2>漲停後隔日強度</h2>
+    <p class="small muted">柱體是漲停家數（紅色深的部分是隔天續漲停），折線是這批漲停股隔日的開盤、均價、收盤平均報酬。滑過可看當天數字。</p>
+    <div class="chart combo" id="combo"></div><div class="combo-info" id="ci"></div>
+    <h2>族群輪動</h2>
+    <p class="small muted">焦點：最新一天或 ${ld} 有漲停的族群，依 ${ld} 漲停股的隔日收盤漲跌排序；小長條是近 14 個交易日每天的漲停檔數，顏色是隔日收盤表現。矩陣：所有近 14 日出現過的族群。點族群會篩選下方族群表與個股表。</p>
+    <div class="toolbar"><span class="chips" id="rv"></span></div>
+    <div id="rot"></div>
+    <div class="heat-legend legend-scale"><span>色階（隔日收盤）：</span>${[["≥+8%", "c5"], ["+4~+8%", "c4"], ["+1~+4%", "c3"], ["±1%", "c2"], ["-1~-4%", "c1"], ["<-4%", "c0"], ["待隔日", "cn"]].map(([t, c]) => `<i class="hc ${c}"></i>${t}`).join(" ")}</div>
+    <h2>族群跨日統計</h2><p class="small muted">按族群彙總出現天數、漲停股數與隔日平均報酬。</p><div id="tt"></div>
+    <h2>個股隔日報酬</h2><p class="small muted">個股漲停後隔日的平均報酬（天＝期間內漲停次數）。</p>
+    <div class="toolbar"><input type="search" id="sq" placeholder="股號或名稱" aria-label="搜尋股號或名稱"></div><div id="st"></div>`;
+  // ---- 組合圖
+  const W = 1000, H = 300, ml = 40, mr = 48, mt = 16, mb = 30, n = S.length, bw = (W - ml - mr) / n;
+  const mx = Math.max(...S.map(x => x.count), 1);
+  const rets = S.flatMap(x => [x.nd_open, x.nd_avg, x.nd_close]).filter(v => v != null);
+  const rmax = Math.max(4, ...rets.map(Math.abs)), rlim = Math.ceil(rmax / 2) * 2;
+  const Yc = v => H - mb - (H - mt - mb) * v / mx, Yr = v => mt + (H - mt - mb) * (rlim - v) / (2 * rlim);
+  let g = "";
+  for (let v = -rlim; v <= rlim; v += rlim / 2) g += `<line class="grid" x1="${ml}" x2="${W - mr}" y1="${Yr(v)}" y2="${Yr(v)}"/><text class="ax" x="${W - mr + 6}" y="${Yr(v) + 4}">${v > 0 ? "+" : ""}${v}%</text>`;
+  [0, Math.round(mx / 2), mx].forEach(v => g += `<text class="ax" x="${ml - 6}" y="${Yc(v) + 4}" text-anchor="end">${v}</text>`);
+  S.forEach((x, i) => {
+    const X = ml + i * bw, cont = x.cont || 0;
+    g += `<rect class="cb" x="${X + 0.5}" y="${Yc(x.count)}" width="${Math.max(bw - 1, 1)}" height="${Yc(0) - Yc(x.count)}"/>`;
+    if (cont) g += `<rect class="cc" x="${X + 0.5}" y="${Yc(cont)}" width="${Math.max(bw - 1, 1)}" height="${Yc(0) - Yc(cont)}"/>`;
+    if (i % Math.ceil(n / 10) === 0) g += `<text class="ax" x="${X + bw / 2}" y="${H - 10}" text-anchor="middle">${md(x.date)}</text>`;
+    g += `<rect class="hit" data-i="${i}" x="${X}" y="${mt}" width="${bw}" height="${H - mt - mb}"/>`;
+  });
+  const line = (k, c) => { const pts = S.map((x, i) => x[k] == null ? null : `${(ml + i * bw + bw / 2).toFixed(1)},${Yr(x[k]).toFixed(1)}`);
+    let d = "", on = false; pts.forEach(p => { if (p) { d += (on ? "L" : "M") + p; on = true; } else on = false; }); return `<path class="ln ${c}" d="${d}"/>`; };
+  g += line("nd_open", "lo") + line("nd_avg", "la") + line("nd_close", "lc");
+  g += `<line class="zero" x1="${ml}" x2="${W - mr}" y1="${Yr(0)}" y2="${Yr(0)}"/><line class="cur" id="cur" x1="0" x2="0" y1="${mt}" y2="${H - mb}" visibility="hidden"/>`;
+  const combo = document.getElementById("combo");
+  combo.innerHTML = `<div class="legend"><span><i class="sw cc"></i>續漲停</span><span><i class="sw cb"></i>其餘漲停</span><span><i class="ln-s lo"></i>開盤</span><span><i class="ln-s la"></i>均價</span><span><i class="ln-s lc"></i>收盤</span></div>
+    <div class="bk-scroll"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="每日漲停家數與隔日報酬">${g}</svg></div>`;
+  const info = document.getElementById("ci");
+  const show = i => { const x = S[i]; if (!x) return;
+    info.innerHTML = `<b>${md(x.date)} 漲停 ${x.count} 檔</b>${x.nd_date ? ` → ${md(x.nd_date)} 隔日｜續漲停 ${x.cont ?? "—"} 檔｜開盤 ${pc(x.nd_open)}｜均價 ${pc(x.nd_avg)}｜收盤 ${pc(x.nd_close)}｜收盤勝率 ${x.nd_win == null ? "—" : fx(x.nd_win, 1) + "%"}` : "｜隔日待統計"}｜最大族群 ${esc(x.top)}`;
+    const c = combo.querySelector("#cur"), X = ml + i * bw + bw / 2; c.setAttribute("x1", X); c.setAttribute("x2", X); c.setAttribute("visibility", "visible"); };
+  combo.onpointermove = e => { const h = e.target.closest(".hit"); if (h) show(+h.dataset.i); };
+  show(S.findLastIndex(x => x.nd_close != null));
+  // ---- 族群輪動
+  const hc = v => v == null ? "cn" : v >= 8 ? "c5" : v >= 4 ? "c4" : v >= 1 ? "c3" : v > -1 ? "c2" : v > -4 ? "c1" : "c0";
+  let view = "focus", pickT = "";
+  const spark = (arr, closes) => { const m = Math.max(1, ...arr); return `<svg class="spk" viewBox="0 0 ${arr.length * 8} 24" aria-hidden="true">${arr.map((v, i) => `<rect class="hc ${hc(closes[i])}" x="${i * 8 + 1}" y="${24 - Math.max(v ? 3 : 1, v / m * 22)}" width="6" height="${Math.max(v ? 3 : 1, v / m * 22)}"/>`).join("")}</svg>`; };
+  function drawRot() {
+    const box = document.getElementById("rot");
+    if (view === "focus") {
+      box.className = "rot-cards";
+      const focus = R.items.filter(x => x.today || x.last_close != null);
+      box.innerHTML = focus.map(x => `<button type="button" class="rcard ${x.theme === pickT ? "on" : ""}" data-t="${esc(x.theme)}">
+        <div class="rh"><b>${esc(x.emoji)} ${esc(x.theme)}</b><span class="muted small">今日 ${x.today}</span></div>
+        ${spark(x.spark, x.closes)}
+        <div class="rf"><span class="muted small">${ld} 收盤</span><b class="${sign(x.last_close)}">${x.last_close == null ? "—" : (x.last_close > 0 ? "+" : "") + fx(x.last_close) + "%"}</b></div>
+        <div class="rf small muted"><span>近 14 日 ${x.n14} 檔 / ${x.d14} 天</span><span class="${sign(x.avg14)}">${x.avg14 == null ? "" : (x.avg14 > 0 ? "+" : "") + fx(x.avg14) + "%"}</span></div></button>`).join("");
+    } else {
+      box.className = "tw";
+      box.innerHTML = `<table class="matrix"><thead><tr><th scope="col">族群</th>${R.dates.map(d => `<th class="n" scope="col">${md(d)}</th>`).join("")}</tr></thead><tbody>
+        ${R.items.map(x => `<tr class="click ${x.theme === pickT ? "sel" : ""}" data-t="${esc(x.theme)}"><td>${esc(x.emoji)} ${esc(x.theme)}</td>${x.spark.map((v, i) => `<td class="n"><span class="hm hc ${v ? hc(x.closes[i]) : "c-"}" title="${v ? `${v} 檔，隔日收盤 ${x.closes[i] == null ? "待隔日" : fx(x.closes[i]) + "%"}` : ""}">${v || ""}</span></td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    }
+  }
+  document.getElementById("rot").onclick = e => { const b = e.target.closest("[data-t]"); if (!b) return; pickT = pickT === b.dataset.t ? "" : b.dataset.t; drawRot(); drawTables(); };
+  chips(document.getElementById("rv"), [["focus", "焦點"], ["matrix", "矩陣"]], view, v => { view = v; drawRot(); });
+  // ---- 族群表、個股表
+  const tt = table(document.getElementById("tt"), [
     {k: "theme", t: "族群", f: r => `${esc(r.emoji)} ${esc(r.theme)}`},
-    {k: "total", t: "累計漲停檔次", n: 1, f: r => `<span class="bar" style="width:${Math.round(r.total / maxT * 80)}px"></span> ${r.total}`},
-    {k: "days", t: "出現天數", n: 1}, {k: "nd_avg", t: "隔日收盤平均", n: 1, f: r => pc(r.nd_avg)},
-    {k: "nd_win", t: "隔日勝率", n: 1, f: r => r.nd_win == null ? "—" : `${fx(r.nd_win, 1)}% <span class="muted small">n=${r.nd_n}</span>`},
-    {k: "last", t: "最近出現", f: r => `<a href="#/daily/${r.last}">${r.last}</a>`},
-  ], st.themes, {sort: ["total", -1]});
-  table(document.getElementById("d"), [
-    {k: "date", t: "日期", f: r => `<a href="#/daily/${r.date}">${r.date}</a>`}, {k: "count", t: "漲停", n: 1},
-    {k: "twse", t: "上市", n: 1}, {k: "tpex", t: "上櫃", n: 1}, {k: "groups", t: "族群數", n: 1}, {k: "top", t: "最大族群"},
-    {k: "nd_close", t: "隔日收盤平均", n: 1, f: r => pc(r.nd_close)}, {k: "nd_win", t: "隔日勝率", n: 1, f: r => r.nd_win == null ? "—" : fx(r.nd_win, 1) + "%"},
-  ], S, {sort: ["date", -1]});
+    {k: "days", t: "天數", n: 1, f: r => `${r.days}<span class="muted small">/${st.window}</span>`}, {k: "total", t: "股數", n: 1},
+    {k: "open", t: "開盤", n: 1, f: r => pc(r.open)}, {k: "avg", t: "均價", n: 1, f: r => pc(r.avg)}, {k: "close", t: "收盤", n: 1, f: r => pc(r.close)},
+    {k: "nd_win", t: "收盤勝率", n: 1, f: r => r.nd_win == null ? "—" : fx(r.nd_win, 1) + "%"},
+    {k: "last", t: "最近出現", f: r => `<a href="#/daily/${r.last}">${md(r.last)}</a>`},
+  ], [], {sort: ["total", -1]});
+  const themeOf = {};
+  Object.entries(await load("stock_history.json") || {}).forEach(([c, h]) => themeOf[c] = new Set(h.events.map(e => e.theme)));
+  let sq = "";
+  const stt = table(document.getElementById("st"), [
+    {k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
+    {k: "n", t: "天", n: 1}, {k: "open", t: "開盤", n: 1, f: r => pc(r.open)}, {k: "avg", t: "均價", n: 1, f: r => pc(r.avg)}, {k: "close", t: "收盤", n: 1, f: r => pc(r.close)},
+  ], [], {sort: ["n", -1]});
+  function drawTables() {
+    tt.set(st.themes.filter(x => !pickT || x.theme === pickT));
+    stt.set((st.stocks || []).filter(x => (!pickT || themeOf[x.code]?.has(pickT)) && (!sq || x.code.includes(sq) || x.name.includes(sq))));
+  }
+  document.getElementById("sq").oninput = e => { sq = e.target.value.trim(); drawTables(); };
+  drawRot(); drawTables();
 };
 
 P.commentary = async (date) => {
