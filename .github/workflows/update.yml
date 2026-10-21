@@ -40,6 +40,8 @@ jobs:
       SITE_URL: ${{ vars.SITE_URL }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main   # 排隊等很久的工作也要從最新資料開始，避免存回時衝突
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
