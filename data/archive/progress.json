@@ -94,11 +94,11 @@
   "2026-10-09"
  ],
  "fails": {},
- "last_run": "2026-10-21 23:17",
- "oldest": "2021-10-21",
- "n_days": 1214,
- "stopped": "時間到",
- "complete": false,
+ "last_run": "2026-10-21 23:18",
+ "oldest": "2021-10-20",
+ "n_days": 1215,
+ "stopped": "完成",
+ "complete": true,
  "notice_months": [
   "2021-10",
   "2021-11",
