@@ -336,3 +336,10 @@ pre.raw{margin:0;max-height:340px;overflow:auto;white-space:pre-wrap;font-size:1
 table.matrix td,table.matrix th{padding:4px 6px}
 .hm{display:inline-block;min-width:22px;padding:1px 4px;border-radius:3px;color:#fff;font-weight:600;font-size:12px;text-align:center}
 .hm.cn{color:var(--ink)}
+
+/* 密碼頁 */
+body.locked > header, body.locked > main, body.locked > footer, body.locked > .mockbar{display:none}
+.gate{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);padding:16px;z-index:50}
+.gate-card{width:min(340px,100%);display:grid;gap:12px;padding:28px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.gate-card h1{margin:0}
+.gate-card input[type=password]{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink)}

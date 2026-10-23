@@ -94,6 +94,12 @@ jobs:
             git pull --rebase --autostash && git push
           fi
 
+      - name: 密碼頁（GitHub Secret SITE_PASSWORD；沒設就不鎖）
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: |
+          python -c "import hashlib,os,json; p=os.environ.get('SITE_PASSWORD','').strip(); json.dump({'h': hashlib.sha256(('twradar:'+p).encode()).hexdigest()} if p else {}, open('site/gate.json','w'))"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

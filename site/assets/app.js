@@ -968,7 +968,41 @@ tb.onclick = () => {
   try { localStorage.setItem("theme", document.documentElement.dataset.theme); } catch {}
 };
 
+/* 簡單密碼頁：gate.json 由部署流程依 GitHub Secret SITE_PASSWORD 產生（只放雜湊）。
+   沒設密碼時 gate.json 為空，網站照常開放。這是擋一般訪客用，不是真正的帳號安全。 */
+async function sha256(t) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+async function gate() {
+  let g = {};
+  try { const r = await fetch("gate.json", {cache: "no-cache"}); if (r.ok) g = await r.json(); } catch {}
+  if (!g.h) return;
+  let saved = "";
+  try { saved = localStorage.getItem("gate") || sessionStorage.getItem("gate") || ""; } catch {}
+  if (saved === g.h) return;
+  document.body.classList.add("locked");
+  const box = document.createElement("div");
+  box.className = "gate";
+  box.innerHTML = `<form class="gate-card" autocomplete="on">
+      <h1>盤後雷達</h1><p class="sub">請輸入密碼</p>
+      <input type="password" id="gp" autocomplete="current-password" aria-label="密碼" required autofocus>
+      <label class="small"><input type="checkbox" id="gr" checked> 這台裝置記住我</label>
+      <button class="btn" type="submit">進入</button><p class="small up" id="ge" role="alert"></p></form>`;
+  document.body.appendChild(box);
+  await new Promise(done => {
+    box.querySelector("form").onsubmit = async e => {
+      e.preventDefault();
+      const h = await sha256("twradar:" + document.getElementById("gp").value);
+      if (h !== g.h) { document.getElementById("ge").textContent = "密碼不正確"; return; }
+      try { (document.getElementById("gr").checked ? localStorage : sessionStorage).setItem("gate", h); } catch {}
+      box.remove(); document.body.classList.remove("locked"); done();
+    };
+  });
+}
+
 (async () => {
+  await gate();
   META = await load("meta.json") || {};
   if (META.site_name) { document.getElementById("siteName").textContent = META.site_name; }
   document.getElementById("mockbar").hidden = !META.mock;
