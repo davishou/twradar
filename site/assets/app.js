@@ -249,10 +249,10 @@ const LEGEND = `<div class="bk-legend"><span><i class="dot up"></i>買進</span>
 /* refs: [{v, label, cls}] 右側價位標記；隔日頁用來標開盤/均價/收盤 */
 function bubbleSVG(bk, B, refs = []) {
   const W = 1000, H = 480, ml = 74, mr = refs.length ? 96 : 24, mt = 26, mb = 44, cx = ml + (W - ml - mr) / 2, half = (W - ml - mr) / 2 - 34;
-  const top = B.slice().sort((a, c) => c.tot - a.tot).slice(0, 20);  // 只畫成交量前 20 大，避免擁擠
+  const top = B.slice().sort((a, c) => c.tot - a.tot).slice(0, 35);  // 畫成交量前 35 大；線條、外框、字都用細的，維持清爽
   const maxV = Math.max(1, ...top.map(x => Math.max(x.b, x.s)));
   const X = (v, side) => cx + side * (8 + Math.sqrt(v / maxV) * half);
-  const R = v => 3 + Math.sqrt(v / maxV) * 24;
+  const R = v => 2.5 + Math.sqrt(v / maxV) * 20;
   const vw = vwapOf(B);
   const prices = top.flatMap(x => [x.b ? x.ba : null, x.s ? x.sa : null]).concat(refs.map(r => r.v), [bk.close, vw]).filter(v => v != null);
   const limit = bk.limit || bk.close;
@@ -281,12 +281,12 @@ function bubbleSVG(bk, B, refs = []) {
   });
   g += `<text class="side up" x="${ml + 8}" y="${mt + 4}">← 買進</text><text class="side down" x="${W - mr - 8}" y="${mt + 4}" text-anchor="end">賣出 →</text>`;
   const links = [], dots = [], cand = [];
-  // 只常駐顯示當沖張數前 5 大的連線，其餘滑過時才出現
+  // 所有買賣同時有的券商都畫細連線；當沖張數前 5 大稍粗一點
   const dtTop = new Set(top.filter(x => x.b && x.s).sort((p, q) => Math.min(q.b, q.s) - Math.min(p.b, p.s)).slice(0, 5).map(x => x.n));
   top.forEach(x => {
     const a = x.b ? {cx: X(x.b, -1), cy: Y(x.ba), r: R(x.b)} : null, c = x.s ? {cx: X(x.s, 1), cy: Y(x.sa), r: R(x.s)} : null;
     const n = esc(x.n);
-        if (a && c) links.push(`<line class="lk ${x.sa > x.ba ? "gold" : "silver"} ${dtTop.has(x.n) ? "" : "quiet"}" data-n="${n}" x1="${a.cx.toFixed(1)}" y1="${a.cy.toFixed(1)}" x2="${c.cx.toFixed(1)}" y2="${c.cy.toFixed(1)}" style="stroke-width:${(1 + x.dt * 2.5).toFixed(2)}"/>`);
+        if (a && c) links.push(`<line class="lk ${x.sa > x.ba ? "gold" : "silver"} ${dtTop.has(x.n) ? "top" : ""}" data-n="${n}" x1="${a.cx.toFixed(1)}" y1="${a.cy.toFixed(1)}" x2="${c.cx.toFixed(1)}" y2="${c.cy.toFixed(1)}" style="stroke-width:${(dtTop.has(x.n) ? 1.1 + x.dt * 1.2 : .7).toFixed(2)}"/>`);
     [[a, "b", x.b], [c, "s", x.s]].forEach(([p, sd, v]) => { if (!p) return;
       dots.push([p.r, `<circle class="bb ${sd}" data-n="${n}" cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" r="${p.r.toFixed(1)}"/>`]);
       cand.push({n, v, x: p.cx, y: p.cy - p.r - 5}); });
@@ -294,8 +294,8 @@ function bubbleSVG(bk, B, refs = []) {
   // 標籤：依張數由大到小放，和已放的標籤重疊就先藏起來（滑過時才顯示）
   const placed = [], labels = [];
   cand.sort((p, q) => q.v - p.v).forEach(c => {
-    const w = c.n.length * 11 + 6, box = [c.x - w / 2, c.y - 12, c.x + w / 2, c.y + 2];
-    const hit = placed.length >= 10 || placed.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]));
+    const w = c.n.length * 9.5 + 4, box = [c.x - w / 2, c.y - 10, c.x + w / 2, c.y + 2];
+    const hit = placed.length >= 24 || placed.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]));
     if (!hit) placed.push(box);
     labels.push(`<text class="lb ${hit ? "hid" : ""}" data-n="${c.n}" x="${c.x.toFixed(1)}" y="${c.y.toFixed(1)}" text-anchor="middle">${c.n}</text>`);
   });
