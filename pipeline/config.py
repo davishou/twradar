@@ -69,6 +69,11 @@ URLS = {
     "isin_tpex": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4",
     # 公司基本資料（主要經營業務），給 AI 判斷族群用
     "mops_profile": "https://mopsov.twse.com.tw/mops/web/ajax_t05st03",
+    # 指定日期本益比、殖利率、股價淨值比（上市 2005 起、上櫃）
+    "twse_pe_by_date": "https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?date={yyyymmdd}&selectType=ALL&response=json",
+    "tpex_pe_by_date": "https://www.tpex.org.tw/www/zh-tw/afterTrading/peQryDate?date={yyyy}/{mm}/{dd}&response=json",
+    # 歷史月營收（公開資訊觀測站靜態頁，102 年起；_0 國內公司、_1 外國公司 KY）
+    "mops_revenue_month": "https://mopsov.twse.com.tw/nas/t21/{typek}/t21sc03_{roc}_{m}_{kind}.html",
     # 公開資訊觀測站：指定日期的全部重大訊息（含內文），一次一個請求
     "mops_material_day": "https://mopsov.twse.com.tw/mops/web/t05st02",
 }

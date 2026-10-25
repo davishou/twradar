@@ -36,7 +36,11 @@ COLS = {
                 "vol_ratio", "turnover", "locked", "one_price", "reason"],
     "notices": ["date", "code", "name", "market", "clauses", "text"],
     "punish": ["announce", "code", "name", "market", "start", "end", "minutes", "times", "reason"],
+    "val": ["code", "pe", "pb", "dy"],                                     # 每日本益比、股價淨值比、殖利率
+    "revenue": ["code", "name", "market", "rev", "rev_prev", "rev_ly", "mom", "yoy", "cum", "cum_ly", "cum_yoy", "note"],  # 每月（千元）
+    "fin": ["code", "market", "rev", "gross", "op", "nonop", "pretax", "eps"],  # 每季累計數（千元、元）
 }
+INST_START = date(2012, 5, 2)    # 證交所三大法人日報最早日期；櫃買更早的也查無資料
 
 
 def path(kind: str, d: date | str) -> Path:
@@ -84,7 +88,7 @@ def read(kind: str, d: date | str) -> list[dict]:
 
 
 def days(kind: str) -> list[str]:
-    return sorted(p.name[:10] for p in (ROOT / kind).glob("*/*.csv.gz"))
+    return sorted(p.name[:-len(".csv.gz")] for p in (ROOT / kind).glob("*/*.csv.gz"))
 
 # ------------------------------------------------------------------ 每日寫入
 
@@ -99,6 +103,10 @@ def save_inst(d: date, inst: dict) -> None:
 def save_margin(d: date, margin: dict) -> None:
     write("margin", d, [{"code": c, "fin_bal": v[0], "fin_lim": v[1], "short_bal": v[2], "short_lim": v[3]}
                         for c, v in margin.items() if not c.startswith("_")])
+
+
+def save_val(d: date, val: dict) -> None:
+    write("val", d, [{"code": c, **v} for c, v in val.items()])
 
 
 def save_limitup(d: date, daily: dict) -> None:
@@ -136,6 +144,80 @@ def save_punish(punish: list[dict]) -> None:
         for p in ps:
             old[(p["code"], p["start"])] = p
         write("punish", d, list(old.values()))
+
+# ------------------------------------------------------------------ 基本面（月營收、季報）
+
+FUND_START = (2013, 1)    # 觀測站 IFRS 月營收、綜合損益表彙總從 102 年起
+
+
+def _q_deadline(y: int, q: int) -> date:
+    """季報法定公布期限（Q1 5/15、Q2 8/14、Q3 11/14、Q4 隔年 3/31）"""
+    return {1: date(y, 5, 15), 2: date(y, 8, 14), 3: date(y, 11, 14), 4: date(y + 1, 3, 31)}[q]
+
+
+def backfill_fundamentals(src, minutes: float = 20, delay: float = 4.0) -> dict:
+    """回補月營收（每月一檔）與季報累計數（每季一檔），2013 起。
+    已過公布期限 7 天後抓到的才算完成；期限內的會每次重抓（陸續有公司公布）。觀測站拒絕就停，下次續。"""
+    from . import findb
+    t0 = time.time()
+    st = _progress()
+    fd = st.setdefault("fund", {"revenue": {}, "fin": {}})
+    today = date.today()
+    stopped, n_rev, n_fin = "", 0, 0
+    # 月營收：由新到舊
+    y, m = today.year, today.month - 1 or 12
+    if today.month == 1:
+        y -= 1
+    while (y, m) >= FUND_START:
+        if time.time() - t0 > minutes * 60:
+            stopped = "時間到"
+            break
+        key = f"{y}-{m:02d}"
+        final = fd["revenue"].get(key, "") >= (date(y + (m == 12), m % 12 + 1, 1) + timedelta(days=20)).isoformat()
+        if not (final and has("revenue", key)):
+            rows = src.fetch_revenue_month(y, m)
+            if rows is None:
+                stopped = "月營收被拒或失敗"
+                break
+            write("revenue", key, rows)
+            fd["revenue"][key] = today.isoformat()
+            n_rev += 1
+        y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+    # 季報：由新到舊
+    if not stopped:
+        y, q = today.year, (today.month - 1) // 3
+        if q == 0:
+            y, q = y - 1, 4
+        while (y, q) >= (FUND_START[0], 1):
+            if time.time() - t0 > minutes * 60:
+                stopped = "時間到"
+                break
+            key = f"{y}Q{q}"
+            final = fd["fin"].get(key, "") >= (_q_deadline(y, q) + timedelta(days=7)).isoformat()
+            if not (final and has("fin", key)):
+                rows = []
+                for typek, market in (("sii", "TWSE"), ("otc", "TPEX")):
+                    got = findb.fetch_quarter(typek, y - 1911, q)
+                    time.sleep(delay)
+                    if got is None:
+                        stopped = "季報被拒或失敗"
+                        break
+                    rows += [{"code": c, "market": market, **v} for c, v in got.items()]
+                if stopped:
+                    break
+                if rows:
+                    write("fin", key, rows)
+                    fd["fin"][key] = today.isoformat()
+                    n_fin += 1
+            y, q = (y, q - 1) if q > 1 else (y - 1, 4)
+    st = _progress()
+    st["fund"] = fd
+    st["fund_run"] = {"at": time.strftime("%Y-%m-%d %H:%M"), "revenue": n_rev, "fin": n_fin, "stopped": stopped or "完成",
+                      "revenue_months": len(days("revenue")), "fin_quarters": len(days("fin"))}
+    _save_progress(st)
+    log.info("基本面回補：月營收 %d 個月、季報 %d 季，狀態：%s", n_rev, n_fin, stopped or "完成")
+    return st["fund_run"]
+
 
 # ------------------------------------------------------------------ 還原因子
 
@@ -217,7 +299,9 @@ def backfill(src, years: int | None = None, minutes: float = 40, delay: float = 
     st["start"] = start.isoformat()
     closed = set(st.get("closed", []))
     fails = st.get("fails", {})
-    miss = st.setdefault("miss", {"inst": {}, "margin": {}})          # 次要資料查無的次數
+    miss = st.setdefault("miss", {})                                   # 次要資料查無的次數
+    for k in ("inst", "margin", "val"):
+        miss.setdefault(k, {})
     gave_up = {k: set(v) for k, v in st.get("gave_up", {}).items()}   # 已放棄的日子（多半是那時還沒有這種資料）
     no_tpex = set(st.get("no_tpex", []))
     seeded = seed_from_history()
@@ -232,7 +316,8 @@ def backfill(src, years: int | None = None, minutes: float = 40, delay: float = 
         if d.weekday() >= 5 or ds in closed or fails.get(ds, 0) >= 3:
             d -= timedelta(days=1)
             continue
-        need = [k for k in ("quotes", "inst", "margin") if not has(k, d) and ds not in gave_up.get(k, set())]
+        need = [k for k in ("quotes", "inst", "margin", "val") if not has(k, d) and ds not in gave_up.get(k, set())
+                and not (k == "inst" and d < INST_START)]
         if not need:
             d -= timedelta(days=1)
             continue
@@ -251,7 +336,8 @@ def backfill(src, years: int | None = None, minutes: float = 40, delay: float = 
                 if not any(q["market"] == "TPEX" for q in quotes):
                     no_tpex.add(ds)
                     log.warning("%s 只有上市行情", ds)
-        for kind, fetch, save in (("inst", src.fetch_institutional, save_inst), ("margin", src.fetch_margin, save_margin)):
+        for kind, fetch, save in (("inst", src.fetch_institutional, save_inst), ("margin", src.fetch_margin, save_margin),
+                                  ("val", getattr(src, "fetch_valuation_by_date", lambda d: None), save_val)):
             if not ok or kind not in need:
                 continue
             got = fetch(d)
@@ -297,7 +383,7 @@ def backfill(src, years: int | None = None, minutes: float = 40, delay: float = 
 def _year_summary(no_tpex: set, gave_up: dict) -> dict:
     """每年各類資料的天數（給人看回補到哪、哪些資料舊年份沒有）"""
     out: dict[str, dict] = {}
-    for kind in ("quotes", "inst", "margin", "notices", "punish"):
+    for kind in ("quotes", "inst", "margin", "val", "notices", "punish"):
         for ds in days(kind):
             out.setdefault(ds[:4], {}).setdefault(kind, 0)
             out[ds[:4]][kind] += 1

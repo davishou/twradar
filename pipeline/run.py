@@ -297,8 +297,12 @@ def backfill(n: int) -> None:
 
 def job_history(minutes: float = 40) -> None:
     """長期資料庫：分批回補行情／法人／融資融券（先 10 年、再到 2004）、上市注意處置股、同步漲停族群、重算還原因子"""
-    st = archive.backfill(sources, minutes=minutes)          # 先 10 年，補完自動延伸到 2004
+    st = archive.backfill(sources, minutes=minutes * 0.7)    # 先 10 年，補完自動延伸到 2004
     archive.backfill_notices(sources)
+    try:
+        archive.backfill_fundamentals(sources, minutes=minutes * 0.25)   # 月營收、季報歷史（2013 起）
+    except Exception as e:  # noqa: BLE001
+        log.exception("基本面回補失敗：%s", e)
     archive.sync_limitup()
     try:
         job_treasury(minutes=10)          # 庫藏股回補沒補完就順便續補；補完後幾乎不花時間

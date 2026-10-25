@@ -319,3 +319,34 @@ class HistoryBackfill(unittest.TestCase):
             self.assertEqual(archive.target_start({"stage1_done": "x"}), archive.EARLIEST)
         finally:
             archive.ROOT, archive.seed_from_history, cfg.HTTP_DELAY = old
+
+
+class Fundamentals(unittest.TestCase):
+    def test_revenue_html_and_backfill(self):
+        import tempfile
+        from pathlib import Path
+        from pipeline import archive, findb
+        from pipeline.sources import parse_revenue_html
+        page = ("<tr align=right><td align=center>1101</td><td align=left>台泥</td><td nowrap> 14,321,556</td>"
+                "<td nowrap> 13,515,534</td><td nowrap> 13,306,676</td><td nowrap> 5.96</td><Td nowrap> 7.62</td>"
+                "<td nowrap> 113,048,525</td><td nowrap> 109,438,297</td><td nowrap> 3.29</td><td align=center>-</td></tr>")
+        r = parse_revenue_html(page)[0]
+        self.assertEqual((r["code"], r["rev"], r["yoy"], r["cum_yoy"], r["note"]), ("1101", 14321556, 7.62, 3.29, ""))
+        old = (archive.ROOT, findb.fetch_quarter, archive.time.sleep)
+        archive.ROOT = Path(tempfile.mkdtemp())
+        findb.fetch_quarter = lambda typek, y, q: {"1101": {"eps": 1.0, "rev": 10.0}}
+        archive.time.sleep = lambda s: None
+        try:
+            class Src:
+                def fetch_revenue_month(self, y, m):
+                    return [{**r, "market": "TWSE"}]
+            st = archive.backfill_fundamentals(Src(), minutes=5)
+            self.assertEqual(st["stopped"], "完成")
+            self.assertGreater(st["revenue_months"], 150)
+            self.assertGreater(st["fin_quarters"], 50)
+            self.assertIn("2013-01", archive.days("revenue"))
+            self.assertIn("2013Q1", archive.days("fin"))
+            st2 = archive.backfill_fundamentals(Src(), minutes=5)
+            self.assertLess(st2["revenue"], 3)          # 已完成的月份不再抓
+        finally:
+            archive.ROOT, findb.fetch_quarter, archive.time.sleep = old

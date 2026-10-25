@@ -55,6 +55,7 @@ jobs:
             !/data/archive/quotes/
             !/data/archive/inst/
             !/data/archive/margin/
+            !/data/archive/val/
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import date, timedelta
 
 from . import config
@@ -135,13 +136,35 @@ def fetch_quotes(d: date | None = None) -> tuple[date | None, list[dict]]:
     return trade_date, out
 
 
+def _resp_date(js) -> date | None:
+    """櫃買回應裡的資料日期（tables[0].date 或 reportDate，民國或西元）"""
+    if not isinstance(js, dict):
+        return None
+    for v in [*(t.get("date") for t in js.get("tables") or [] if isinstance(t, dict)), js.get("reportDate"), js.get("date")]:
+        if v:
+            dd = parse_date(str(v))
+            if dd:
+                return dd
+    return None
+
+
 def _tpex_by_date(d: date) -> list[dict]:
     js = get_json(U["tpex_quotes_by_date"].format(yyyy=d.year, mm=f"{d.month:02d}", dd=f"{d.day:02d}"))
-    rows = table_rows(js or {}, must_have="代號")
-    if not rows:  # 舊版端點備援（無欄名，固定欄位順序）
+    rd = _resp_date(js)
+    rows = table_rows(js or {}, must_have="代號") if rd in (None, d) else []
+    if rd not in (None, d):
+        log.warning("櫃買行情要 %s 卻回 %s，捨棄", d, rd)
+    if not rows:  # 舊版端點備援（無欄名，固定欄位順序）。舊端點對太早的日期會回最新一天，一定要核對日期
         js = get_json(U["tpex_quotes_by_date_legacy"].format(roc=roc(d)))
-        cols = ["代號", "名稱", "收盤", "漲跌", "開盤", "最高", "最低", "均價", "成交股數", "成交金額", "成交筆數"]
-        rows = [dict(zip(cols, r)) for r in (js or {}).get("aaData", [])]
+        rd = _resp_date(js)
+        if rd != d:
+            if js:
+                log.warning("櫃買舊端點要 %s 卻回 %s，捨棄", d, rd)
+            return []
+        rows = table_rows(js, must_have="代號")
+        if not rows:
+            cols = ["代號", "名稱", "收盤", "漲跌", "開盤", "最高", "最低", "均價", "成交股數", "成交金額", "成交筆數"]
+            rows = [dict(zip(cols, r)) for r in (js or {}).get("aaData", [])]
     out = []
     for r in rows:
         q = _quote(pick(r, "代號"), pick(r, "名稱"), "TPEX", pick(r, "開盤"), pick(r, "最高"), pick(r, "最低"),
@@ -410,6 +433,65 @@ def fetch_material_mops(d: date) -> list[dict] | None:
         })
     log.info("觀測站重大訊息 %s：%d 筆", d, len(out))
     return out
+
+
+def fetch_valuation_by_date(d: date) -> dict[str, dict] | None:
+    """指定日本益比、殖利率、股價淨值比（上市＋上櫃普通股）。查無資料回 None"""
+    out: dict[str, dict] = {}
+    js = get_json(U["twse_pe_by_date"].format(yyyymmdd=d.strftime("%Y%m%d")))
+    if js and js.get("stat", "OK") == "OK":
+        for r in table_rows(js, must_have="證券代號"):
+            code = str(r.get("證券代號", "")).strip()
+            if is_common_stock(code):
+                out[code] = {"pe": num(pick(r, "本益比")), "pb": num(pick(r, "股價淨值比")), "dy": num(pick(r, "殖利率"))}
+    js = get_json(U["tpex_pe_by_date"].format(yyyy=d.year, mm=f"{d.month:02d}", dd=f"{d.day:02d}"))
+    if _resp_date(js) == d:
+        for r in table_rows(js, must_have="代號"):
+            code = str(pick(r, "股票代號", "代號", default="")).strip()
+            if is_common_stock(code):
+                out[code] = {"pe": num(pick(r, "本益比")), "pb": num(pick(r, "股價淨值比")), "dy": num(pick(r, "殖利率"))}
+    return out or None
+
+
+def parse_revenue_html(page: str) -> list[dict]:
+    """觀測站月營收靜態頁：每列 代號、名稱、當月、上月、去年當月、上月增減%、去年同月增減%、當月累計、去年累計、前期增減%、備註"""
+    import html as _html
+    out = []
+    for code, name, rest in re.findall(r"<tr[^>]*>\s*<td[^>]*>\s*(\d{4})\s*</td>\s*<td[^>]*>(.*?)</td>((?:\s*<td[^>]*>.*?</td>){9})",
+                                       page, re.S | re.I):
+        c = [_html.unescape(re.sub(r"<[^>]+>", "", x)).strip() for x in re.findall(r"<td[^>]*>(.*?)</td>", rest, re.S | re.I)]
+        out.append({"code": code, "name": _html.unescape(re.sub(r"<[^>]+>", "", name)).strip(),
+                    "rev": num(c[0]), "rev_prev": num(c[1]), "rev_ly": num(c[2]), "mom": num(c[3]), "yoy": num(c[4]),
+                    "cum": num(c[5]), "cum_ly": num(c[6]), "cum_yoy": num(c[7]), "note": c[8].strip("-").strip()[:200]})
+    return out
+
+
+def fetch_revenue_month(y: int, m: int) -> list[dict] | None:
+    """某年某月全部上市櫃公司月營收（千元）。四個頁面（上市／上櫃 × 國內／外國）都抓；全部失敗回 None"""
+    from .http import session
+    out, ok = [], False
+    for typek, market in (("sii", "TWSE"), ("otc", "TPEX")):
+        for kind in (0, 1):
+            url = U["mops_revenue_month"].format(typek=typek, roc=y - 1911, m=m, kind=kind)
+            try:
+                r = session().get(url, timeout=config.HTTP_TIMEOUT)
+            except Exception as e:  # noqa: BLE001
+                log.warning("月營收 %s 抓取失敗：%s", url, e)
+                continue
+            time.sleep(2)
+            if r.status_code == 404:
+                ok = ok or kind == 1   # 外國公司頁早期不存在不算失敗
+                continue
+            if r.status_code != 200:
+                continue
+            page = r.content.decode("cp950", "replace")
+            if "查詢過於頻繁" in page:
+                log.warning("月營收 %s-%02d：查詢過於頻繁", y, m)
+                return None
+            rows = parse_revenue_html(page)
+            ok = True
+            out += [{**x, "market": market} for x in rows if is_common_stock(x["code"])]
+    return out if ok and out else None
 
 
 def fetch_exrights() -> list[dict]:
