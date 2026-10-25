@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / cb / treasury / retheme / all / backfill / history；重跑某天：daily 2026-10-16）"
+        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / cb / cbhist / treasury / retheme / all / backfill / history；重跑某天：daily 2026-10-16）"
         default: "all"
 
 permissions:
@@ -45,8 +45,19 @@ jobs:
         if: github.event.schedule == '30 16 * * *' || github.event.inputs.job == 'history'
         with:
           ref: main   # 排隊等很久的工作也要從最新資料開始，避免存回時衝突
+      - uses: actions/checkout@v4      # 可轉債歷史回補：要讀 cbq／cbb 才知道哪些天已補
+        if: github.event.inputs.job == 'cbhist'
+        with:
+          ref: main
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/data/archive/quotes/
+            !/data/archive/inst/
+            !/data/archive/margin/
+            !/data/archive/val/
       - uses: actions/checkout@v4
-        if: github.event.schedule != '30 16 * * *' && github.event.inputs.job != 'history'
+        if: github.event.schedule != '30 16 * * *' && github.event.inputs.job != 'history' && github.event.inputs.job != 'cbhist'
         with:
           ref: main
           sparse-checkout-cone-mode: false

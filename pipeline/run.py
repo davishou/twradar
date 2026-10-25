@@ -445,6 +445,10 @@ def main(argv: list[str]) -> int:
             f()
     elif cmd == "retheme":
         job_retheme()
+    elif cmd == "cbhist":                # 可轉債歷史集中回補（白天手動跑，約 25 分鐘一輪）
+        from . import cb
+        cb.backfill(minutes=float(argv[1]) if len(argv) > 1 else 24)
+        cb.rebuild_history()
     elif cmd == "treasury":
         job_treasury(float(argv[1]) if len(argv) > 1 else 20)
     elif cmd == "history":

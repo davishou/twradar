@@ -366,7 +366,7 @@ def backfill(minutes: float = 15) -> dict:
             if not got:
                 closed.add(ds)       # 休市或查無
             n += 1
-            _t.sleep(1.0)
+            _t.sleep(0.6)
         d -= timedelta(days=1)
     st = archive._progress()
     st["cb"] = {"closed": sorted(closed), "noboard": sorted(noboard), "last_run": _t.strftime("%Y-%m-%d %H:%M"), "fetched": n,
