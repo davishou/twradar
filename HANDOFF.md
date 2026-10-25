@@ -58,6 +58,9 @@
 ## 可轉債（pipeline/cb.py、頁面 #/cb）
 - 來源（櫃買，全公開）：每日行情 `storage/bond_zone/tradeinfo/cb/Y/YM/RSta0113.YYYYMMDD-C.csv`（2007 起）、資訊看板 `RSdrs001`（實際 2017-01 起，欄位依年代不同，用欄名解析）、OpenAPI `bond_ISSBD5_data`（發行資料，只有最新）。CSV 是 cp950。
 - daily（17:05）與 disposal（21:45，若還沒今天）都會跑 job_cb；手動 job `cb`。history 工作回補 `data/archive/cbq|cbb`（稀疏 checkout 排除），並用它重建 `data/cb_history/`（每日快照，留 260 日）。部署時 `python -m pipeline.cb hist` 產生 `site/data/cb_hist.json`（不進 git）。
+- 頁面：統計卡、快速篩選（仿主力藏寶圖：剩餘比率<30/>80、CB≤106、深度價內、股債連動±3%、折價、新發行/快到期 90 天）、區間篩選、剩餘比率、展開看標的均線均量法人、K 線／溢價率／張數三層圖（`site/data/cbh/代號.json`，部署時產生）、近幾週餘額、轉換比例、可轉股數與稀釋比例。
+- CB IPO（pipeline/cbipo.py、#/cbipo）：公會 web.twsa.org.tw/edoc2 承銷公告（GET）與詢圈公告（ASP.NET POST rblReportType=BookBuilding）、證交所 `announcement/auction?date=YYYY`（含 CB 競拍、得標價、撥券日）、ISSBD5。公司全名→代號用 companies.json 的 `full`（啓/啟、（第五次）、-創新版 會正規化）。TCRI、申報生效日、公告轉換價不是公開資料。
+- `site/data/cb_index.json`：{股票: {cb: 檔數, ipo: 狀態}}，全站表格有可轉債的列淡黃、即將發行名稱旁 IPO 標籤（app.js CBIDX）。
 - 理論權利金用固定 3% 折現到下次賣回日（沒有賣回用到期面額 100），和投資少數派／券商 CBAS 報價不同。cyclesinvest.com 對我們的瀏覽器回 403，還沒看到內容。
 - probe workflow 可帶 `cmd` 輸入跑任意指令，結果寫 probe/ 推到 probe 分支（不受 update-data 排隊影響）。
 
