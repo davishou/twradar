@@ -23,7 +23,7 @@ const sign = n => n == null ? "" : n > 0 ? "up" : n < 0 ? "down" : "";
 const pc = (n, d = 2) => n == null ? '<span class="muted">—</span>' : `<span class="${sign(n)}">${n > 0 ? "+" : ""}${fx(n, d)}%</span>`;
 const yi = n => n == null ? "—" : Math.abs(n) >= 1e8 ? fx(n / 1e8, 2) + " 億" : fx(n / 1e4, 0) + " 萬";
 const mk = m => `<span class="mk" title="${m === "TWSE" ? "上市" : "上櫃"}">${m === "TWSE" ? "市" : "櫃"}</span>`;
-const stockLink = (code, name, rec) => `<a href="#/stock/${esc(code)}">${esc(name || code)}</a>${spk(code, name, rec)}`;
+const stockLink = (code, name) => `<a href="#/stock/${esc(code)}">${esc(name || code)}</a>`;
 
 /* ---------------- 小走勢圖 ----------------
    資料：spark.json（全部股票、最新一天）或每日漲停檔內嵌的 spark（只畫到那一天）。
@@ -115,7 +115,18 @@ function setTitle(t) { document.title = (t ? t + "｜" : "") + (META.site_name |
 const emptyBox = msg => `<div class="tw"><div class="empty">${esc(msg)}</div></div>`;
 
 /* 通用表格：columns [{k,t,n,f,s,w}]，opts {sort:[k,dir], expand(row)->html, rowClick, empty} */
+/* 有「名稱」欄的表格，自動在它右邊加一欄「走勢」（小走勢圖），所有圖對齊同一欄；點欄名可依最大漲幅排序 */
+const SPK_TIP = "近 160 個交易日走勢（還原權息），紅點＝漲停日。\n外框＝圖中最大一段漲跌：\n紅框 漲到 10 倍以上｜黃框 5～10 倍｜淡黃框 2～5 倍\n淺綠框 跌 30～60%｜深綠框 跌 60～80%｜墨綠框 跌 80% 以上\n滑鼠移上去或點一下看大圖。";
+function withSpark(columns) {
+  const i = columns.findIndex(c => c.k === "name");
+  if (i < 0 || columns.some(c => c.k === "_spk")) return columns;
+  const rec = r => (r.spark && r.spark.v) ? r.spark : SPARK[r.code];
+  const col = {k: "_spk", t: `走勢 ${tipBtn(SPK_TIP)}`, desc: 1, s: r => rec(r)?.u ?? null,
+               f: r => spk(r.code, r.name, r.spark) || '<span class="muted small">—</span>'};
+  return [...columns.slice(0, i + 1), col, ...columns.slice(i + 1)];
+}
 function table(el, columns, rows, opts = {}) {
+  columns = withSpark(columns);
   let [sk, sd] = opts.sort || [null, 1];
   let open = new Set();
   const val = (c, r) => c.s ? c.s(r) : r[c.k];
@@ -130,11 +141,11 @@ function table(el, columns, rows, opts = {}) {
       });
     }
     if (!data.length) { el.innerHTML = emptyBox(opts.empty || "沒有資料"); return; }
-    const head = columns.map(c => `<th class="${c.n ? "n" : ""} ${c.k && c.sortable !== false ? "s" : ""}" data-k="${c.k || ""}" scope="col"${c.k && c.sortable !== false ? ' tabindex="0"' : ""}>${c.t}${sk === c.k ? `<span class="ar">${sd > 0 ? "▲" : "▼"}</span>` : ""}</th>`).join("");
+    const head = columns.map(c => `<th class="${c.n ? "n" : ""} ${c.k === "_spk" ? "spkc" : ""} ${c.k && c.sortable !== false ? "s" : ""}" data-k="${c.k || ""}" scope="col"${c.k && c.sortable !== false ? ' tabindex="0"' : ""}>${c.t}${sk === c.k ? `<span class="ar">${sd > 0 ? "▲" : "▼"}</span>` : ""}</th>`).join("");
     const body = data.map((r, i) => {
       const id = opts.id ? opts.id(r) : i;
       const tr = `<tr class="${opts.expand || opts.rowClick ? "click" : ""} ${opts.rowClass ? opts.rowClass(r) : ""}" data-i="${esc(id)}"${opts.expand ? ` aria-expanded="${open.has(String(id))}"` : ""}>${columns.map(c =>
-        `<td class="${c.n ? "n" : ""} ${c.w ? "wrap" : ""}">${c.f ? c.f(r) : esc(r[c.k] ?? "—")}</td>`).join("")}</tr>`;
+        `<td class="${c.n ? "n" : ""} ${c.w ? "wrap" : ""} ${c.k === "_spk" ? "spkc" : ""}">${c.f ? c.f(r) : esc(r[c.k] ?? "—")}</td>`).join("")}</tr>`;
       const ex = opts.expand && open.has(String(id)) ? `<tr class="detail"><td colspan="${columns.length}">${opts.expand(r)}</td></tr>` : "";
       return tr + ex;
     }).join("");
@@ -144,7 +155,7 @@ function table(el, columns, rows, opts = {}) {
   el.onclick = e => {
     if (e.target.closest("a") || e.target.closest(".tipbtn")) return;
     const th = e.target.closest("th.s");
-    if (th) { const k = th.dataset.k; sd = sk === k ? -sd : (columns.find(c => c.k === k).n ? -1 : 1); sk = k; draw(); return; }
+    if (th) { const k = th.dataset.k; sd = sk === k ? -sd : (columns.find(c => c.k === k).n || columns.find(c => c.k === k).desc ? -1 : 1); sk = k; draw(); return; }
     const tr = e.target.closest("tr[data-i]");
     if (!tr) return;
     const r = el._rows.get(tr.dataset.i);
