@@ -55,6 +55,12 @@
 - 族群：themes.json 有約 1,069 檔 AI 只給官方產業別（當初缺業務資料）。夜間 history 補抓全部公司『主要經營業務』（business.json）；補齊後手動跑一次 job `retheme`（會用 AI，約 20 次 haiku 呼叫）重分類並重建歷史漲停/隔日/統計。
 - 探測資料源：workflow `probe.yml`（結果推到 `probe` 分支，`git fetch origin +probe:refs/remotes/origin/probe`）。artifact 下載被這個環境擋。
 
+## 可轉債（pipeline/cb.py、頁面 #/cb）
+- 來源（櫃買，全公開）：每日行情 `storage/bond_zone/tradeinfo/cb/Y/YM/RSta0113.YYYYMMDD-C.csv`（2007 起）、資訊看板 `RSdrs001`（實際 2017-01 起，欄位依年代不同，用欄名解析）、OpenAPI `bond_ISSBD5_data`（發行資料，只有最新）。CSV 是 cp950。
+- daily（17:05）與 disposal（21:45，若還沒今天）都會跑 job_cb；手動 job `cb`。history 工作回補 `data/archive/cbq|cbb`（稀疏 checkout 排除），並用它重建 `data/cb_history/`（每日快照，留 260 日）。部署時 `python -m pipeline.cb hist` 產生 `site/data/cb_hist.json`（不進 git）。
+- 理論權利金用固定 3% 折現到下次賣回日（沒有賣回用到期面額 100），和投資少數派／券商 CBAS 報價不同。cyclesinvest.com 對我們的瀏覽器回 403，還沒看到內容。
+- probe workflow 可帶 `cmd` 輸入跑任意指令，結果寫 probe/ 推到 probe 分支（不受 update-data 排隊影響）。
+
 ## 小走勢圖（pipeline/spark.py、app.js 的 spk*）
 - 每檔 160 日還原收盤，64 階一字元編碼；漲停日紅點；外框＝圖中最大波動：最大漲幅 ×2/×5/×10 淡黃/黃/紅框，最大跌幅 −30/−60/−80% 淺綠/深綠/墨綠，漲跌都有取對數幅度大的一邊，框內小字標倍數或跌幅。
 - 表格有「名稱」欄就自動在右邊加「走勢」欄（table → withSpark），所有圖對齊，可依最大漲幅排序；每日漲停檔、隔日檔內嵌 `spark`（只畫到那一天），其他頁用 spark.json（最新）。滑鼠移上或手機點一下浮出大圖；個股頁直接顯示大圖。
