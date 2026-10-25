@@ -8,6 +8,7 @@
   u  最大漲幅倍數＝區間內「某天價格 ÷ 它之前的最低價」的最大值（例如 5.2 代表曾從低點漲到 5.2 倍）
   w  最大跌幅％＝區間內「某天價格 ÷ 它之前的最高價 − 1」的最小值（例如 -62 代表曾從高點跌 62%）
   k  漲停日在序列中的位置
+  m  每個月第一個交易日在序列中的位置（畫月分隔線用）
 
 還原：除權息、減資等造成的參考價 ≠ 前一日收盤，把之前的價格乘上（參考價 ÷ 前收），避免假缺口。
 不呼叫 AI、不抓網路，只讀 data/history。
@@ -55,7 +56,8 @@ def record(rows: list[tuple[date, float, float | None, bool]]) -> dict | None:
     r = lambda x: round(x, 2 if x < 100 else 1)  # noqa: E731
     return {"v": _encode(adj, lo, hi), "d": rows[0][0].isoformat(), "e": rows[-1][0].isoformat(),
             "a": r(adj[0]), "b": rows[-1][1], "h": r(hi), "l": r(lo), "u": round(up, 2), "w": round(dn * 100, 1),
-            "k": [i for i, x in enumerate(rows) if x[3]]}
+            "k": [i for i, x in enumerate(rows) if x[3]],
+            "m": [i for i in range(1, len(rows)) if rows[i][0].month != rows[i - 1][0].month]}
 
 
 def build(end: date | None = None, codes: set[str] | None = None, n: int = N) -> dict[str, dict]:
