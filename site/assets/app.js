@@ -23,7 +23,8 @@ const sign = n => n == null ? "" : n > 0 ? "up" : n < 0 ? "down" : "";
 const pc = (n, d = 2) => n == null ? '<span class="muted">—</span>' : `<span class="${sign(n)}">${n > 0 ? "+" : ""}${fx(n, d)}%</span>`;
 const yi = n => n == null ? "—" : Math.abs(n) >= 1e8 ? fx(n / 1e8, 2) + " 億" : fx(n / 1e4, 0) + " 萬";
 const mk = m => `<span class="mk" title="${m === "TWSE" ? "上市" : "上櫃"}">${m === "TWSE" ? "市" : "櫃"}</span>`;
-const stockLink = (code, name) => `<a href="#/stock/${esc(code)}">${esc(name || code)}</a>`;
+let CBIDX = {};   // {股票代號: {cb: 檔數, ipo: 狀態}}（cb_index.json）
+const stockLink = (code, name) => `<a href="#/stock/${esc(code)}">${esc(name || code)}</a>${CBIDX[code]?.ipo ? ` <a class="tag ipo" href="#/cbipo" title="可轉債 ${esc(CBIDX[code].ipo)}">IPO</a>` : ""}`;
 
 /* ---------------- 小走勢圖 ----------------
    資料：spark.json（全部股票、最新一天）或每日漲停檔內嵌的 spark（只畫到那一天）。
@@ -150,7 +151,7 @@ function table(el, columns, rows, opts = {}) {
     const head = columns.map(c => `<th class="${c.n ? "n" : ""} ${c.k === "_spk" ? "spkc" : ""} ${c.k && c.sortable !== false ? "s" : ""}" data-k="${c.k || ""}" scope="col"${c.k && c.sortable !== false ? ' tabindex="0"' : ""}>${c.t}${sk === c.k ? `<span class="ar">${sd > 0 ? "▲" : "▼"}</span>` : ""}</th>`).join("");
     const body = data.map((r, i) => {
       const id = opts.id ? opts.id(r) : i;
-      const tr = `<tr class="${opts.expand || opts.rowClick ? "click" : ""} ${opts.rowClass ? opts.rowClass(r) : ""}" data-i="${esc(id)}"${opts.expand ? ` aria-expanded="${open.has(String(id))}"` : ""}>${columns.map(c =>
+      const tr = `<tr class="${opts.expand || opts.rowClick ? "click" : ""} ${opts.rowClass ? opts.rowClass(r) : ""} ${r.code && CBIDX[r.code]?.cb ? "hascb" : ""}" data-i="${esc(id)}"${opts.expand ? ` aria-expanded="${open.has(String(id))}"` : ""}>${columns.map(c =>
         `<td class="${c.n ? "n" : ""} ${c.w ? "wrap" : ""} ${c.k === "_spk" ? "spkc" : ""}">${c.f ? c.f(r) : esc(r[c.k] ?? "—")}</td>`).join("")}</tr>`;
       const ex = opts.expand && open.has(String(id)) ? `<tr class="detail"><td colspan="${columns.length}">${opts.expand(r)}</td></tr>` : "";
       return tr + ex;
@@ -884,96 +885,209 @@ P.borrow = async () => {
 
 // ---- 可轉債 ----
 const yi2 = n => n == null ? "—" : fx(n / 1e8, n >= 1e9 ? 0 : 1);
-function cbChart(h, dates) {
-  if (!h || h.length < 2) return '<p class="muted small">歷史走勢會隨每日資料累積（目前不足 2 天）。</p>';
-  const w = 560, ht = 150, p = 8;
-  const xs = h.map(x => x[0]), c = h.map(x => x[1]), v = h.map(x => x[2]);
-  const all = [...c, ...v].filter(x => x != null);
-  const lo = Math.min(...all), hi = Math.max(...all), sp = hi - lo || 1;
-  const X = i => p + (xs[i] - xs[0]) / ((xs.at(-1) - xs[0]) || 1) * (w - 2 * p), Y = y => p + (1 - (y - lo) / sp) * (ht - 2 * p);
-  const line = arr => arr.map((y, i) => y == null ? null : `${X(i).toFixed(1)},${Y(y).toFixed(1)}`).filter(Boolean).join(" ");
+const CB_P = [["1M", 21], ["3M", 63], ["6M", 126], ["1Y", 250]];
+/* K 線（開高低收）＋成交張數＋轉換價值虛線。h：[[日期索引, 開, 高, 低, 收, 張數, 轉換價值, 溢價率, 餘額], ...] */
+function cbChart(hAll, dates, n) {
+  const h = (hAll || []).filter(x => x[4] != null || x[6] != null).slice(-n);
+  if (h.length < 2) return '<p class="muted small">歷史走勢會隨每日資料累積（目前不足 2 天）。</p>';
+  const w = 600, top = 150, vh = 40, p = 6, gap = 6;
+  const vals = h.flatMap(x => [x[2], x[3], x[4], x[6]]).filter(x => x != null);
+  const lo = Math.min(...vals), hi = Math.max(...vals), sp = hi - lo || 1;
+  const bw = (w - 2 * p) / h.length, X = i => p + (i + 0.5) * bw, Y = y => p + (1 - (y - lo) / sp) * (top - 2 * p);
+  const vmax = Math.max(1, ...h.map(x => x[5] || 0));
+  let candles = "", vols = "";
+  h.forEach((x, i) => {
+    const [o, hh, l, c, v] = [x[1], x[2], x[3], x[4], x[5]];
+    if (c != null && o != null) {
+      const cls = c > o ? "up" : c < o ? "down" : "flat";
+      candles += `<line class="${cls}" x1="${X(i)}" x2="${X(i)}" y1="${Y(hh ?? c)}" y2="${Y(l ?? c)}"/>`
+        + `<rect class="${cls}" x="${X(i) - bw * 0.35}" y="${Math.min(Y(o), Y(c))}" width="${Math.max(1, bw * 0.7)}" height="${Math.max(1, Math.abs(Y(o) - Y(c)))}"/>`;
+    }
+    if (v) vols += `<rect class="${c != null && o != null && c < o ? "down" : "up"}" x="${X(i) - bw * 0.35}" y="${top + gap + vh - v / vmax * vh}" width="${Math.max(1, bw * 0.7)}" height="${v / vmax * vh}"/>`;
+  });
+  const cv = h.map((x, i) => x[6] == null ? null : `${X(i).toFixed(1)},${Y(x[6]).toFixed(1)}`).filter(Boolean).join(" ");
   const y100 = lo <= 100 && hi >= 100 ? `<line class="ref" x1="${p}" x2="${w - p}" y1="${Y(100)}" y2="${Y(100)}"/><text x="${w - p}" y="${Y(100) - 3}" text-anchor="end">100</text>` : "";
-  return `<svg class="cbchart" viewBox="0 0 ${w} ${ht + 16}" role="img" aria-label="可轉債收盤價與轉換價值走勢">${y100}
-    <polyline class="cv" points="${line(v)}"/><polyline class="px" points="${line(c)}"/>
-    <text x="${p}" y="${ht + 13}">${esc(dates[xs[0]] || "")}</text><text x="${w - p}" y="${ht + 13}" text-anchor="end">${esc(dates[xs.at(-1)] || "")}</text></svg>
-    <p class="small"><span class="lg px"></span>CB 收盤價　<span class="lg cv"></span>轉換價值（股價換算）　兩線差距＝溢價</p>`;
+  const last = h.at(-1);
+  return `<svg class="cbchart" viewBox="0 0 ${w} ${top + gap + vh + 16}" role="img" aria-label="可轉債 K 線與轉換價值">${y100}
+    <g class="k">${candles}</g><polyline class="cv" points="${cv}"/><g class="v">${vols}</g>
+    <text x="${p}" y="${top + gap + vh + 13}">${esc(dates[h[0][0]] || "")}</text><text x="${w - p}" y="${top + gap + vh + 13}" text-anchor="end">${esc(dates[last[0]] || "")}</text>
+    <text x="${p}" y="12">高 ${fp(hi)}　低 ${fp(lo)}</text></svg>
+    <p class="small"><span class="lg px"></span>CB K 線（紅漲綠跌）　<span class="lg cv"></span>轉換價值　下方為成交張數</p>`;
 }
 const CB_TIP = {
   cv: "轉換價值＝100 ÷ 轉換價 × 股價。代表立刻轉成股票值多少（以百元計）。",
-  prem: "轉換溢價率＝CB 價 ÷ 轉換價值 − 1。越低代表 CB 越貼近股價走勢；負值代表轉換有套利空間。",
-  conv: "已轉換比例＝1 − 餘額 ÷ 發行總額。比例高代表很多人已轉成股票（通常股價曾大於轉換價）。",
+  prem: "轉換溢價率＝CB 價 ÷ 轉換價值 − 1。越低代表 CB 越貼近股價走勢；負值（折價）代表轉換有套利空間。",
+  remain: "剩餘比率＝餘額 ÷ 發行總額。低於 30% 以紅色提醒：大部分已轉成股票，可能已贖回或流動性變差。",
   put: "下次賣回日（有賣回權）或到期日。賣回報酬＝賣回價 ÷ CB 價 − 1；年化＝依剩餘年數換算。",
-  opt: "理論權利金（百元報價）＝CB 價 − 賣回價 ÷ (1+折現率)^年數。這是用固定折現率估算的選擇權價值，和券商實際 CBAS 報價可能不同。",
+  opt: "理論權利金（百元報價）＝CB 價 − 賣回價 ÷ (1+折現率)^年數。這是用固定折現率估算，和券商實際 CBAS 報價（例如投資少數派引用的元大報價）可能不同。",
 };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
 P.cb = async () => {
   setTitle("可轉債");
-  const js = await load("cb.json");
+  const [js, ipo] = await Promise.all([load("cb.json"), load("cbipo.json")]);
+  if (!js) { app.innerHTML = `<h1>可轉債</h1>${emptyBox("可轉債資料還沒產生（每個交易日收盤後更新）")}`; return; }
+  const today = js.date;
+  const rows = js.rows.map(r => ({...r, spark: SPARK[r.stock]}));
+  const nIpo = (ipo?.items || []).filter(x => x.status !== "已掛牌" && x.status !== "取消").length;
+  const card = (n, t, href) => `<a class="kcard" ${href ? `href="${href}"` : ""}><b>${fi(n)}</b><span>${t}</span></a>`;
   app.innerHTML = `<h1>可轉債</h1>
-    <p class="sub">${js ? `資料日 ${js.date}，共 ${js.n} 檔。` : ""}櫃買中心每日行情與轉換公司債資訊看板，加上發行資料，算出轉換價值、溢價率、賣回報酬與理論權利金。點一列看完整條件與走勢。</p>
-    <div class="toolbar"><span class="chips" id="cf"></span><input type="search" id="cq" placeholder="代號、名稱或股票" aria-label="搜尋可轉債"></div>
+    <p class="sub">資料日 ${esc(today)}。櫃買中心每日行情與轉換公司債資訊看板，加上發行資料，算出轉換價值、溢價率、剩餘比率、賣回報酬與理論權利金。點一列看 K 線與完整條件。</p>
+    <div class="kcards">${card(rows.length, "可轉債檔數")}${card(new Set(rows.map(r => r.stock)).size, "發行公司數")}
+      ${card(rows.filter(r => r.maturity && r.maturity <= addDays(today, 182)).length, "6 個月內到期")}
+      ${card(rows.filter(r => r.lots > 0).length, "今日有成交")}${card(nIpo, "即將發行（IPO）", "#/cbipo")}</div>
+    <div class="toolbar"><span class="chips" id="cf"></span></div>
+    <details class="adv"><summary>進階篩選（區間）</summary><div class="advgrid" id="adv"></div>
+      <p class="small muted">留空＝不限制。條件可以組合，例如溢價率 −3～3（股債緊密連動）＋剩餘比率 ≥ 80＋有擔保。</p></details>
+    <div class="toolbar"><input type="search" id="cq" placeholder="代號、名稱或股票" aria-label="搜尋可轉債"><span class="small muted" id="cn"></span></div>
     <div id="ct"></div>
     <p class="small muted">資料來源：證券櫃檯買賣中心（每日轉(交)換公司債買賣斷交易行情表、轉換公司債資訊看板、轉(交)換債發行資料）。走勢欄是標的股票近 160 日。
-    理論權利金折現率 ${js ? (js.discount * 100).toFixed(1) : "3"}%。所有數字由程式計算，僅供參考。</p>`;
-  if (!js) { document.getElementById("ct").innerHTML = emptyBox("可轉債資料還沒產生（每個交易日收盤後更新）"); return; }
-  const rows = js.rows.map(r => ({...r, spark: SPARK[r.stock]}));
-  const today = js.date;
-  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
-  const filters = [
+    理論權利金折現率 ${(js.discount * 100).toFixed(1)}%。所有數字由程式計算，僅供參考。</p>`;
+  const quick = [
     ["", "全部", () => true],
-    ["recent", "近期上櫃", r => r.listing_date && r.listing_date >= addDays(today, -45)],
-    ["soon", "一年內到期／賣回", r => r.target_date && r.target_date <= addDays(today, 365)],
-    ["conv", "已轉換 ≥ 30%", r => r.converted >= 30],
-    ["cheap", "CB 價 < 100", r => r.price != null && r.price < 100],
+    ["r30", "剩餘比率 < 30%", r => r.remain != null && r.remain < 30],
+    ["r80", "剩餘比率 > 80%", r => r.remain > 80],
+    ["p106", "CB 價 ≤ 106", r => r.price != null && r.price <= 106],
+    ["deep", "深度價內（轉換價值 ≥ 130）", r => r.conv_value >= 130],
+    ["tight", "股債緊密連動（溢價 ±3%）", r => r.premium != null && Math.abs(r.premium) <= 3],
+    ["disc", "折價（溢價 < 0）", r => r.premium != null && r.premium < 0],
+    ["new", "新發行（90 天內）", r => r.listing_date && r.listing_date >= addDays(today, -90)],
+    ["mat", "快到期（90 天內）", r => r.maturity && r.maturity <= addDays(today, 90)],
+    ["put", "一年內賣回／到期", r => r.target_date && r.target_date <= addDays(today, 365)],
     ["near100", "轉換價值 90~110", r => r.conv_value >= 90 && r.conv_value <= 110],
-    ["lowprem", "溢價率 < 5%", r => r.premium != null && r.premium < 5],
     ["opt", "權利金 < 5", r => r.option != null && r.option < 5],
     ["yield", "賣回年化 ≥ 2%", r => r.put_yield >= 2],
     ["traded", "今日有成交", r => r.lots > 0],
   ];
-  let flt = "", q = "", hist = null;
+  const ranges = [["price", "CB 價格"], ["conv_price", "轉換價"], ["conv_value", "轉換價值"], ["premium", "溢價率 %"],
+    ["stock_close", "股價"], ["remain", "剩餘比率 %"], ["years", "距賣回／到期（年）"], ["option", "理論權利金"]];
+  const dates = [["issue_date", "發行日"], ["maturity", "到期日"]];
+  document.getElementById("adv").innerHTML = ranges.map(([k, t]) => `<label><span>${t}</span><span class="rng"><input type="number" step="any" data-k="${k}" data-b="lo" placeholder="下限">～<input type="number" step="any" data-k="${k}" data-b="hi" placeholder="上限"></span></label>`).join("")
+    + dates.map(([k, t]) => `<label><span>${t}</span><span class="rng"><input type="date" data-k="${k}" data-b="lo">～<input type="date" data-k="${k}" data-b="hi"></span></label>`).join("")
+    + `<label><span>擔保</span><select id="cg"><option value="">不拘</option><option value="1">有擔保</option><option value="0">無擔保</option></select></label>`
+    + `<label><span>&nbsp;</span><button type="button" class="btn" id="cclr">清除全部條件</button></label>`;
+  let flt = "", q = "", hist = null, per = {};
+  const adv = {};
   const t = table(document.getElementById("ct"), [
     {k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`},
     {k: "name", t: "名稱", f: r => `<b>${esc(r.name)}</b><br><span class="small muted">${stockLink(r.stock, r.stock_name || r.stock)} ${esc(r.stock)}</span>`},
     {k: "price", t: "CB 價", n: 1, f: r => r.close != null ? `${fp(r.close)}<br>${pc(r.chg_pct, 1)}` : `<span class="muted" title="今日無成交，顯示參考價">${fp(r.price)}</span>`},
     {k: "lots", t: "張數", n: 1, f: r => r.lots ? fi(r.lots) : '<span class="muted">—</span>'},
-    {k: "conv_value", t: `轉換價值 ${tipBtn(CB_TIP.cv)}`, n: 1, f: r => fx(r.conv_value, 1)},
-    {k: "premium", t: `溢價率 ${tipBtn(CB_TIP.prem)}`, n: 1, f: r => r.premium == null ? "—" : `<span class="${r.premium < 0 ? "up" : r.premium < 5 ? "warn" : ""}">${fx(r.premium, 1)}%</span>`},
+    {k: "conv_value", t: `轉換價值 ${tipBtn(CB_TIP.cv)}`, n: 1, f: r => fx(r.conv_value, 2)},
+    {k: "premium", t: `溢價率 ${tipBtn(CB_TIP.prem)}`, n: 1, f: r => r.premium == null ? "—" : `<span class="${r.premium < 0 ? "up" : Math.abs(r.premium) <= 3 ? "warn" : ""}">${r.premium > 0 ? "+" : ""}${fx(r.premium, 2)}%</span>`},
     {k: "stock_close", t: "股價", n: 1, f: r => `${fp(r.stock_close)}<br>${pc(r.stock_chg, 1)}`},
     {k: "conv_price", t: "轉換價", n: 1, f: r => fp(r.conv_price)},
-    {k: "converted", t: `已轉換 ${tipBtn(CB_TIP.conv)}`, n: 1, f: r => r.converted == null ? "—" : fx(r.converted, 1) + "%"},
+    {k: "remain", t: `剩餘比率 ${tipBtn(CB_TIP.remain)}`, n: 1, f: r => r.remain == null ? "—" : r.remain < 30 ? `<span class="tag up">${fx(r.remain, 1)}%</span>` : fx(r.remain, 1) + "%"},
     {k: "out_amt", t: "餘額(億)", n: 1, f: r => yi2(r.out_amt)},
     {k: "target_date", t: `賣回／到期 ${tipBtn(CB_TIP.put)}`, f: r => r.target_date ? `${esc(r.target_date)}<br><span class="small muted">${r.target}${r.target_price ? " " + fx(r.target_price, 2) : ""}</span>` : "—"},
     {k: "put_yield", t: "賣回報酬", n: 1, f: r => r.put_ret == null ? "—" : `${pc(r.put_ret, 1)}<br><span class="small muted">年化 ${r.put_yield == null ? "—" : fx(r.put_yield, 1) + "%"}</span>`},
     {k: "option", t: `權利金 ${tipBtn(CB_TIP.opt)}`, n: 1, f: r => fx(r.option, 2)},
     {k: "guaranteed", t: "擔保", f: r => r.guaranteed ? '<span class="tag ok">有</span>' : '<span class="muted small">無</span>', s: r => r.guaranteed ? 1 : 0},
+    {k: "issue_date", t: "發行日", f: r => esc(r.issue_date || "—")},
+    {k: "maturity", t: "到期日", f: r => esc(r.maturity || "—")},
   ], [], {sort: ["code", 1], id: r => r.code, empty: "沒有符合條件的可轉債",
     expand: r => {
       const kv = (a, b) => `<tr><th>${a}</th><td>${b ?? "—"}</td></tr>`;
+      const n = per[r.code] || 126;
       const h = hist?.s?.[r.code];
-      return `<div class="cbd"><div>${hist ? cbChart(h, hist.dates) : '<p class="muted small">載入走勢中…</p>'}</div>
+      const outs = (h || []).filter(x => x[8] != null);
+      const weeks = [];
+      for (let i = outs.length - 1; i >= 0 && weeks.length < 6; i -= 5) weeks.push(outs[i]);
+      const inst = r.inst ? r.inst.map((v, i) => `${["外資", "投信", "自營"][i]} <span class="${sign(v)}">${v > 0 ? "+" : ""}${fi(v)}</span>`).join("　") : "—";
+      return `<div class="cbhead"><b>${esc(r.stock_name || r.stock)} ${esc(r.stock)}</b>
+          <span>收盤 <b class="${sign(r.stock_chg)}">${fp(r.stock_close)}</b> ${pc(r.stock_chg, 2)}</span>
+          <span>成交 ${r.stock_lots == null ? "—" : fi(r.stock_lots) + " 張"}</span>
+          <span>MA5／MA20 ${fp(r.ma5)}／${fp(r.ma20)}${r.ma20 && r.stock_close ? ` <span class="small ${r.stock_close >= r.ma20 ? "up" : "down"}">${r.stock_close >= r.ma20 ? "站上月線" : "跌破月線"}</span>` : ""}</span>
+          <span>5 日均量 ${r.v5 == null ? "—" : fi(r.v5) + " 張"}（月均 ${r.v20 == null ? "—" : fi(r.v20)}）</span>
+          <span>三大法人 ${inst}</span></div>
+        <div class="cbd"><div><div class="chips small" data-per="${esc(r.code)}">${CB_P.map(([l, v]) => `<button type="button" class="chip ${v === n ? "on" : ""}" data-n="${v}">${l}</button>`).join("")}</div>
+          ${hist ? cbChart(h, hist.dates, n) : '<p class="muted small">載入走勢中…</p>'}
+          ${weeks.length > 1 ? `<h4>近幾週餘額</h4><table class="kv"><tbody>${weeks.map((x, i) => { const prev = weeks[i + 1]; const ch = prev && prev[8] ? (x[8] / prev[8] - 1) * 100 : null;
+            return `<tr><th>${esc(hist.dates[x[0]])}</th><td>${yi2(x[8])} 億${ch ? `　<span class="${sign(ch)}">${ch > 0 ? "+" : ""}${fx(ch, 2)}%</span>` : ""}</td></tr>`; }).join("")}</tbody></table>` : ""}</div>
         <table class="kv"><tbody>
-        ${kv("標的", `${stockLink(r.stock, r.stock_name)} ${esc(r.stock)}`)}${kv("開／高／低／均", [r.open, r.high, r.low, r.avg].map(fp).join(" / "))}
+        ${kv("開／高／低／均", [r.open, r.high, r.low, r.avg].map(fp).join(" / "))}
         ${kv("成交", r.lots ? `${fi(r.lots)} 張、${fi(r.trades)} 筆、${yi(r.value)}${r.nego_lots ? `（議價 ${fi(r.nego_lots)} 張）` : ""}` : "今日無成交")}
         ${kv("目前轉換價", `${fp(r.conv_price)}${r.conv_price_issue && r.conv_price_issue !== r.conv_price ? `（發行時 ${fp(r.conv_price_issue)}）` : ""}${r.conv_next_date ? `，下次調整生效 ${esc(r.conv_next_date)}` : ""}`)}
+        ${kv("轉換比例", r.ratio == null ? "—" : `每張 CB 可轉 ${fx(r.ratio, 4)} 張股票`)}
         ${kv("轉換期間", `${esc(r.conv_start || "—")} ~ ${esc(r.conv_end || "—")}`)}${r.stop_conv ? kv("停止轉換", r.stop_conv.map(esc).join(" ~ ")) : ""}
-        ${kv("發行／餘額", `${yi2(r.issue_amt)} 億 → ${yi2(r.out_amt)} 億（已轉換 ${r.converted == null ? "—" : fx(r.converted, 1) + "%"}）`)}
+        ${kv("發行／餘額", `${yi2(r.issue_amt)} 億 → ${yi2(r.out_amt)} 億（剩餘 ${r.remain == null ? "—" : fx(r.remain, 1) + "%"}）`)}
+        ${kv("可轉換股票", r.conv_lots == null ? "—" : `${fi(r.conv_lots)} 張（稀釋股本 ${r.dilution == null ? "—" : fx(r.dilution, 2) + "%"}）`)}
         ${kv("發行日／上櫃日／到期日", [r.issue_date, r.listing_date, r.maturity].map(x => esc(x || "—")).join(" / "))}
+        ${kv("剩餘天數", r.days_left == null ? "—" : fi(r.days_left) + " 天")}
         ${kv("下次賣回", r.put_date ? `${esc(r.put_date)} 價格 ${fx(r.put_price, 4)}` : "無（以到期面額 100 計）")}
         ${r.call ? kv("強制贖回", `${esc(r.call[0])} ~ ${esc(r.call[1])} 價格 ${fx(r.call[2], 4)}`) : ""}
         ${r.halt ? kv("停止交易", r.halt.map(esc).join(" ~ ")) : ""}
         ${kv("票面利率", r.coupon == null ? "—" : fx(r.coupon, 3) + "%")}${kv("擔保", r.guaranteed ? esc(r.guarantee || "有") : "無擔保")}
         ${kv("評等", esc(r.rating || "—"))}${kv("受託／承銷", `${esc(r.trustee || "—")}／${esc(r.underwriter || "—")}`)}
-        ${kv("剩餘年數", r.years == null ? "—" : fx(r.years, 2) + " 年")}
         </tbody></table></div>`;
     }});
   function apply() {
-    const f = filters.find(x => x[0] === flt)[2];
-    t.set(rows.filter(r => f(r) && (!q || r.code.includes(q) || (r.name || "").includes(q) || (r.stock || "").includes(q) || (r.stock_name || "").includes(q))));
+    const f = quick.find(x => x[0] === flt)[2];
+    const g = document.getElementById("cg").value;
+    const ok = r => Object.entries(adv).every(([k, [lo, hi]]) => {
+      const v = r[k]; if (lo === "" && hi === "") return true; if (v == null || v === "") return false;
+      return (lo === "" || v >= (typeof v === "number" ? +lo : lo)) && (hi === "" || v <= (typeof v === "number" ? +hi : hi));
+    });
+    const out = rows.filter(r => f(r) && ok(r) && (g === "" || !!r.guaranteed === (g === "1"))
+      && (!q || r.code.includes(q) || (r.name || "").includes(q) || (r.stock || "").includes(q) || (r.stock_name || "").includes(q)));
+    document.getElementById("cn").textContent = `共 ${out.length} 檔`;
+    t.set(out);
   }
-  chips(document.getElementById("cf"), filters.map(f => [f[0], `${f[1]} ${rows.filter(f[2]).length}`]), "", v => { flt = v; apply(); });
+  chips(document.getElementById("cf"), quick.map(f => [f[0], `${f[1]} ${rows.filter(f[2]).length}`]), "", v => { flt = v; apply(); });
   document.getElementById("cq").oninput = e => { q = e.target.value.trim(); apply(); };
+  document.getElementById("adv").oninput = e => {
+    const el = e.target; if (!el.dataset.k) { apply(); return; }
+    const cur = adv[el.dataset.k] || ["", ""]; cur[el.dataset.b === "lo" ? 0 : 1] = el.value; adv[el.dataset.k] = cur; apply();
+  };
+  document.getElementById("cclr").onclick = () => { document.querySelectorAll("#adv input").forEach(i => i.value = ""); document.getElementById("cg").value = ""; for (const k in adv) delete adv[k]; apply(); };
+  document.getElementById("ct").addEventListener("click", e => {
+    const b = e.target.closest("[data-per] .chip"); if (!b) return;
+    e.stopPropagation(); per[b.closest("[data-per]").dataset.per] = +b.dataset.n; apply();
+  }, true);
   apply();
   load("cb_hist.json").then(h => { hist = h || {dates: [], s: {}}; apply(); });
+};
+
+// ---- 可轉債 IPO ----
+const IPO_ST = {"詢圈中": "up", "競拍中": "up", "待開標": "warn", "待詢圈": "warn", "待競拍": "warn", "待掛牌": "ok", "已申報": "", "已掛牌": "pur", "取消": ""};
+P.cbipo = async () => {
+  setTitle("可轉債 IPO");
+  const js = await load("cbipo.json");
+  app.innerHTML = `<h1>可轉債 IPO</h1>
+    <p class="sub">預計發行與近 60 天上櫃的可轉債。合併證券商業同業公會的承銷／詢圈公告、證交所競價拍賣公告與櫃買發行資料。${js ? `更新 ${esc(js.date)}。` : ""}</p>
+    <div class="toolbar"><span class="chips" id="if"></span><input type="search" id="iq" placeholder="代號或名稱" aria-label="搜尋"></div><div id="it"></div>
+    <p class="small muted">詢圈價格區間是 CB 每百元的承銷價格範圍；競拍得標價也是每百元價格。轉換價值＝100 ÷ 發行轉換價 × 目前股價。TCRI 評等與證期會申報生效日不是公開資料，這裡沒有。</p>`;
+  if (!js) { document.getElementById("it").innerHTML = emptyBox("資料還沒產生"); return; }
+  const items = js.items.map(r => ({...r, code: r.stock, name: r.stock_name || r.company, spark: SPARK[r.stock]}));
+  let flt = "", q = "";
+  const t = table(document.getElementById("it"), [
+    {k: "status", t: "狀態", f: r => `<span class="tag ${IPO_ST[r.status] || ""}">${esc(r.status)}</span>`},
+    {k: "code", t: "代號", f: r => r.stock ? `<span class="code">${esc(r.stock)}</span>` : "—"},
+    {k: "name", t: "名稱", f: r => `${r.stock ? stockLink(r.stock, r.stock_name) : esc(r.company)}${r.short ? `<br><span class="small muted">${esc(r.short)} ${esc(r.bond || "")}</span>` : ""}`},
+    {k: "guaranteed", t: "擔保", f: r => r.guaranteed ? '<span class="tag ok">有</span>' : '<span class="muted small">無</span>', s: r => r.guaranteed ? 1 : 0},
+    {k: "method", t: "方式", f: r => esc(r.method === "詢價圈購" ? "詢圈" : "競拍")},
+    {k: "amount", t: "發行量(億)", n: 1, f: r => r.amount ? fx(r.amount / 1e8, 2) : (r.auc_lots ? `<span class="small muted">競拍 ${fi(r.auc_lots)} 張</span>` : "—")},
+    {k: "underwriter", t: "主辦", f: r => esc((r.underwriter || "—").replace(/(綜合)?證券股份有限公司|股份有限公司/g, ""))},
+    {k: "filed", t: "申報日", f: r => esc(r.filed || "—")},
+    {k: "period", t: "詢圈／投標期間", s: r => r.bb_start || r.auc_start, f: r => r.bb_start ? `${md(r.bb_start)}~${md(r.bb_end)}` : r.auc_start ? `${md(r.auc_start)}~${md(r.auc_end)}<br><span class="small muted">開標 ${md(r.auc_open)}</span>` : "—"},
+    {k: "price", t: "價格", s: r => r.won_avg || r.auc_min, f: r => r.bb_price ? `<span class="small">${esc(r.bb_price)}</span>` : r.won_avg ? `得標均價 <b>${fx(r.won_avg, 2)}</b><br><span class="small muted">${fx(r.won_low, 2)}~${fx(r.won_high, 2)}</span>` : r.auc_min ? `<span class="small">最低投標 ${fx(r.auc_min, 2)}</span>` : "—"},
+    {k: "conv_price", t: "轉換價", n: 1, f: r => fp(r.conv_price)},
+    {k: "parity", t: "轉換價值", n: 1, f: r => fx(r.parity, 2)},
+    {k: "stock_close", t: "股價", n: 1, f: r => fp(r.stock_close)},
+    {k: "listing", t: "掛牌日", f: r => esc(r.listing || "—")},
+    {k: "tenor", t: "年期", n: 1, f: r => r.tenor ? r.tenor + " 年" : "—"},
+    {k: "cb_close", t: "上櫃後", n: 1, f: r => r.cb_close ? `${fp(r.cb_close)}<br><span class="small muted">溢價 ${fx(r.cb_premium, 1)}%</span>` : "—"},
+  ], [], {sort: ["status", 1], id: r => (r.stock || r.company) + (r.bond || "") + r.method + (r.filed || ""), empty: "沒有資料"});
+  const order = {"詢圈中": 0, "競拍中": 1, "待開標": 2, "待詢圈": 3, "待競拍": 3, "待掛牌": 4, "已申報": 5, "已掛牌": 6, "取消": 7};
+  items.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+  const filters = [["", "全部", () => true], ["live", "進行中（詢圈／競拍）", r => /中|待開標/.test(r.status)],
+    ["soon", "即將掛牌", r => r.status === "待掛牌"], ["new", "近 60 天已掛牌", r => r.status === "已掛牌"], ["g", "有擔保", r => r.guaranteed]];
+  function apply() {
+    const f = filters.find(x => x[0] === flt)[2];
+    t.set(items.filter(r => f(r) && (!q || (r.stock || "").includes(q) || (r.stock_name || r.company || "").includes(q) || (r.short || "").includes(q))));
+  }
+  chips(document.getElementById("if"), filters.map(f => [f[0], `${f[1]} ${items.filter(f[2]).length}`]), "", v => { flt = v; apply(); });
+  document.getElementById("iq").oninput = e => { q = e.target.value.trim(); apply(); };
+  apply();
 };
 
 // ---- 處置 ----
@@ -1143,7 +1257,7 @@ P.stock = async (code) => {
 
 // ---------------- router ----------------
 const routes = {"": P.home, daily: P.daily, nextday: P.nextday, stats: P.stats, commentary: P.commentary,
-  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, disposal: P.disposal, etf: P.etf, stock: P.stock};
+  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbipo: P.cbipo, disposal: P.disposal, etf: P.etf, stock: P.stock};
 async function route() {
   const [path] = location.hash.replace(/^#\/?/, "").split("?");
   const [name, arg] = path.split("/");
@@ -1200,9 +1314,10 @@ async function gate() {
 
 (async () => {
   await gate();
-  const [meta, sp] = await Promise.all([load("meta.json"), load("spark.json")]);
+  const [meta, sp, ci] = await Promise.all([load("meta.json"), load("spark.json"), load("cb_index.json")]);
   META = meta || {};
   SPARK = sp?.s || {};
+  CBIDX = ci || {};
   if (META.site_name) { document.getElementById("siteName").textContent = META.site_name; }
   document.getElementById("mockbar").hidden = !META.mock;
   // 專案容量提醒：部署時寫入 repo_size.json（GitHub 建議 1GB 以內），超過 800MB 顯示

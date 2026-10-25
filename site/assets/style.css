@@ -393,3 +393,21 @@ td.spkc,th.spkc{white-space:nowrap;width:1%;padding-left:4px;padding-right:10px}
 .lg{display:inline-block;width:14px;height:3px;vertical-align:middle;margin:0 4px 0 6px;border-radius:2px}
 .lg.px{background:var(--brand-2)} .lg.cv{background:var(--warn)}
 table.kv{width:100%;font-size:13px} table.kv th,table.kv td{background:none;border:0} table.kv th{white-space:nowrap;color:var(--ink-2);font-weight:500;text-align:left;padding:3px 12px 3px 0;vertical-align:top;width:1%} table.kv td{padding:3px 0}
+
+.kcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:6px 0 14px}
+.kcard{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;color:var(--ink)}
+.kcard b{font-size:26px;font-family:var(--serif);line-height:1.1} .kcard span{font-size:13px;color:var(--ink-2)}
+a.kcard[href]:hover{border-color:var(--brand-2);text-decoration:none}
+details.adv{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:8px 0}
+details.adv summary{cursor:pointer;font-weight:600;font-size:14px}
+.advgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px 14px;margin-top:10px}
+.advgrid label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--ink-2)}
+.advgrid .rng{display:flex;align-items:center;gap:4px} .advgrid input,.advgrid select{width:100%;min-width:0;padding:5px 7px;border:1px solid var(--line);border-radius:5px;background:var(--paper);color:var(--ink);font:inherit}
+.cbhead{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:4px 0 10px;border-bottom:1px solid var(--line-2);margin-bottom:10px;font-size:14px}
+.cbchart g.k line{stroke-width:1} .cbchart g.k .up,.cbchart g.v .up{stroke:var(--up);fill:var(--up)} .cbchart g.k .down,.cbchart g.v .down{stroke:var(--down);fill:var(--down)}
+.cbchart g.k .flat{stroke:var(--ink-3);fill:var(--ink-3)} .cbchart g.v rect{opacity:.45;stroke:none}
+.cbchart polyline.cv{fill:none;stroke:var(--warn);stroke-width:1.4;stroke-dasharray:4 3;vector-effect:non-scaling-stroke}
+.lg.px{background:var(--up)}
+tr.hascb>td{background:color-mix(in srgb,var(--warn-bg) 55%,transparent)}
+.tag.ipo{background:#e8590c;color:#fff;font-size:11px;padding:0 4px;text-decoration:none}
+.legend{display:inline-flex;align-items:center;gap:4px;margin-bottom:4px} .sw{display:inline-block;width:14px;height:10px;border-radius:2px;border:1px solid var(--line)} .sw.hascb{background:color-mix(in srgb,var(--warn-bg) 55%,transparent)}
