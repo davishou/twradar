@@ -122,16 +122,20 @@ def build_nextday(d: date, quotes: list[dict]) -> dict | None:
     if not pd or not pd["stocks"]:
         return None
     qm = {q["code"]: q for q in quotes}
+    lim_day = store.load_day(prev)
     rows = []
     for s in pd["stocks"]:
         q = qm.get(s["code"])
         if not q or not q.get("open"):
             continue
         ref = s["close"]
+        v0 = (lim_day.get(s["code"]) or {}).get("volume") or s.get("lots", 0) * 1000
         r = lambda p: round((p / ref - 1) * 100, 2) if p else None  # noqa: E731
         rows.append({
             "code": s["code"], "name": s["name"], "market": s["market"], "theme": s["theme"], "ref": ref,
-            "vol_ratio": s["vol_ratio"], "streak": s["streak"],
+            # 量比（同原網站）＝隔日成交量 ÷ 漲停日成交量；均量比＝漲停日量 ÷ 前 5 日均量
+            "vol_ratio": round(q["volume"] / v0, 2) if v0 and q.get("volume") is not None else None,
+            "avg5_ratio": s["vol_ratio"], "streak": s["streak"],
             "open": q["open"], "avg": q["avg"], "close": q["close"], "high": q["high"],
             "ret_open": r(q["open"]), "ret_avg": r(q["avg"]), "ret_close": r(q["close"]), "ret_high": r(q["high"]),
             # 加權：假設 2/3 在開盤賣、1/3 在均價賣的報酬

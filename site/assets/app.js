@@ -130,7 +130,7 @@ P.home = async () => {
   </div>
   <h2>從哪裡開始看</h2>
   <div class="links">
-    <a href="#/daily"><b>當日漲停族群</b><span>每檔歸到哪個題材、量比、連板數</span></a>
+    <a href="#/daily"><b>當日漲停族群</b><span>每檔歸到哪個題材、均量比、連板數</span></a>
     <a href="#/nextday"><b>漲停隔日表現</b><span>昨天漲停的股票今天開盤、均價、收盤賺多少</span></a>
     <a href="#/disposal"><b>處置預測</b><span>還差幾次會被處置、明天的觸發價</span></a>
     <a href="#/att"><b>公告速報</b><span>自結、季報、營收、庫藏股，標出盤後才公告、還沒交易過的</span></a>
@@ -153,7 +153,7 @@ P.daily = async (date) => {
     <div class="toolbar"><span id="ds"></span><span class="chips" id="mk"></span></div>
     <div class="chips" id="th" style="margin-bottom:12px"></div>
     <div id="tbl"></div>
-    <p class="small muted">族群來源：<span class="tsrc">設定</span> themes.json 指定、<span class="tsrc ai">AI</span> AI 判斷後寫回 themes.json、<span class="tsrc">關鍵字</span>、<span class="tsrc">產業別</span> 官方產業別。法人單位為張；量比為成交量除以前 5 日均量。</p>
+    <p class="small muted">族群來源：<span class="tsrc">設定</span> themes.json 指定、<span class="tsrc ai">AI</span> AI 判斷後寫回 themes.json、<span class="tsrc">關鍵字</span>、<span class="tsrc">產業別</span> 官方產業別。法人單位為張；均量比＝漲停日成交量 ÷ 前 5 日均量（1x 以下＝安靜漲停，10x 以上＝爆量漲停）。</p>
     <section class="bk" id="bk" hidden></section>`;
   document.getElementById("ds").append(dateSelect(dates, date, v => location.hash = `#/daily/${v}`));
   const instCell = k => r => r.inst ? `<span class="${sign(r.inst[k])}">${r.inst[k] > 0 ? "+" : ""}${fi(r.inst[k])}</span>` : '<span class="muted">—</span>';
@@ -164,7 +164,7 @@ P.daily = async (date) => {
     {k: "inst_f", t: "外資", n: 1, s: r => r.inst?.f, f: instCell("f")}, {k: "inst_t", t: "投信", n: 1, s: r => r.inst?.t, f: instCell("t")},
     {k: "inst_d", t: "自營", n: 1, s: r => r.inst?.d, f: instCell("d")},
     {k: "streak", t: "連板", n: 1, f: r => (r.streak > 1 ? `<span class="tag up">${r.streak} 連板</span>` : "1") + (r.one_price ? ' <span class="tag up">一價</span>' : !r.locked ? ' <span class="muted small">打開過</span>' : "")},
-    {k: "vol_ratio", t: "量比", n: 1, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
+    {k: "vol_ratio", t: "均量比", n: 1, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
     {k: "why", t: "漲停原因", w: 1, sortable: false, f: r => `<span class="why">${esc(r.why || r.reason || "")}</span>`},
     {k: "theme", t: "族群", f: r => { const [l, c] = srcTag[r.theme_source] || [r.theme_source, ""]; return `<span class="nowrap" title="${esc(r.reason)}">${esc(themeEmoji(r.theme))} ${esc(r.theme)} <span class="tsrc ${c}">${l}</span></span>`; }},
   ];
@@ -475,7 +475,7 @@ P.nextday = async (date) => {
   const emo = Object.fromEntries(data.groups.map(g => [g.theme, g.emoji]));
   const tt = table(document.getElementById("t"), [
     {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
-    {k: "ref", t: "漲停價", n: 1, f: r => fp(r.ref)}, {k: "vol_ratio", t: "量比", n: 1, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
+    {k: "ref", t: "漲停價", n: 1, f: r => fp(r.ref)}, {k: "vol_ratio", t: `量比 ${tipBtn("量比＝隔日成交量 ÷ 漲停日成交量（同原網站）。\n1x 以下：隔日量縮（常見於再鎖漲停）；10x 以上：隔日爆量換手。\n均量比（漲停日量 ÷ 前 5 日均量）在當日頁。")}`, n: 1, s: r => r.vol_ratio, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
     {k: "ret_open", t: "隔日開", n: 1, f: r => `${fp(r.open)} ${pc(r.ret_open)}`}, {k: "ret_avg", t: "隔日均價", n: 1, f: r => `${fp(r.avg)} ${pc(r.ret_avg)}`},
     {k: "ret_close", t: "隔日收", n: 1, f: r => `${fp(r.close)} ${pc(r.ret_close)}`},
     {k: "ret_wavg", t: "加權", n: 1, f: r => pc(r.ret_wavg)},
