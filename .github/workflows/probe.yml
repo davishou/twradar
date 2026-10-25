@@ -2,6 +2,10 @@
 name: probe
 on:
   workflow_dispatch:
+    inputs:
+      cmd:
+        description: "要執行的指令（結果請寫到 probe/）"
+        default: "python tools/probe.py"
 permissions:
   contents: write
 jobs:
@@ -14,11 +18,13 @@ jobs:
           sparse-checkout: |
             pipeline
             tools
+            data/state
+            data/history
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install requests
-      - run: python tools/probe.py
+      - run: mkdir -p probe && ${{ github.event.inputs.cmd || 'python tools/probe.py' }}
       - name: 結果推到 probe 分支（不影響 main）
         run: |
           cd probe

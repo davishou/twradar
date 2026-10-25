@@ -9,6 +9,7 @@
   python -m pipeline.run announce       自結/季報/營收/庫藏/事件（每 5 分鐘）
   python -m pipeline.run all            以上全部
   python -m pipeline.run retheme        族群重分類（用 AI；主要經營業務補齊後執行一次）
+  python -m pipeline.run cb             可轉債（最近交易日）
   python -m pipeline.run treasury 20    庫藏股歷史回補約 6 個月（每次跑 20 分鐘，續跑）
   python -m pipeline.run history 40     長期資料庫：回補歷史（先 10 年再到 2004）（每次跑 40 分鐘，續跑）
   python -m pipeline.run backfill 120   補抓最近 120 個交易日歷史行情（第一次部署必跑）
@@ -97,7 +98,20 @@ def _daily(src, td, quotes, light: bool = False, d=None) -> date | None:
     if not light:
         retheme_history(src)
         job_brokers(src, td, daily, inst)
+        job_cb(src, td)
     return td
+
+
+def job_cb(src, d: date | None = None) -> None:
+    """可轉債：行情、看板、發行資料 → site/data/cb.json（櫃買約 16~18 點公布；21:45 處置工作會再補一次）"""
+    if src is not sources:
+        return
+    from . import cb
+    try:
+        if cb.run(d):
+            brief.touch_meta("cb", d)
+    except Exception as e:  # noqa: BLE001  可轉債失敗不影響其他資料
+        log.exception("可轉債失敗：%s", e)
 
 
 def heal_missing_tpex(td: date, comp: dict, lookback: int = 10) -> None:
@@ -218,6 +232,9 @@ def job_disposal(src) -> None:
     res = disposal.build(today, quotes, notices, punish, src.fetch_holidays(), src.fetch_valuation(),
                          companies(src), margin)
     brief.touch_meta("disposal", today)
+    cur = (store.read_json(config.OUT_DIR / "cb.json", {}) or {}).get("date")
+    if src is sources and cur != today.isoformat():
+        job_cb(src, today)
     brief.line_copy()
     log.info("處置預測 → %s：差1次 %d 檔、差2次 %d 檔、處置中 %d 檔", res["target"], len(res["minus1"]),
              len(res["minus2"]), len(res["current"]))
@@ -298,12 +315,17 @@ def backfill(n: int) -> None:
 
 def job_history(minutes: float = 40) -> None:
     """長期資料庫：分批回補行情／法人／融資融券（先 10 年、再到 2004）、上市注意處置股、同步漲停族群、重算還原因子"""
-    st = archive.backfill(sources, minutes=minutes * 0.6)    # 先 10 年，補完自動延伸到 2004
+    st = archive.backfill(sources, minutes=minutes * 0.5)    # 先 10 年，補完自動延伸到 2004
     archive.backfill_notices(sources)
     try:
         archive.backfill_fundamentals(sources, minutes=minutes * 0.25)   # 月營收、季報歷史（2013 起）
     except Exception as e:  # noqa: BLE001
         log.exception("基本面回補失敗：%s", e)
+    try:   # 可轉債行情 2007 起、資訊看板 2017 起
+        from . import cb
+        cb.backfill(minutes=minutes * 0.15)
+    except Exception as e:  # noqa: BLE001
+        log.exception("可轉債回補失敗：%s", e)
     try:   # 族群分類用的『主要經營業務』，全部公司慢慢補齊（不呼叫 AI）
         from . import themes
         n_biz = themes.prefetch_business(sources.fetch_business, sorted(companies(sources)), minutes=minutes * 0.15)
@@ -411,7 +433,7 @@ def main(argv: list[str]) -> int:
     if cmd == "brokers":
         job_brokers(src)
         return 0
-    jobs = {"daily": lambda: job_daily(src), "disposal": lambda: job_disposal(src), "announce": lambda: job_announce(src),
+    jobs = {"cb": lambda: job_cb(src), "daily": lambda: job_daily(src), "disposal": lambda: job_disposal(src), "announce": lambda: job_announce(src),
             "borrow": lambda: job_borrow(src), "etf": lambda: job_etf(src)}
     if cmd in jobs:
         jobs[cmd]()

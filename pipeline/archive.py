@@ -39,6 +39,11 @@ COLS = {
     "val": ["code", "pe", "pb", "dy"],                                     # 每日本益比、股價淨值比、殖利率
     "revenue": ["code", "name", "market", "rev", "rev_prev", "rev_ly", "mom", "yoy", "cum", "cum_ly", "cum_yoy", "note"],  # 每月（千元）
     "fin": ["code", "market", "rev", "gross", "op", "nonop", "pretax", "eps"],  # 每季累計數（千元、元）
+    "cbq": ["code", "name", "close", "chg", "open", "high", "low", "trades", "lots", "value", "avg", "ref_next",
+            "nego_lots", "nego_close"],                                     # 可轉債每日行情（2007 起）
+    "cbb": ["code", "name", "conv_start", "conv_end", "conv_price", "conv_next_date", "stop_conv_start", "stop_conv_end",
+            "put_start", "put_end", "put_price", "call_start", "call_end", "call_price", "delist", "issue_amt", "out_amt",
+            "ref_price", "stock_price", "halt_start", "halt_end", "coupon"],  # 可轉債資訊看板（2017 起）
 }
 INST_START = date(2012, 5, 2)    # 證交所三大法人日報最早日期；櫃買更早的也查無資料
 

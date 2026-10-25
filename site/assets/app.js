@@ -882,6 +882,100 @@ P.borrow = async () => {
   ], js.detail, {sort: ["rate", -1]});
 };
 
+// ---- 可轉債 ----
+const yi2 = n => n == null ? "—" : fx(n / 1e8, n >= 1e9 ? 0 : 1);
+function cbChart(h, dates) {
+  if (!h || h.length < 2) return '<p class="muted small">歷史走勢會隨每日資料累積（目前不足 2 天）。</p>';
+  const w = 560, ht = 150, p = 8;
+  const xs = h.map(x => x[0]), c = h.map(x => x[1]), v = h.map(x => x[2]);
+  const all = [...c, ...v].filter(x => x != null);
+  const lo = Math.min(...all), hi = Math.max(...all), sp = hi - lo || 1;
+  const X = i => p + (xs[i] - xs[0]) / ((xs.at(-1) - xs[0]) || 1) * (w - 2 * p), Y = y => p + (1 - (y - lo) / sp) * (ht - 2 * p);
+  const line = arr => arr.map((y, i) => y == null ? null : `${X(i).toFixed(1)},${Y(y).toFixed(1)}`).filter(Boolean).join(" ");
+  const y100 = lo <= 100 && hi >= 100 ? `<line class="ref" x1="${p}" x2="${w - p}" y1="${Y(100)}" y2="${Y(100)}"/><text x="${w - p}" y="${Y(100) - 3}" text-anchor="end">100</text>` : "";
+  return `<svg class="cbchart" viewBox="0 0 ${w} ${ht + 16}" role="img" aria-label="可轉債收盤價與轉換價值走勢">${y100}
+    <polyline class="cv" points="${line(v)}"/><polyline class="px" points="${line(c)}"/>
+    <text x="${p}" y="${ht + 13}">${esc(dates[xs[0]] || "")}</text><text x="${w - p}" y="${ht + 13}" text-anchor="end">${esc(dates[xs.at(-1)] || "")}</text></svg>
+    <p class="small"><span class="lg px"></span>CB 收盤價　<span class="lg cv"></span>轉換價值（股價換算）　兩線差距＝溢價</p>`;
+}
+const CB_TIP = {
+  cv: "轉換價值＝100 ÷ 轉換價 × 股價。代表立刻轉成股票值多少（以百元計）。",
+  prem: "轉換溢價率＝CB 價 ÷ 轉換價值 − 1。越低代表 CB 越貼近股價走勢；負值代表轉換有套利空間。",
+  conv: "已轉換比例＝1 − 餘額 ÷ 發行總額。比例高代表很多人已轉成股票（通常股價曾大於轉換價）。",
+  put: "下次賣回日（有賣回權）或到期日。賣回報酬＝賣回價 ÷ CB 價 − 1；年化＝依剩餘年數換算。",
+  opt: "理論權利金（百元報價）＝CB 價 − 賣回價 ÷ (1+折現率)^年數。這是用固定折現率估算的選擇權價值，和券商實際 CBAS 報價可能不同。",
+};
+P.cb = async () => {
+  setTitle("可轉債");
+  const js = await load("cb.json");
+  app.innerHTML = `<h1>可轉債</h1>
+    <p class="sub">${js ? `資料日 ${js.date}，共 ${js.n} 檔。` : ""}櫃買中心每日行情與轉換公司債資訊看板，加上發行資料，算出轉換價值、溢價率、賣回報酬與理論權利金。點一列看完整條件與走勢。</p>
+    <div class="toolbar"><span class="chips" id="cf"></span><input type="search" id="cq" placeholder="代號、名稱或股票" aria-label="搜尋可轉債"></div>
+    <div id="ct"></div>
+    <p class="small muted">資料來源：證券櫃檯買賣中心（每日轉(交)換公司債買賣斷交易行情表、轉換公司債資訊看板、轉(交)換債發行資料）。走勢欄是標的股票近 160 日。
+    理論權利金折現率 ${js ? (js.discount * 100).toFixed(1) : "3"}%。所有數字由程式計算，僅供參考。</p>`;
+  if (!js) { document.getElementById("ct").innerHTML = emptyBox("可轉債資料還沒產生（每個交易日收盤後更新）"); return; }
+  const rows = js.rows.map(r => ({...r, spark: SPARK[r.stock]}));
+  const today = js.date;
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+  const filters = [
+    ["", "全部", () => true],
+    ["recent", "近期上櫃", r => r.listing_date && r.listing_date >= addDays(today, -45)],
+    ["soon", "一年內到期／賣回", r => r.target_date && r.target_date <= addDays(today, 365)],
+    ["conv", "已轉換 ≥ 30%", r => r.converted >= 30],
+    ["cheap", "CB 價 < 100", r => r.price != null && r.price < 100],
+    ["near100", "轉換價值 90~110", r => r.conv_value >= 90 && r.conv_value <= 110],
+    ["lowprem", "溢價率 < 5%", r => r.premium != null && r.premium < 5],
+    ["opt", "權利金 < 5", r => r.option != null && r.option < 5],
+    ["yield", "賣回年化 ≥ 2%", r => r.put_yield >= 2],
+    ["traded", "今日有成交", r => r.lots > 0],
+  ];
+  let flt = "", q = "", hist = null;
+  const t = table(document.getElementById("ct"), [
+    {k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`},
+    {k: "name", t: "名稱", f: r => `<b>${esc(r.name)}</b><br><span class="small muted">${stockLink(r.stock, r.stock_name || r.stock)} ${esc(r.stock)}</span>`},
+    {k: "price", t: "CB 價", n: 1, f: r => r.close != null ? `${fp(r.close)}<br>${pc(r.chg_pct, 1)}` : `<span class="muted" title="今日無成交，顯示參考價">${fp(r.price)}</span>`},
+    {k: "lots", t: "張數", n: 1, f: r => r.lots ? fi(r.lots) : '<span class="muted">—</span>'},
+    {k: "conv_value", t: `轉換價值 ${tipBtn(CB_TIP.cv)}`, n: 1, f: r => fx(r.conv_value, 1)},
+    {k: "premium", t: `溢價率 ${tipBtn(CB_TIP.prem)}`, n: 1, f: r => r.premium == null ? "—" : `<span class="${r.premium < 0 ? "up" : r.premium < 5 ? "warn" : ""}">${fx(r.premium, 1)}%</span>`},
+    {k: "stock_close", t: "股價", n: 1, f: r => `${fp(r.stock_close)}<br>${pc(r.stock_chg, 1)}`},
+    {k: "conv_price", t: "轉換價", n: 1, f: r => fp(r.conv_price)},
+    {k: "converted", t: `已轉換 ${tipBtn(CB_TIP.conv)}`, n: 1, f: r => r.converted == null ? "—" : fx(r.converted, 1) + "%"},
+    {k: "out_amt", t: "餘額(億)", n: 1, f: r => yi2(r.out_amt)},
+    {k: "target_date", t: `賣回／到期 ${tipBtn(CB_TIP.put)}`, f: r => r.target_date ? `${esc(r.target_date)}<br><span class="small muted">${r.target}${r.target_price ? " " + fx(r.target_price, 2) : ""}</span>` : "—"},
+    {k: "put_yield", t: "賣回報酬", n: 1, f: r => r.put_ret == null ? "—" : `${pc(r.put_ret, 1)}<br><span class="small muted">年化 ${r.put_yield == null ? "—" : fx(r.put_yield, 1) + "%"}</span>`},
+    {k: "option", t: `權利金 ${tipBtn(CB_TIP.opt)}`, n: 1, f: r => fx(r.option, 2)},
+    {k: "guaranteed", t: "擔保", f: r => r.guaranteed ? '<span class="tag ok">有</span>' : '<span class="muted small">無</span>', s: r => r.guaranteed ? 1 : 0},
+  ], [], {sort: ["code", 1], id: r => r.code, empty: "沒有符合條件的可轉債",
+    expand: r => {
+      const kv = (a, b) => `<tr><th>${a}</th><td>${b ?? "—"}</td></tr>`;
+      const h = hist?.s?.[r.code];
+      return `<div class="cbd"><div>${hist ? cbChart(h, hist.dates) : '<p class="muted small">載入走勢中…</p>'}</div>
+        <table class="kv"><tbody>
+        ${kv("標的", `${stockLink(r.stock, r.stock_name)} ${esc(r.stock)}`)}${kv("開／高／低／均", [r.open, r.high, r.low, r.avg].map(fp).join(" / "))}
+        ${kv("成交", r.lots ? `${fi(r.lots)} 張、${fi(r.trades)} 筆、${yi(r.value)}${r.nego_lots ? `（議價 ${fi(r.nego_lots)} 張）` : ""}` : "今日無成交")}
+        ${kv("目前轉換價", `${fp(r.conv_price)}${r.conv_price_issue && r.conv_price_issue !== r.conv_price ? `（發行時 ${fp(r.conv_price_issue)}）` : ""}${r.conv_next_date ? `，下次調整生效 ${esc(r.conv_next_date)}` : ""}`)}
+        ${kv("轉換期間", `${esc(r.conv_start || "—")} ~ ${esc(r.conv_end || "—")}`)}${r.stop_conv ? kv("停止轉換", r.stop_conv.map(esc).join(" ~ ")) : ""}
+        ${kv("發行／餘額", `${yi2(r.issue_amt)} 億 → ${yi2(r.out_amt)} 億（已轉換 ${r.converted == null ? "—" : fx(r.converted, 1) + "%"}）`)}
+        ${kv("發行日／上櫃日／到期日", [r.issue_date, r.listing_date, r.maturity].map(x => esc(x || "—")).join(" / "))}
+        ${kv("下次賣回", r.put_date ? `${esc(r.put_date)} 價格 ${fx(r.put_price, 4)}` : "無（以到期面額 100 計）")}
+        ${r.call ? kv("強制贖回", `${esc(r.call[0])} ~ ${esc(r.call[1])} 價格 ${fx(r.call[2], 4)}`) : ""}
+        ${r.halt ? kv("停止交易", r.halt.map(esc).join(" ~ ")) : ""}
+        ${kv("票面利率", r.coupon == null ? "—" : fx(r.coupon, 3) + "%")}${kv("擔保", r.guaranteed ? esc(r.guarantee || "有") : "無擔保")}
+        ${kv("評等", esc(r.rating || "—"))}${kv("受託／承銷", `${esc(r.trustee || "—")}／${esc(r.underwriter || "—")}`)}
+        ${kv("剩餘年數", r.years == null ? "—" : fx(r.years, 2) + " 年")}
+        </tbody></table></div>`;
+    }});
+  function apply() {
+    const f = filters.find(x => x[0] === flt)[2];
+    t.set(rows.filter(r => f(r) && (!q || r.code.includes(q) || (r.name || "").includes(q) || (r.stock || "").includes(q) || (r.stock_name || "").includes(q))));
+  }
+  chips(document.getElementById("cf"), filters.map(f => [f[0], `${f[1]} ${rows.filter(f[2]).length}`]), "", v => { flt = v; apply(); });
+  document.getElementById("cq").oninput = e => { q = e.target.value.trim(); apply(); };
+  apply();
+  load("cb_hist.json").then(h => { hist = h || {dates: [], s: {}}; apply(); });
+};
+
 // ---- 處置 ----
 const COND = {c1: "連續3日第1款", any: "連續5日（第1~8款）", w10: "10日內6次", w30: "30日內12次"};
 const prog = ([a, b]) => `<span class="prog" aria-label="${a}/${b}">${Array.from({length: b}, (_, i) => `<i class="${i < a ? "f" : ""}"></i>`).join("")}</span> <span class="small">${a}/${b}</span>`;
@@ -1049,7 +1143,7 @@ P.stock = async (code) => {
 
 // ---------------- router ----------------
 const routes = {"": P.home, daily: P.daily, nextday: P.nextday, stats: P.stats, commentary: P.commentary,
-  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, disposal: P.disposal, etf: P.etf, stock: P.stock};
+  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, disposal: P.disposal, etf: P.etf, stock: P.stock};
 async function route() {
   const [path] = location.hash.replace(/^#\/?/, "").split("?");
   const [name, arg] = path.split("/");
@@ -1121,7 +1215,7 @@ async function gate() {
     }
   } catch {}
   const j = META.jobs || {};
-  document.getElementById("updated").textContent = Object.keys(j).length ? "最近更新：" + Object.entries(j).filter(([k]) => k !== "mock").map(([k, v]) => `${({daily: "漲停", disposal: "處置", announce: "公告", borrow: "券差", etf: "主動ETF", backfill: "補資料"})[k] || k} ${v}`).join("，") : "";
+  document.getElementById("updated").textContent = Object.keys(j).length ? "最近更新：" + Object.entries(j).filter(([k]) => k !== "mock").map(([k, v]) => `${({daily: "漲停", cb: "可轉債", disposal: "處置", announce: "公告", borrow: "券差", etf: "主動ETF", backfill: "補資料"})[k] || k} ${v}`).join("，") : "";
   window.addEventListener("hashchange", route);
   route();
 })();

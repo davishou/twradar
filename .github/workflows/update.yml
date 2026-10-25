@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / treasury / retheme / all / backfill / history；重跑某天：daily 2026-10-16）"
+        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / cb / treasury / retheme / all / backfill / history；重跑某天：daily 2026-10-16）"
         default: "all"
 
 permissions:
@@ -56,6 +56,8 @@ jobs:
             !/data/archive/inst/
             !/data/archive/margin/
             !/data/archive/val/
+            !/data/archive/cbq/
+            !/data/archive/cbb/
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -127,7 +129,9 @@ jobs:
           cat site/repo_size.json
 
       - name: 小走勢圖（每次部署從 data/history 產生，不進 git）
-        run: python -m pipeline.spark || echo "小走勢圖產生失敗，網站照常部署"
+        run: |
+          python -m pipeline.spark || echo "小走勢圖產生失敗，網站照常部署"
+          python -m pipeline.cb hist || echo "可轉債歷史圖產生失敗"
 
       - uses: actions/upload-pages-artifact@v3
         with:
