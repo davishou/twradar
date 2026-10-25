@@ -83,6 +83,9 @@ jobs:
             git config user.email "data-bot@users.noreply.github.com"
             # 每 45 分鐘存一次，萬一中途被中斷也不會白跑
             for i in 1 2 3 4 5; do
+              # 平日 06:15 以後不再開新一輪，避免回補拖到盤後工作（排程延遲時也一樣）
+              now=$(TZ=Asia/Taipei date +%H%M); dow=$(TZ=Asia/Taipei date +%u)
+              if [ "$dow" -le 5 ] && [ "$now" -ge 0615 ] && [ "$now" -lt 2300 ]; then echo "平日白天，下次再續"; break; fi
               python -m pipeline.run history 45
               git add --sparse data
               if ! git diff --cached --quiet; then
