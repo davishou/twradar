@@ -348,19 +348,26 @@ body.locked > header, body.locked > main, body.locked > footer, body.locked > .m
 :root{--spk-r1:#e9c46a; --spk-r2:#e0a100; --spk-r3:#d62828; --spk-g1:#8fd3ad; --spk-g2:#2f9e6a; --spk-g3:#14532d}
 :root[data-theme="dark"]{--spk-r1:#a8873a; --spk-r2:#f0b400; --spk-r3:#ff5b52; --spk-g1:#3f7f5f; --spk-g2:#3fbf86; --spk-g3:#9be7c0}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--spk-r1:#a8873a; --spk-r2:#f0b400; --spk-r3:#ff5b52; --spk-g1:#3f7f5f; --spk-g2:#3fbf86; --spk-g3:#9be7c0}}
-.spk{display:inline-flex;align-items:center;gap:3px;vertical-align:middle;padding:0 2px;border:1px solid transparent;border-radius:3px;cursor:pointer;line-height:1;white-space:nowrap}
-.spk svg{display:block;overflow:visible}
-.spk polyline{fill:none;stroke-width:1.2;stroke-linejoin:round;stroke-linecap:round}
-.spk polyline.up,.spkbig polyline.up{stroke:var(--up)} .spk polyline.down,.spkbig polyline.down{stroke:var(--down)}
-.spk .lu circle,.spkbig .lu circle{fill:var(--up);stroke:var(--paper);stroke-width:.6}
-.spk b{font-size:10px;font-weight:700;font-feature-settings:"tnum";letter-spacing:-.02em}
-.spk.r1{border-color:var(--spk-r1)} .spk.r1 b{color:var(--warn)}
-.spk.r2{border-color:var(--spk-r2);border-width:1.5px} .spk.r2 b{color:var(--spk-r2)}
-.spk.r3{border-color:var(--spk-r3);border-width:2px;background:var(--up-bg)} .spk.r3 b{color:var(--spk-r3)}
-.spk.g1{border-color:var(--spk-g1)} .spk.g1 b{color:var(--spk-g2)}
-.spk.g2{border-color:var(--spk-g2);border-width:1.5px} .spk.g2 b{color:var(--spk-g2)}
-.spk.g3{border-color:var(--spk-g3);border-width:2px;background:var(--down-bg)} .spk.g3 b{color:var(--spk-g3)}
-.spk:hover,.spk:focus-visible{background:var(--line-2)}
+/* 樣式④：框只框圖（大小一致），數字在框外；框內極淡格線＝月分隔線＋起點價位虛線 */
+:root{--spk-frame:#c9d0da; --spk-grid:#e6eaf0; --spk-base:#a3acba}
+:root[data-theme="dark"]{--spk-frame:#6e7889; --spk-grid:#3c455b; --spk-base:#8a94a6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--spk-frame:#6e7889; --spk-grid:#3c455b; --spk-base:#8a94a6}}
+.tspk{display:inline-flex;align-items:center;gap:4px;vertical-align:middle;cursor:pointer;line-height:1;white-space:nowrap;border-radius:3px}
+.tbox{display:inline-flex;border:1px solid var(--spk-frame);border-radius:3px;padding:1px 2px}
+.tspk svg{display:block;overflow:visible}
+.tspk .grid line{stroke:var(--spk-grid);stroke-width:1}
+.tspk .grid line.base{stroke:var(--spk-base);stroke-width:.7;stroke-dasharray:2 2}
+.tspk polyline{fill:none;stroke-width:1.2;stroke-linejoin:round;stroke-linecap:round}
+.tspk polyline.up,.spkbig polyline.up{stroke:var(--up)} .tspk polyline.down,.spkbig polyline.down{stroke:var(--down)}
+.tspk .lu circle,.spkbig .lu circle{fill:var(--up);stroke:var(--paper);stroke-width:.6}
+.tspk b{font-size:10px;font-weight:700;font-feature-settings:"tnum";letter-spacing:-.02em;min-width:28px}
+.tbox.r1{border-color:var(--spk-r1)} .tspk b.r1{color:var(--warn)}
+.tbox.r2{border-color:var(--spk-r2);box-shadow:0 0 0 .5px var(--spk-r2)} .tspk b.r2{color:var(--spk-r2)}
+.tbox.r3{border-color:var(--spk-r3);box-shadow:0 0 0 1px var(--spk-r3);background:var(--up-bg)} .tspk b.r3{color:var(--spk-r3)}
+.tbox.g1{border-color:var(--spk-g1)} .tspk b.g1{color:var(--spk-g2)}
+.tbox.g2{border-color:var(--spk-g2);box-shadow:0 0 0 .5px var(--spk-g2)} .tspk b.g2{color:var(--spk-g2)}
+.tbox.g3{border-color:var(--spk-g3);box-shadow:0 0 0 1px var(--spk-g3);background:var(--down-bg)} .tspk b.g3{color:var(--spk-g3)}
+.tspk:hover .tbox,.tspk:focus-visible .tbox{background:var(--line-2)}
 .spktip{position:fixed;z-index:50;width:min(340px,calc(100vw - 16px));background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 28px rgba(15,25,45,.18);padding:10px 12px;font-size:14px}
 .spktip[hidden]{display:none}
 .spkh{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;margin-bottom:4px}
@@ -374,4 +381,4 @@ body.locked > header, body.locked > main, body.locked > footer, body.locked > .m
 .spkpage{max-width:560px;margin-bottom:8px} .spkpage .spkbig text{font-size:7px}
 
 td.spkc,th.spkc{white-space:nowrap;width:1%;padding-left:4px;padding-right:10px}
-td.spkc .spk{width:142px;justify-content:space-between}
+

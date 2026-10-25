@@ -53,11 +53,17 @@ function spk(code, name, rec) {
   const vals = spkVals(rec.v), w = 100, h = 24, pts = spkPath(vals, w, h, 2);
   const dir = rec.b >= rec.a ? "up" : "down";
   const [tier, lab] = spkTier(rec);
-  const dots = (rec.k || []).map(i => { const [x, y] = pts[i].split(","); return `<circle cx="${x}" cy="${y}" r="1.6"/>`; }).join("");
+  const xy = i => pts[i].split(",");
+  const dots = (rec.k || []).map(i => { const [x, y] = xy(i); return `<circle cx="${x}" cy="${y}" r="1.6"/>`; }).join("");
+  // 格線：每月第一個交易日一條直線、期間起點價位一條虛線（小圖刻度各不相同，不畫橫向格子）
+  const months = (rec.m || []).map(i => { const x = xy(i)[0]; return `<line x1="${x}" x2="${x}" y1="0" y2="${h}"/>`; }).join("");
+  const by = (2 + (1 - (rec.a - rec.l) / ((rec.h - rec.l) || 1)) * (h - 4)).toFixed(1);
   SPK.push({code, name, rec});
-  return `<span class="spk ${tier}" data-i="${SPK.length - 1}" tabindex="0" role="img" aria-label="${esc(name || code)} 近 ${vals.length} 日走勢，期間 ${((rec.b / rec.a - 1) * 100).toFixed(0)}%">`
-    + `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline class="${dir}" points="${pts.join(" ")}"/><g class="lu">${dots}</g></svg>`
-    + (lab ? `<b>${lab}</b>` : "") + `</span>`;
+  return `<span class="tspk" data-i="${SPK.length - 1}" tabindex="0" role="img" aria-label="${esc(name || code)} 近 ${vals.length} 日走勢，期間 ${((rec.b / rec.a - 1) * 100).toFixed(0)}%">`
+    + `<span class="tbox ${tier}"><svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">`
+    + `<g class="grid">${months}<line class="base" x1="0" x2="${w}" y1="${by}" y2="${by}"/></g>`
+    + `<polyline class="${dir}" points="${pts.join(" ")}"/><g class="lu">${dots}</g></svg></span>`
+    + `<b class="${tier}">${lab}</b></span>`;
 }
 function spkBig(rec, w = 300, h = 120) {
   const vals = spkVals(rec.v), pts = spkPath(vals, w, h, 6), dir = rec.b >= rec.a ? "up" : "down";
@@ -96,13 +102,13 @@ function spkShow(el) {
 }
 function spkHide() { spkTip.hidden = true; spkOn = null; }
 const hoverable = matchMedia("(hover: hover)").matches;
-document.addEventListener("mouseover", e => { if (!hoverable) return; const el = e.target.closest?.(".spk"); if (el) spkShow(el); else if (spkOn && !e.target.closest?.(".spktip")) spkHide(); });
+document.addEventListener("mouseover", e => { if (!hoverable) return; const el = e.target.closest?.(".tspk"); if (el) spkShow(el); else if (spkOn && !e.target.closest?.(".spktip")) spkHide(); });
 document.addEventListener("click", e => {
-  const el = e.target.closest?.(".spk");
+  const el = e.target.closest?.(".tspk");
   if (el) { e.preventDefault(); e.stopPropagation(); spkOn === el && !hoverable ? spkHide() : spkShow(el); return; }
   if (!e.target.closest?.(".spktip")) spkHide();
 }, true);
-document.addEventListener("focusin", e => { const el = e.target.closest?.(".spk"); if (el) spkShow(el); });
+document.addEventListener("focusin", e => { const el = e.target.closest?.(".tspk"); if (el) spkShow(el); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") spkHide(); });
 window.addEventListener("scroll", () => { if (spkOn) spkHide(); }, {passive: true});
 const md = s => s ? s.slice(5).replace("-", "/") : "";
