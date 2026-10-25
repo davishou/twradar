@@ -1101,6 +1101,36 @@ P.cbipo = async () => {
   apply();
 };
 
+// ---- 私募 ----
+const PP_ST = {"董事會擬辦": "pur", "應募人": "warn", "定價": "up", "收足股款": "ok", "取消": "", "轉換/賣回": "", "資金運用": "", "其他": ""};
+const PP_INV = {"內部人": "warn", "策略投資人": "up", "未定": ""};
+P.private = () => annPage("private", "私募", "公司自己辦的私募增資（普通股、私募可轉債、特別股），同一家公司相近時間的公告合成一案。" +
+  "私募價通常是參考價的八成，三年內不能賣；應募人是董事長、大股東自己，或是策略投資人，訊號意義不同。金控、壽險「取得」別人私募的投資公告已排除。", [
+  {k: "stage", t: "階段", s: r => ({"董事會擬辦": 1, "應募人": 2, "定價": 3, "收足股款": 4, "取消": 5})[r.stage] ?? 6,
+   f: r => `<span class="tag ${PP_ST[r.stage] || ""}">${esc(r.stage)}</span>${r.sub ? ' <span class="tag">子公司</span>' : ""}${r.oppose ? ' <span class="tag down" title="獨立董事有反對或保留意見">獨董反對</span>' : ""}`},
+  ...idCols,
+  {k: "kind", t: "種類", f: r => esc(r.kind)},
+  {k: "investor", t: "應募人", f: r => `<span class="tag ${PP_INV[r.investor] || ""}">${esc(r.investor)}</span>${r.names?.length ? `<br><span class="small muted">${r.names.slice(0, 3).map(esc).join("、")}${r.names.length > 3 ? "…" : ""}</span>` : ""}`},
+  {k: "shares", t: "股數(萬股)", n: 1, f: r => r.shares ? `${r.cap ? '<span class="small muted">上限 </span>' : ""}${fx(r.shares / 1e4, r.shares < 1e5 ? 1 : 0)}` : "—"},
+  {k: "price", t: "私募價", n: 1, f: r => fp(r.price)},
+  {k: "ref", t: "參考價", n: 1, f: r => fp(r.ref)},
+  {k: "disc", t: "價格成數", n: 1, f: r => r.disc ? `<span class="${r.disc < 0.85 ? "" : r.disc >= 1 ? "up" : ""}">${fx(r.disc * 100, 0)}%</span>` : "—"},
+  {k: "amount", t: "金額(億)", n: 1, f: r => r.amount ? fx(r.amount, r.amount < 10 ? 2 : 1) : "—"},
+  {k: "close", t: "股價", n: 1, f: r => fp(r.close)},
+  {k: "vs_price", t: "比私募價", n: 1, f: r => r.vs_price == null ? "—" : pc(r.vs_price * 100, 1)},
+  {k: "ret", t: "公告後", n: 1, s: r => r.ret == null ? null : r.ret - (r.mkt || 0),
+   f: r => r.ret == null ? "—" : `${pc(r.ret * 100, 1)}<br><span class="small muted">大盤 ${pc((r.mkt || 0) * 100, 1)}</span>`},
+  {k: "date", t: "最新公告", f: r => md(r.date)},
+], {sort: ["date", -1],
+  groups: [["進行中（擬辦、定價、洽定應募人）", r => ["董事會擬辦", "應募人", "定價"].includes(r.stage), "hot"],
+           ["已完成（收足股款）", r => r.stage === "收足股款", ""],
+           ["取消、延後與其他（轉換、資金運用）", r => !["董事會擬辦", "應募人", "定價", "收足股款"].includes(r.stage), ""]],
+  filters: [["ins", "內部人認購", r => r.investor === "內部人"], ["str", "策略投資人", r => r.investor === "策略投資人"],
+            ["cb", "私募 CB／特別股", r => r.kind !== "普通股"], ["self", "排除子公司", r => !r.sub], ["opp", "獨董反對", r => r.oppose]],
+  foot: "資料來源：公開資訊觀測站重大訊息。價格成數＝私募價 ÷ 參考價（法規下限通常八成；低於面額 10 元的公司常以面額發行，成數會超過 100%）。" +
+    "比私募價＝目前股價 ÷ 私募價 − 1，代表應募人帳面賺賠（三年後才能賣）。公告後＝第一則公告前一日收盤到今天。數字由程式從原文抽取，請點列展開對照。",
+  expand: r => rawBlock(r, `<h4>本案公告（${r.events.length} 則）</h4><ol class="small">${r.events.map(e => `<li>${md(e.date)} ${esc(e.time || "")}　<span class="tag ${PP_ST[e.stage] || ""}">${esc(e.stage)}</span> ${esc(e.subject)}</li>`).join("")}</ol>`)});
+
 // ---- 處置 ----
 const COND = {c1: "連續3日第1款", any: "連續5日（第1~8款）", w10: "10日內6次", w30: "30日內12次"};
 const prog = ([a, b]) => `<span class="prog" aria-label="${a}/${b}">${Array.from({length: b}, (_, i) => `<i class="${i < a ? "f" : ""}"></i>`).join("")}</span> <span class="small">${a}/${b}</span>`;
@@ -1268,7 +1298,7 @@ P.stock = async (code) => {
 
 // ---------------- router ----------------
 const routes = {"": P.home, daily: P.daily, nextday: P.nextday, stats: P.stats, commentary: P.commentary,
-  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbipo: P.cbipo, disposal: P.disposal, etf: P.etf, stock: P.stock};
+  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbipo: P.cbipo, private: P.private, disposal: P.disposal, etf: P.etf, stock: P.stock};
 async function route() {
   const [path] = location.hash.replace(/^#\/?/, "").split("?");
   const [name, arg] = path.split("/");

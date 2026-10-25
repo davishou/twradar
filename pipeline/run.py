@@ -262,6 +262,11 @@ def job_announce(src) -> None:
     brief.touch_meta("announce")
     brief.line_copy()
     log.info("公告：自結 %d、季報 %d、營收 %d、庫藏 %d、事件 %d、其他 %d", *(len(res[k]) for k in ("att", "fin", "rev", "treasury", "events", "others")))
+    try:   # 私募案（從重大訊息整理，不呼叫 AI）
+        from . import private
+        log.info("私募：%d 案", private.run())
+    except Exception as e:  # noqa: BLE001
+        log.exception("私募整理失敗：%s", e)
 
 
 def job_treasury(minutes: float = 20, days: int = 185) -> None:
