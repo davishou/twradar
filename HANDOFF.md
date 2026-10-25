@@ -20,9 +20,12 @@
 | 21:45 | disposal | 處置預測（等融資融券公布） |
 | 22:30 | etf | 主動 ETF（目前無資料） |
 | 每 5 分 08:00–23:55 | announce | 自結／季報／營收／庫藏／事件 |
-| 00:30（GitHub cron） | history | 長期資料庫回補；已補完，之後每晚幾秒結束（也會續補庫藏股，見下） |
+| 00:30（GitHub cron） | history | 長期資料庫回補：先補到 10 年（stage1），補完自動延伸到 2004-02（EARLIEST）；每晚最多 5×45 分鐘；也會續補庫藏股 |
 | 手動 | treasury | 庫藏股歷史回補約 6 個月（每次 20 分鐘、可續跑） |
 - workflow checkout 用 `ref: main`（排隊的工作也拿最新資料，避免存回衝突）。concurrency group `update-data`。
+- **稀疏 checkout**：history 以外的工作不下載 `data/archive/{quotes,inst,margin}`（只寫當天新檔，`git add --sparse`）。要讀這些舊檔的程式只能放在 history 工作。
+- 部署前 `python -m pipeline.spark` 產生 `site/data/spark.json`（不進 git，每次部署從 data/history 產生）。
+- `data/history` 只留 260 個交易日（store.prune，daily 時執行）；更舊的看 data/archive。
 
 ## 機密與費用
 - `ANTHROPIC_API_KEY` 在 GitHub Secrets（workspace 金鑰，Default workspace）；使用者已設每月上限、關閉自動儲值。**絕不要請使用者把金鑰貼到對話。**
@@ -38,13 +41,17 @@
 
 ## 長期資料庫 `data/archive/`（pipeline/archive.py）
 - 每類一資料夾、每日一個 gzip CSV（固定時間戳）：quotes、inst、margin、limitup、notices、punish；`adjust.csv.gz` 除權息／減資還原因子（參考價≠前一交易日收盤）；`progress.json` 回補進度。
-- 已補完 2021-10-20 起約 1,216 個交易日（~108MB）。上市注意／處置股 5 年已補；**上櫃注意／處置股只能從 2026-10 起累積**。
+- 2026-10-25 起分階段回補：先 10 年、再到 2004-02（archive.target_start / stage1_done）。舊年份查無法人／融資券的日子試 2 次後記在 progress.json `gave_up`，只缺上櫃的日子記在 `no_tpex`，每年各類天數在 `by_year`。每年約 20MB。上市注意／處置股 5 年已補；**上櫃注意／處置股只能從 2026-10 起累積**。
 - 每日 daily/disposal 會自動寫入。
 
 ## 庫藏股（pipeline/announce.py）
 - `data/state/treasury_raw.json`：庫藏股相關原始公告（主旨含「買回／庫藏」），保留 190 天；`_days` 記已回補日期、`_bf` 記最近回補結果。
 - 每次 announce 會把 material_db（45 天）的庫藏公告複製進 raw；買回計畫每次從 raw＋material 重建（treasury_db 只是輸出快取），決議晚於執行結果補進來也不會重複。
 - 回補不呼叫 AI；觀測站連續拒絕 3 次就停，下次續跑。舊公告不標「新」。
+
+## 小走勢圖（pipeline/spark.py、app.js 的 spk*）
+- 每檔 160 日還原收盤，64 階一字元編碼；漲停日紅點；外框＝圖中最大波動：最大漲幅 ×2/×5/×10 淡黃/黃/紅框，最大跌幅 −30/−60/−80% 淺綠/深綠/墨綠，漲跌都有取對數幅度大的一邊，框內小字標倍數或跌幅。
+- 全站名稱欄（stockLink）都有；每日漲停檔、隔日檔內嵌 `spark`（只畫到那一天），其他頁用 spark.json（最新）。滑鼠移上或手機點一下浮出大圖；個股頁直接顯示大圖。
 
 ## 已驗證和原網站一致的規則
 - 隔日標籤：續漲停／強續漲／弱續漲／開高走低／直接跌；加權 = (2×開盤報酬 + 均價報酬)/3；族群勝率 = 加權>0 比例。
