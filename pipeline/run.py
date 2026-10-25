@@ -98,18 +98,20 @@ def _daily(src, td, quotes, light: bool = False, d=None) -> date | None:
     if not light:
         retheme_history(src)
         job_brokers(src, td, daily, inst)
-        job_cb(src, td)
+        job_cb(src, td, inst)
     return td
 
 
-def job_cb(src, d: date | None = None) -> None:
+def job_cb(src, d: date | None = None, inst: dict | None = None) -> None:
     """可轉債：行情、看板、發行資料 → site/data/cb.json（櫃買約 16~18 點公布；21:45 處置工作會再補一次）"""
     if src is not sources:
         return
     from . import cb
     try:
-        if cb.run(d):
+        if cb.run(d, inst=inst):
             brief.touch_meta("cb", d)
+        from . import cbipo
+        cbipo.run()
     except Exception as e:  # noqa: BLE001  可轉債失敗不影響其他資料
         log.exception("可轉債失敗：%s", e)
 

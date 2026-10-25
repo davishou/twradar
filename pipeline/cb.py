@@ -153,7 +153,27 @@ def _years(a: date, b: str | None) -> float | None:
         return None
 
 
-def build_rows(d: date, quotes: dict, board: dict, issue: dict, stocks: dict) -> list[dict]:
+def stock_stats(d: date, codes: set[str]) -> dict[str, dict]:
+    """標的股票近 20 日：MA5、MA20、5 日／20 日均量（張）"""
+    days = store.days_before(d, 20)
+    ser: dict[str, list] = {}
+    for x in days:
+        day = store.load_day(x)
+        for c in codes:
+            q = day.get(c)
+            if q and q.get("close"):
+                ser.setdefault(c, []).append((q["close"], (q.get("volume") or 0) / 1000))
+    out = {}
+    for c, v in ser.items():
+        cl, vo = [a for a, _ in v], [b for _, b in v]
+        out[c] = {"ma5": round(sum(cl[-5:]) / len(cl[-5:]), 2), "ma20": round(sum(cl) / len(cl), 2) if len(cl) >= 20 else None,
+                  "v5": round(sum(vo[-5:]) / len(vo[-5:])), "v20": round(sum(vo) / len(vo)) if len(vo) >= 20 else None}
+    return out
+
+
+def build_rows(d: date, quotes: dict, board: dict, issue: dict, stocks: dict,
+               inst: dict | None = None, comp: dict | None = None, stats: dict | None = None) -> list[dict]:
+    inst, comp, stats = inst or {}, comp or {}, stats or {}
     rows = []
     for code in sorted(set(board) | set(quotes)):
         q, b, i = quotes.get(code, {}), board.get(code, {}), issue.get(code, {})
@@ -180,8 +200,18 @@ def build_rows(d: date, quotes: dict, board: dict, issue: dict, stocks: dict) ->
         yrs = _years(d, tgt_d)
         yld = round(((tgt_p / px) ** (1 / yrs) - 1) * 100, 2) if px and yrs and yrs > 0.02 and tgt_p else None
         floor = tgt_p / (1 + DISCOUNT) ** yrs if tgt_p and yrs is not None and yrs >= 0 else None
+        shares = (comp.get(stock) or {}).get("shares")
+        conv_shares = out_amt / cp if out_amt and cp else None           # 餘額可轉換的股數
+        st, iv = stats.get(stock) or {}, inst.get(stock) or {}
         rows.append({
             "code": code, "name": q.get("name") or b.get("name") or i.get("short", ""), "stock": stock,
+            "stock_lots": round(sq["volume"] / 1000) if sq.get("volume") else None, **{k: st.get(k) for k in ("ma5", "ma20", "v5", "v20")},
+            "inst": [iv.get("f"), iv.get("t"), iv.get("d")] if iv else None,
+            "ratio": round(100000 / cp / 1000, 4) if cp else None,           # 每張 CB 可轉換幾張股票
+            "conv_lots": round(conv_shares / 1000) if conv_shares else None,
+            "dilution": round(conv_shares / shares * 100, 2) if conv_shares and shares else None,
+            "remain": round(out_amt / issue_amt * 100, 2) if issue_amt and out_amt is not None else None,
+            "days_left": (date.fromisoformat(maturity) - d).days if maturity else None,
             "stock_name": sq.get("name") or i.get("issuer_name", ""), "market": sq.get("market", ""),
             "close": close, "chg": q.get("chg"), "chg_pct": round(q["chg"] / (close - q["chg"]) * 100, 2) if close and q.get("chg") is not None and close != q["chg"] else None,
             "open": q.get("open"), "high": q.get("high"), "low": q.get("low"), "avg": q.get("avg"),
@@ -213,7 +243,8 @@ def build_rows(d: date, quotes: dict, board: dict, issue: dict, stocks: dict) ->
 
 def snapshot(d: date, rows: list[dict]) -> None:
     """每日快照：圖表與回測用（只留關鍵數字）"""
-    keep = ("close", "lots", "conv_value", "premium", "stock_close", "conv_price", "out_amt", "put_yield", "option")
+    keep = ("close", "lots", "conv_value", "premium", "stock_close", "conv_price", "out_amt", "put_yield", "option",
+            "open", "high", "low")
     write_json(HIST_DIR / f"{d.isoformat()}.json", {"date": d.isoformat(), "fields": list(keep),
                                                     "rows": {r["code"]: [r.get(k) for k in keep] for r in rows}})
     ds = sorted(p.stem for p in HIST_DIR.glob("????-??-??.json"))
@@ -221,18 +252,21 @@ def snapshot(d: date, rows: list[dict]) -> None:
         (HIST_DIR / f"{x}.json").unlink(missing_ok=True)
 
 
+HIST_FIELDS = ("open", "high", "low", "close", "lots", "conv_value", "premium", "out_amt")
+
+
 def history_series(n: int = 250) -> dict:
-    """部署時產生 site/data/cb_hist.json：每檔近 n 日 [日期索引, 收盤, 轉換價值, 溢價率, 張數]"""
+    """部署時產生 site/data/cb_hist.json：每檔近 n 日 [日期索引, 開, 高, 低, 收, 張數, 轉換價值, 溢價率, 餘額]"""
     files = sorted(HIST_DIR.glob("????-??-??.json"))[-n:]
     dates, series = [], {}
     for k, p in enumerate(files):
         js = read_json(p) or {}
         f = js.get("fields", [])
         dates.append(js.get("date", p.stem))
-        ix = {x: f.index(x) for x in ("close", "conv_value", "premium", "lots") if x in f}
+        ix = {x: f.index(x) for x in HIST_FIELDS if x in f}
         for code, v in (js.get("rows") or {}).items():
-            series.setdefault(code, []).append([k, *(v[ix[x]] if x in ix else None for x in ("close", "conv_value", "premium", "lots"))])
-    return {"dates": dates, "s": series}
+            series.setdefault(code, []).append([k, *(v[ix[x]] if x in ix else None for x in HIST_FIELDS)])
+    return {"dates": dates, "fields": ["i", *HIST_FIELDS], "s": series}
 
 
 def _arch_rows(kind: str, d: str) -> dict[str, dict]:
@@ -262,12 +296,13 @@ def rebuild_history(n: int = KEEP) -> int:
             continue
         d = date.fromisoformat(ds)
         rows = build_rows(d, _arch_rows("cbq", ds), _arch_rows("cbb", bd), issue, store.load_day(d))
+        have.add(ds)
         snapshot(d, rows)
         done += 1
     return done
 
 
-def run(d: date | None = None, src=None) -> dict | None:
+def run(d: date | None = None, src=None, inst: dict | None = None, comp: dict | None = None) -> dict | None:
     """抓某天（預設最近交易日）的行情與看板，產生 cb.json 與快照；資料還沒公布就回 None"""
     from . import archive
     d = d or (store.trading_days()[-1] if store.trading_days() else date.today())
@@ -281,7 +316,11 @@ def run(d: date | None = None, src=None) -> dict | None:
     if brows:
         archive.write("cbb", d, [{"code": k, **v} for k, v in parse_board(brows).items()])
     issue = fetch_issue()
-    rows = build_rows(d, parse_quotes(qrows or []), parse_board(brows or []), issue, store.load_day(d))
+    stocks = store.load_day(d)
+    codes = {c[:4] for c in set(parse_board(brows or [])) | set(parse_quotes(qrows or []))} | \
+            {v["issuer"] for v in issue.values() if (v.get("issuer") or "").isdigit()}
+    rows = build_rows(d, parse_quotes(qrows or []), parse_board(brows or []), issue, stocks,
+                      inst, comp or (store.state("companies", {}) or {}).get("data", {}), stock_stats(d, codes))
     snapshot(d, rows)
     res = {"date": d.isoformat(), "discount": DISCOUNT, "n": len(rows), "has_board": bool(brows), "rows": rows,
            "updated": date.today().isoformat()}

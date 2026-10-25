@@ -208,6 +208,7 @@ def fetch_companies() -> dict[str, dict]:
                 "code": code, "name": str(pick(r, "公司簡稱", "CompanyAbbreviation", "公司名稱", "CompanyName", default=code)),
                 "market": market, "industry_code": ind, "industry": INDUSTRY.get(ind, ind or "其他"),
                 "capital": capital, "shares": shares,
+                "full": str(pick(r, "公司名稱", "CompanyName", contains=False, default="")).strip(),
             }
         if js and isinstance(js, list):
             from .util import write_json
