@@ -8,6 +8,7 @@
   python -m pipeline.run etf            主動 ETF 持股異動（22:30）
   python -m pipeline.run announce       自結/季報/營收/庫藏/事件（每 5 分鐘）
   python -m pipeline.run all            以上全部
+  python -m pipeline.run retheme        族群重分類（用 AI；主要經營業務補齊後執行一次）
   python -m pipeline.run treasury 20    庫藏股歷史回補約 6 個月（每次跑 20 分鐘，續跑）
   python -m pipeline.run history 40     長期資料庫：回補歷史（先 10 年再到 2004）（每次跑 40 分鐘，續跑）
   python -m pipeline.run backfill 120   補抓最近 120 個交易日歷史行情（第一次部署必跑）
@@ -297,12 +298,18 @@ def backfill(n: int) -> None:
 
 def job_history(minutes: float = 40) -> None:
     """長期資料庫：分批回補行情／法人／融資融券（先 10 年、再到 2004）、上市注意處置股、同步漲停族群、重算還原因子"""
-    st = archive.backfill(sources, minutes=minutes * 0.7)    # 先 10 年，補完自動延伸到 2004
+    st = archive.backfill(sources, minutes=minutes * 0.6)    # 先 10 年，補完自動延伸到 2004
     archive.backfill_notices(sources)
     try:
         archive.backfill_fundamentals(sources, minutes=minutes * 0.25)   # 月營收、季報歷史（2013 起）
     except Exception as e:  # noqa: BLE001
         log.exception("基本面回補失敗：%s", e)
+    try:   # 族群分類用的『主要經營業務』，全部公司慢慢補齊（不呼叫 AI）
+        from . import themes
+        n_biz = themes.prefetch_business(sources.fetch_business, sorted(companies(sources)), minutes=minutes * 0.15)
+        log.info("主要經營業務：本次補 %d 家", n_biz)
+    except Exception as e:  # noqa: BLE001
+        log.exception("主要經營業務補抓失敗：%s", e)
     archive.sync_limitup()
     try:
         job_treasury(minutes=10)          # 庫藏股回補沒補完就順便續補；補完後幾乎不花時間
@@ -310,6 +317,37 @@ def job_history(minutes: float = 40) -> None:
         log.exception("庫藏股回補失敗：%s", e)
     n = archive.build_adjust()
     log.info("還原因子 %d 筆；回補完成：%s", n, st.get("complete"))
+
+
+def job_retheme() -> None:
+    """族群重分類（會用 AI）：把只分到官方產業別的股票，用主要經營業務重新分類，再重建所有歷史漲停頁、隔日、統計"""
+    from . import themes
+    comp = companies(sources)
+    res = themes.reclassify_weak({c: v.get("name", "") for c, v in comp.items()}, {c: v.get("industry", "") for c, v in comp.items()})
+    log.info("族群重分類：%s", res)
+    store.save_state("retheme", {"v": 2, **res})
+    dates = limitup.daily_dates()
+    # 歷史漲停股中還沒有族群紀錄的（當初用關鍵字或產業別），先分批分類好，重建時就不會每天各叫一次 AI
+    known = {c for v in themes.load_themes().values() for c in v.get("codes", [])}
+    todo = {}
+    for d in dates:
+        for st in (limitup.load_daily(d) or {}).get("stocks", []):
+            if st["code"] not in known and st.get("theme_source") != "keyword":
+                todo[st["code"]] = {"code": st["code"], "name": st["name"], "industry": st.get("industry", "")}
+    biz = themes.businesses(list(todo), None)
+    items = list(todo.values())
+    for i in range(0, len(items), 50):
+        themes.classify(items[i:i + 50], {}, biz)
+    log.info("補分類歷史漲停股 %d 檔", len(items))
+    for d in dates:
+        limitup.build_daily(d, list(store.load_day(d).values()), comp, {}, full=False)
+    for d in dates:
+        nxt = store.next_day(d)
+        if nxt:
+            limitup.build_nextday(nxt, list(store.load_day(nxt).values()))
+    limitup.build_stats()
+    brief.line_copy()
+    log.info("已重建 %d 天的漲停與隔日資料", len(dates))
 
 
 def reset() -> None:
@@ -380,6 +418,8 @@ def main(argv: list[str]) -> int:
     elif cmd == "all":
         for f in jobs.values():
             f()
+    elif cmd == "retheme":
+        job_retheme()
     elif cmd == "treasury":
         job_treasury(float(argv[1]) if len(argv) > 1 else 20)
     elif cmd == "history":

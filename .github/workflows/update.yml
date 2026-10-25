@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / treasury / all / backfill / history；重跑某天：daily 2026-10-16）"
+        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / treasury / retheme / all / backfill / history；重跑某天：daily 2026-10-16）"
         default: "all"
 
 permissions:
