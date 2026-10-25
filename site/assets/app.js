@@ -805,10 +805,12 @@ function xTag(st) {
   if (st === "需集中度") return `<span class="tag warn">看集中度</span>`;
   return `<span class="tag">${esc(st || "—")}</span>`;
 }
+// 同類股（同產業）平均：有比就顯示數字，依規定不比時顯示原因
+const indTxt = x => !x || x.ind === undefined ? "" : x.ind_skip ? `；同類股（${esc(x.ind || "—")}）不比：${esc(x.ind_skip)}` : `，同類股（${esc(x.ind)}，${x.ind_n} 家）平均 ${pc(x.ind_avg)}`;
 function dispX(c) {
   const c3 = c.c3 || {}, c4 = c.c4 || {}, c6 = c.c6 || {}, c7 = c.c7 || {};
   const p = c3.price || c4.price || c7.price;
-  const pTxt = p ? `<p class="small muted">價格條件：6 日累積漲跌超過 ${p.th}% 且與全體平均差 20 個百分點以上（起點 ${md(p.base_date)} 收 ${fp(p.base)}，目前 ${pc(p.cum)}）</p>` : "";
+  const pTxt = p ? `<p class="small muted">價格條件：6 日累積漲跌超過 ${p.th}% 且與全體平均、同類股平均都差 20 個百分點以上（起點 ${md(p.base_date)} 收 ${fp(p.base)}，目前 ${pc(p.cum)}${p.mkt != null ? `；全體平均 ${pc(p.mkt)}` : ""}${indTxt(p)}）</p>` : "";
   return `<div><h4>③ 量放大 ${xTag(c3.status)}</h4>${c3.lots ? `<p>${pcTxt(c3.price)}</p><p>量 ≥ <b>${fi(c3.lots)}</b> 張（60 日均量 ${fi(c3.avg60)} 張的 ${c3.mult} 倍；全市場今日 ${c3.mkt_mult} 倍）</p><p class="small muted">今日為均量 ${c3.today_mult} 倍</p>` : "<p class='muted'>資料不足</p>"}${pTxt}</div>
     <div><h4>④ 週轉率 ${xTag(c4.status)}</h4>${c4.lots ? `<p>${pcTxt(c4.price)}</p><p>量 ≥ <b>${fi(c4.lots)}</b> 張（週轉率 ≥ ${c4.to}%；全市場平均 ${c4.mkt_to}%）</p><p class="small muted">今日週轉率 ${c4.today_to}%</p>` : "<p class='muted'>資料不足</p>"}</div>
     <div><h4>⑤ 單一券商占比</h4><p class="muted">需要全市場每檔股票的券商分點資料（櫃買分點有真人驗證、上市每檔都要解驗證碼），無法每天估算。</p></div>
@@ -822,9 +824,10 @@ function dispDetail(c) {
   const c1 = c.c1;
   return `<div class="detail-grid">
     <div><h4>處置進度</h4>${Object.entries(COND).map(([k, v]) => `<p>${v}：${prog(c.progress[k])}</p>`).join("")}</div>
-    <div><h4>第一款（6 日累積漲跌）</h4>${c1 ? `<p>起點 ${c1.base_date} 收 ${fp(c1.base)}，目前累積 ${pc(c1.cum)}，同期全體平均 ${pc(c1.mkt)}</p>
+    <div><h4>第一款（6 日累積漲跌）</h4>${c1 ? `<p>起點 ${c1.base_date} 收 ${fp(c1.base)}，目前累積 ${pc(c1.cum)}，同期全體平均 ${pc(c1.mkt)}${indTxt(c1)}</p>
+      <p class="small muted">需超過門檻，且與全體平均、同類股平均的差都 ≥ 20 個百分點</p>
       <p>往上觸發：${trig(c1.up, "↑")}</p><p>往下觸發：${trig(c1.down, "↓")}</p>` : "<p class='muted'>歷史資料不足 6 日</p>"}</div>
-    <div><h4>第二款（30/60/90 日）</h4>${c.c2.map(x => `<p>${x.days} 日（門檻 ${x.th}%）：${x.cum != null ? `累積 ${pc(x.cum, 1)}，` : ""}${trig(x, "↑")}</p>`).join("")}</div>
+    <div><h4>第二款（30/60/90 日）</h4>${c.c2.map(x => `<p>${x.days} 日（門檻 ${x.th}%）：${x.cum != null ? `累積 ${pc(x.cum, 1)}，` : ""}${trig(x, "↑")}${x.mkt != null ? `<br><span class="small muted">全體平均 ${pc(x.mkt)}${indTxt(x)}，差幅需 ≥ ${x.gap}%</span>` : ""}</p>`).join("")}</div>
     <div><h4>明日價格範圍</h4><p>平盤 ${fp(c.limits.flat)}，漲停 ${fp(c.limits.up)}，跌停 ${fp(c.limits.down)}</p>
       <p>本益比 ${c.pe ?? "虧損或無"}，淨值比 ${c.pb ?? "—"}</p></div>
     <div><h4>注意股紀錄</h4><p>${c.record.map(r => `${md(r.date)}（第${r.clauses.join("、")}款）`).join("，")}</p></div>

@@ -250,3 +250,36 @@ class TreasuryBackfill(unittest.TestCase):
             self.assertFalse(p["new"])
         finally:
             config.STATE_DIR, ann.OUT, ann._time.sleep = old
+
+
+class DisposalPeers(unittest.TestCase):
+    def test_industry_average_raises_threshold(self):
+        """同類股 6 日平均漲 15%：第一款往上門檻＝max(32%, 全體+20%, 同類+20%)＝35%；本益比 ≥60 倍時不比同類"""
+        import tempfile
+        from pathlib import Path
+        from pipeline import disposal, store
+        old = config.HISTORY_DIR
+        config.HISTORY_DIR = Path(tempfile.mkdtemp())
+        store.trading_days.cache_clear(); store.load_day.cache_clear()
+        try:
+            codes = [f"90{i:02d}" for i in range(6)] + ["8000"]
+            comp = {c: {"market": "TWSE", "industry": "測試業" if c != "8000" else "其他"} for c in codes}
+            days = [date(2026, 9, d) for d in (1, 2, 3, 4, 7, 8)]
+            for i, d in enumerate(days):
+                qs = []
+                for c in codes:
+                    px = 10.0 if c == "8000" else (10.0 if i == 0 else 11.5)   # 同類漲 15%，其他股不動
+                    qs.append({"code": c, "name": c, "market": "TWSE", "close": px, "prev_close": px, "volume": 1000})
+                store.save_day(d, qs)
+            p = disposal.Peers(comp, {"9000": {"pe": 20}})
+            r = disposal.clause1("9000", "TWSE", days[-1], 11.5, p)
+            self.assertAlmostEqual(r["ind_avg"], 15.0)
+            self.assertIsNone(r["ind_skip"])
+            self.assertGreaterEqual(r["up"]["price"], 13.5)                 # 10 × 1.35
+            r2 = disposal.clause1("9000", "TWSE", days[-1], 11.5, disposal.Peers(comp, {"9000": {"pe": 80}}))
+            self.assertEqual(r2["ind_skip"], "本益比≥60倍")
+            self.assertLess(r2["up"]["price"], 13.5)                         # 只看 32% 與全體
+            self.assertEqual(disposal.Peers(comp, {}).info("8000", "TWSE")[1], "同類未達 5 家")
+        finally:
+            config.HISTORY_DIR = old
+            store.trading_days.cache_clear(); store.load_day.cache_clear()

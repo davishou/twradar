@@ -5,6 +5,8 @@
   最近 10 個營業日內 6 次、最近 30 個營業日內 12 次。
 第一、二款觸發價以本地歷史收盤估算；第三（量放大）、四（週轉率）、六（本益比淨值比）、
 七（券資比）款依『異常標準之詳細數據』估算；第五款需全市場券商分點，無法取得。
+第一、二、三、四、七款的價格條件同時和「全體平均」與「同類股（同產業別）平均」比較；
+同類未達 5 家或本益比為負／≥60 倍（上櫃 65 倍）時依規定不比同類。
 本模組為程式估算，非交易所預告。"""
 from __future__ import annotations
 
@@ -77,6 +79,60 @@ def merge_punish(punish: list[dict]) -> list[dict]:
     return st
 
 
+class Peers:
+    """同類股（同市場、同產業別）平均漲跌，用於第一、二、三、四、七款的『與同類股平均差幅』。
+    依規定：同類未達 5 家，或該股本益比為負／達 60 倍（上櫃 65 倍）以上，不適用同類股比較。"""
+
+    def __init__(self, companies: dict | None = None, valuation: dict | None = None):
+        self.comp = companies or {}
+        self.val = valuation
+        self.groups: dict[tuple, list[str]] = {}
+        for c, v in self.comp.items():
+            if v.get("industry") and v.get("market"):
+                self.groups.setdefault((v["market"], v["industry"]), []).append(c)
+        self._memo: dict[tuple, float | None] = {}
+
+    def info(self, code: str, market: str) -> tuple[str, str | None]:
+        """回傳 (產業別, 不適用原因)；原因為 None 表示要和同類比"""
+        ind = (self.comp.get(code) or {}).get("industry") or ""
+        if not ind:
+            return "", "無產業別資料"
+        if len(self.groups.get((market, ind), [])) < 5:
+            return ind, "同類未達 5 家"
+        if self.val:   # 估值資料有抓到才判斷；本益比空白＝虧損（負值）
+            v = self.val.get(code)
+            if v is not None:
+                pe = v.get("pe")
+                lim = 65 if market == "TPEX" else 60
+                if not pe or pe <= 0:
+                    return ind, "本益比為負"
+                if pe >= lim:
+                    return ind, f"本益比≥{lim}倍"
+        return ind, None
+
+    def avg(self, code: str, market: str, d_from: date, d_to: date) -> dict:
+        """{'ind', 'avg'(小數或 None), 'n', 'skip'(不適用原因)}"""
+        ind, skip = self.info(code, market)
+        if skip:
+            return {"ind": ind, "avg": None, "n": len(self.groups.get((market, ind), [])), "skip": skip}
+        k = (market, ind, d_from, d_to)
+        if k not in self._memo:
+            a, b = store.load_day(d_from), store.load_day(d_to)
+            xs = [b[c]["close"] / a[c]["close"] - 1 for c in self.groups[(market, ind)]
+                  if c in a and c in b and a[c].get("close") and b[c].get("close")]
+            self._memo[k] = (sum(xs) / len(xs), len(xs)) if len(xs) >= 5 else (None, len(xs))
+        v, n = self._memo[k]
+        return {"ind": ind, "avg": v, "n": n, "skip": None if v is not None else "同類有行情未達 5 家"}
+
+
+NO_PEERS = Peers()
+
+
+def _peer_out(pa: dict) -> dict:
+    return {"ind": pa["ind"], "ind_avg": round(pa["avg"] * 100, 2) if pa["avg"] is not None else None,
+            "ind_n": pa["n"], "ind_skip": pa["skip"]}
+
+
 def _status_up(p, lu, ld):
     if p is None:
         return "資料不足"
@@ -93,8 +149,9 @@ def _status_down(p, lu, ld):
     return "可能" if p >= ld else "明日不可達"
 
 
-def clause1(code: str, market: str, today: date, c0: float) -> dict | None:
-    """第一款：最近六個營業日（含明日）累積漲跌幅門檻 → 明日觸發價"""
+def clause1(code: str, market: str, today: date, c0: float, peers: Peers = NO_PEERS) -> dict | None:
+    """第一款：最近六個營業日（含明日）累積漲跌幅門檻 → 明日觸發價。
+    漲跌幅須超過門檻，且與全體平均、同類股平均的差幅都在 20 個百分點以上"""
     ds = store.days_before(today, 6)
     if len(ds) < 6:
         return None
@@ -105,21 +162,25 @@ def clause1(code: str, market: str, today: date, c0: float) -> dict | None:
     mkt = store.market_avg_change(ds[0], today) / 100
     small, big, bp, diff = r["c1_small"], r["c1_big"], r["c1_big_price"], R["c1_diff"]
     up = min(base * (1 + small), max(base * (1 + big), base + bp))
+    pa = peers.avg(code, market, ds[0], today)
     up = max(up, base * (1 + mkt + diff))
     dn = max(base * (1 - small), min(base * (1 - big), base - bp))
     dn = min(dn, base * (1 + mkt - diff))
+    if pa["avg"] is not None:
+        up = max(up, base * (1 + pa["avg"] + diff))
+        dn = min(dn, base * (1 + pa["avg"] - diff))
     up = price_up_to_tick(up + 1e-6)
     dn = price_down_to_tick(dn - 1e-6) if dn > 0 else None
     lu, ld = limit_up(c0), limit_down(c0)
     cum = round((c0 / base - 1) * 100, 2)
     return {
-        "base": base, "base_date": ds[0].isoformat(), "cum": cum, "mkt": round(mkt * 100, 2),
+        "base": base, "base_date": ds[0].isoformat(), "cum": cum, "mkt": round(mkt * 100, 2), **_peer_out(pa),
         "up": {"price": up, "pct": round((up / c0 - 1) * 100, 2), "status": _status_up(up, lu, ld)},
         "down": {"price": dn, "pct": round((dn / c0 - 1) * 100, 2) if dn else None, "status": _status_down(dn, lu, ld)},
     }
 
 
-def clause2(code: str, market: str, today: date, c0: float) -> list[dict]:
+def clause2(code: str, market: str, today: date, c0: float, peers: Peers = NO_PEERS) -> list[dict]:
     out = []
     lu, ld = limit_up(c0), limit_down(c0)
     for n, th, dth in R[market]["c2"]:
@@ -131,8 +192,11 @@ def clause2(code: str, market: str, today: date, c0: float) -> list[dict]:
         if not base:
             continue
         mkt = store.market_avg_change(ds[0], today) / 100
-        p = price_up_to_tick(base * (1 + max(th, mkt + dth)) + 1e-6)
+        pa = peers.avg(code, market, ds[0], today)
+        need = max(th, mkt + dth, (pa["avg"] + dth) if pa["avg"] is not None else -1)
+        p = price_up_to_tick(base * (1 + need) + 1e-6)
         out.append({"days": n, "th": th * 100, "base": base, "base_date": ds[0].isoformat(),
+                    "mkt": round(mkt * 100, 2), "gap": round(dth * 100), **_peer_out(pa),
                     "cum": round((c0 / base - 1) * 100, 2), "price": p, "pct": round((p / c0 - 1) * 100, 2),
                     "status": _status_up(p, lu, ld)})
     return out
@@ -144,8 +208,8 @@ def _x(market: str) -> dict:
     return R["TPEX_X" if market == "TPEX" else "TWSE_X"]
 
 
-def price_cond(code: str, market: str, today: date, c0: float) -> dict | None:
-    """第三、四、七款共同的價格條件：6 日累積漲跌超過門檻，且與全體平均差幅 ≥20 個百分點"""
+def price_cond(code: str, market: str, today: date, c0: float, peers: Peers = NO_PEERS) -> dict | None:
+    """第三、四、七款共同的價格條件：6 日累積漲跌超過門檻，且與全體平均、同類股平均差幅都 ≥20 個百分點"""
     ds = store.days_before(today, 6)
     if len(ds) < 6:
         return None
@@ -154,8 +218,13 @@ def price_cond(code: str, market: str, today: date, c0: float) -> dict | None:
         return None
     th = _x(market)["cum"]
     mkt = store.market_avg_change(ds[0], today) / 100
-    up = price_up_to_tick(max(base * (1 + th), base * (1 + mkt + R["c1_diff"])) + 1e-6)
+    pa = peers.avg(code, market, ds[0], today)
+    up_raw = max(base * (1 + th), base * (1 + mkt + R["c1_diff"]))
     dn_raw = min(base * (1 - th), base * (1 + mkt - R["c1_diff"]))
+    if pa["avg"] is not None:
+        up_raw = max(up_raw, base * (1 + pa["avg"] + R["c1_diff"]))
+        dn_raw = min(dn_raw, base * (1 + pa["avg"] - R["c1_diff"]))
+    up = price_up_to_tick(up_raw + 1e-6)
     dn = price_down_to_tick(dn_raw - 1e-6) if dn_raw > 0 else None
     lu, ld = limit_up(c0), limit_down(c0)
     su, sd = _status_up(up, lu, ld), _status_down(dn, lu, ld)
@@ -165,7 +234,8 @@ def price_cond(code: str, market: str, today: date, c0: float) -> dict | None:
         d = {"dir": "down", "price": dn, "pct": round((dn / c0 - 1) * 100, 2), "status": sd}
     else:
         d = {"dir": "up", "price": up, "pct": round((up / c0 - 1) * 100, 2), "status": "明日不可達"}
-    d.update(th=th * 100, cum=round((c0 / base - 1) * 100, 2), base=base, base_date=ds[0].isoformat())
+    d.update(th=th * 100, cum=round((c0 / base - 1) * 100, 2), base=base, base_date=ds[0].isoformat(),
+             mkt=round(mkt * 100, 2), **_peer_out(pa))
     return d
 
 
@@ -315,6 +385,7 @@ def build(today: date, quotes: list[dict], notices: list[dict], punish: list[dic
     qm = {q["code"]: q for q in quotes}
     valuation = valuation or {}
     M = Market(today, quotes, companies or {}, valuation)
+    peers = Peers(companies, valuation)
     margin = margin or {}
 
     # ---- 目前處置中 ----
@@ -364,14 +435,14 @@ def build(today: date, quotes: list[dict], notices: list[dict], punish: list[dic
         c0 = q["close"]
         times = 1 + sum(1 for p in pun if p["code"] == code and p["start"] >= cal.back(today, 30)[0].isoformat())
         rec = sorted(e["dates"].items())[-8:]
-        pc = price_cond(code, e["market"], today, c0)
+        pc = price_cond(code, e["market"], today, c0, peers)
         cands.append({
             "code": code, "name": e["name"] or q["name"], "market": e["market"], "close": c0, "need": need,
             "main": main, "only_c1": main == "c1" and min(needs["any"], needs["w10"], needs["w30"]) > need,
             "progress": {"c1": [k1, R["consec_c1"]], "any": [kany, R["consec_any"]],
                          "w10": [n10, R["within10"]], "w30": [n30, R["within30"]]},
             "earliest": cal.next(T, need).isoformat(), "times": times,
-            "c1": clause1(code, e["market"], today, c0), "c2": clause2(code, e["market"], today, c0),
+            "c1": clause1(code, e["market"], today, c0, peers), "c2": clause2(code, e["market"], today, c0, peers),
             "record": [{"date": d, "clauses": c} for d, c in rec],
             "limits": {"flat": c0, "up": limit_up(c0), "down": limit_down(c0)},
             "pe": valuation.get(code, {}).get("pe"), "pb": valuation.get(code, {}).get("pb"),
