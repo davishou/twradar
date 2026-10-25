@@ -392,4 +392,4 @@ td.spkc,th.spkc{white-space:nowrap;width:1%;padding-left:4px;padding-right:10px}
 .cbchart line.ref{stroke:var(--line);stroke-dasharray:2 3} .cbchart text{font-size:11px;fill:var(--ink-3)}
 .lg{display:inline-block;width:14px;height:3px;vertical-align:middle;margin:0 4px 0 6px;border-radius:2px}
 .lg.px{background:var(--brand-2)} .lg.cv{background:var(--warn)}
-table.kv{width:100%;font-size:13px} table.kv th{white-space:nowrap;color:var(--ink-2);font-weight:500;text-align:left;padding:3px 10px 3px 0;vertical-align:top} table.kv td{padding:3px 0}
+table.kv{width:100%;font-size:13px} table.kv th,table.kv td{background:none;border:0} table.kv th{white-space:nowrap;color:var(--ink-2);font-weight:500;text-align:left;padding:3px 12px 3px 0;vertical-align:top;width:1%} table.kv td{padding:3px 0}

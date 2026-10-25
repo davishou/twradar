@@ -324,6 +324,7 @@ def job_history(minutes: float = 40) -> None:
     try:   # 可轉債行情 2007 起、資訊看板 2017 起
         from . import cb
         cb.backfill(minutes=minutes * 0.15)
+        log.info("可轉債快照補建 %d 天", cb.rebuild_history())
     except Exception as e:  # noqa: BLE001
         log.exception("可轉債回補失敗：%s", e)
     try:   # 族群分類用的『主要經營業務』，全部公司慢慢補齊（不呼叫 AI）

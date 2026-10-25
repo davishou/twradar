@@ -235,6 +235,38 @@ def history_series(n: int = 250) -> dict:
     return {"dates": dates, "s": series}
 
 
+def _arch_rows(kind: str, d: str) -> dict[str, dict]:
+    from . import archive
+    out = {}
+    for r in archive.read(kind, d):
+        out[r["code"]] = {k: (None if v == "" else (num(v) if k not in ("name",) and not k.endswith(("start", "end", "date", "delist")) else v))
+                          for k, v in r.items() if k != "code"}
+    return out
+
+
+def rebuild_history(n: int = KEEP) -> int:
+    """用長期資料庫的行情＋看板重建近 n 日快照（補齊圖表；只補還沒有的日子）。發行資料用最新一份近似"""
+    from . import archive
+    have = {p.stem for p in HIST_DIR.glob("????-??-??.json")}
+    qdays = archive.days("cbq")[-n:]
+    bdays = archive.days("cbb")
+    if not qdays:
+        return 0
+    issue = fetch_issue()
+    done = 0
+    for ds in qdays:
+        if ds in have:
+            continue
+        bd = max((x for x in bdays if x <= ds), default=None)
+        if not bd:
+            continue
+        d = date.fromisoformat(ds)
+        rows = build_rows(d, _arch_rows("cbq", ds), _arch_rows("cbb", bd), issue, store.load_day(d))
+        snapshot(d, rows)
+        done += 1
+    return done
+
+
 def run(d: date | None = None, src=None) -> dict | None:
     """抓某天（預設最近交易日）的行情與看板，產生 cb.json 與快照；資料還沒公布就回 None"""
     from . import archive
