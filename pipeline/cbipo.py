@@ -104,15 +104,19 @@ def fetch_auctions(years: list[int]) -> list[dict]:
 
 def match_company(full: str, comp: dict) -> str | None:
     """公司全名 → 股票代號（先比全名，再找最長的簡稱）"""
-    f = re.sub(r"[\s　]|-KY|ＫＹ|KY", "", full or "")
+    def norm(x: str) -> str:
+        x = re.sub(r"[（(][^)）]*[)）]", "", x or "")
+        x = re.sub(r"-?創新[版板]|[\s　]|-KY|ＫＹ|KY", "", x)
+        return x.replace("啓", "啟").replace("臺", "台")
+    f = norm(full)
     if not f:
         return None
     for c, v in comp.items():
-        if v.get("full") and re.sub(r"[\s　]|-KY|ＫＹ|KY", "", v["full"]) == f:
+        if v.get("full") and norm(v["full"]) == f:
             return c
     best, blen = None, 0
     for c, v in comp.items():
-        n = re.sub(r"-KY|KY|\*", "", v.get("name", ""))
+        n = norm(re.sub(r"\*", "", v.get("name", "")))
         if len(n) >= 2 and f.startswith(n) and len(n) > blen:
             best, blen = c, len(n)
     return best
@@ -126,43 +130,49 @@ def _period(s: str) -> tuple[str | None, str | None]:
 
 
 def build(today: date, twsa: dict, auctions: list[dict], issue: dict, cb_rows: list[dict], comp: dict, stocks: dict) -> dict:
-    items: dict[str, dict] = {}
+    items: list[dict] = []
 
-    def item(stock: str | None, name: str, guar: str, method: str) -> dict:
-        """同一公司、同擔保、同銷售方式（詢圈／競拍）視為同一案"""
-        m = "詢圈" if "詢" in (method or "") else "競拍"
-        key = f"{stock or name}|{'有' if '有擔保' in guar else '無'}|{m}"
-        return items.setdefault(key, {"stock": stock, "company": name, "guaranteed": "有擔保" in guar,
-                                      "method": "詢價圈購" if m == "詢圈" else "競價拍賣"})
+    def new_item(stock, name, guar, method, start) -> dict:
+        it = {"stock": stock, "company": name, "guaranteed": "有擔保" in guar,
+              "method": "詢價圈購" if "詢" in (method or "") else "競價拍賣", "_start": start}
+        items.append(it)
+        return it
 
-    for r in twsa.get("notice", []):
-        stock = match_company(r.get("案件名稱", ""), comp)
-        it = item(stock, r.get("案件名稱", ""), r.get("發行種類", ""), r.get("配售方式一", ""))
-        it["filed"] = (parse_date(r.get("申報日期")) or today).isoformat() if r.get("申報日期") else None
-        it["underwriter"] = r.get("主辦承銷商", "")
-        it.setdefault("notice_pdf", r.get("_pdf"))
-        it["status_note"] = r.get("案件狀態", "")
     for r in twsa.get("bookbuild", []):
         stock = match_company(r.get("發行公司", ""), comp)
-        it = item(stock, r.get("發行公司", ""), r.get("發行性質", ""), "詢價圈購")
         a, b = _period(r.get("圈購期間", ""))
+        it = new_item(stock, r.get("發行公司", ""), r.get("發行性質", ""), "詢價圈購", a)
         it.update({"bb_start": a, "bb_end": b, "bb_price": r.get("價格(元)", ""),
                    "lots": num(r.get("承銷股數(千股/張)")), "bb_lots": num(r.get("詢圈銷售股數(千股/張)")),
-                   "underwriter": it.get("underwriter") or r.get("主辦承銷商", "")})
+                   "underwriter": r.get("主辦承銷商", "")})
     for r in auctions:
         code = str(r.get("證券代號", "")).strip()
         stock = code[:4] if code[:4].isdigit() else None
-        it = item(stock, r.get("證券名稱", ""), r.get("發行性質", ""), "競價拍賣")
+        d0 = lambda k: (parse_date(r.get(k)) or today).isoformat() if r.get(k) else None  # noqa: E731
+        it = new_item(stock, r.get("證券名稱", ""), r.get("發行性質", ""), "競價拍賣", d0("投標開始日"))
         it.update({"bond": code, "short": r.get("證券名稱", ""),
-                   "auc_start": (parse_date(r.get("投標開始日")) or today).isoformat() if r.get("投標開始日") else None,
-                   "auc_end": (parse_date(r.get("投標結束日")) or today).isoformat() if r.get("投標結束日") else None,
-                   "auc_open": (parse_date(r.get("開標日期")) or today).isoformat() if r.get("開標日期") else None,
+                   "auc_start": d0("投標開始日"), "auc_end": d0("投標結束日"), "auc_open": d0("開標日期"),
                    "auc_lots": num(r.get("競拍數量(張)")), "auc_min": num(r.get("最低投標價格(元)")),
                    "won_low": num(r.get("最低得標價格(元)")) or None, "won_high": num(r.get("最高得標價格(元)")) or None,
                    "won_avg": num(r.get("得標加權平均價格(元)")) or None, "uw_price": num(r.get("實際承銷價格(元)")) or None,
                    "won_lots": num(r.get("合格投標數量(張)")) or None, "won_n": num(r.get("總合格件")) or None,
-                   "listing": (parse_date(r.get("撥券日期(上市、上櫃日期)")) or today).isoformat() if r.get("撥券日期(上市、上櫃日期)") else None,
+                   "listing": d0("撥券日期(上市、上櫃日期)"),
                    "underwriter": r.get("主辦券商", "") or None, "cancel": r.get("取消競價拍賣(流標或取消)", "")})
+    # 承銷公告（申報）：掛到同公司、同擔保、同方式、申報後 60 天內開始的案子；找不到就自成一筆（剛申報）
+    for r in twsa.get("notice", []):
+        stock = match_company(r.get("案件名稱", ""), comp)
+        filed = (parse_date(r.get("申報日期")) or today).isoformat() if r.get("申報日期") else None
+        guar, method = "有擔保" in r.get("發行種類", ""), "詢價圈購" if "詢" in r.get("配售方式一", "") else "競價拍賣"
+        lo = (date.fromisoformat(filed) - timedelta(days=5)).isoformat() if filed else ""
+        hi = (date.fromisoformat(filed) + timedelta(days=60)).isoformat() if filed else "9999"
+        it = next((x for x in items if x["stock"] == stock and stock and x["guaranteed"] == guar and x["method"] == method
+                   and not x.get("filed") and lo <= (x.get("_start") or "") <= hi), None)
+        if not it:
+            it = new_item(stock, r.get("案件名稱", ""), r.get("發行種類", ""), method, None)
+        it["filed"] = filed
+        it["underwriter"] = it.get("underwriter") or r.get("主辦承銷商", "")
+        it["status_note"] = r.get("案件狀態", "")
+
     # 補發行資料（發行時轉換價、年期、到期）與現況
     iss_by_stock: dict[str, list] = {}
     for code, v in issue.items():
@@ -170,7 +180,8 @@ def build(today: date, twsa: dict, auctions: list[dict], issue: dict, cb_rows: l
             iss_by_stock.setdefault(v["issuer"], []).append({**v, "bond": code})
     cb_by_code = {r["code"]: r for r in cb_rows}
     out = []
-    for v in items.values():
+    for v in items:
+        v.pop("_start", None)
         st = v.get("stock")
         cand = sorted(iss_by_stock.get(st, []), key=lambda x: x.get("issue_date") or "")
         anchor = v.get("auc_end") or v.get("bb_end") or v.get("filed")
