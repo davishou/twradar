@@ -76,3 +76,17 @@ def state(name: str, default=None):
 
 def save_state(name: str, obj) -> None:
     write_json(config.STATE_DIR / f"{name}.json", obj)
+
+
+KEEP_DAYS = 260   # data/history 只留近 260 個交易日（更舊的在 data/archive 長期資料庫）
+
+
+def prune(keep: int = KEEP_DAYS) -> int:
+    ds = trading_days()
+    old = ds[:-keep] if len(ds) > keep else ()
+    for d in old:
+        (config.HISTORY_DIR / f"{d.isoformat()}.json").unlink(missing_ok=True)
+    if old:
+        load_day.cache_clear()
+        trading_days.cache_clear()
+    return len(old)

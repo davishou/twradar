@@ -192,19 +192,34 @@ def seed_from_history() -> int:
     return n
 
 
-def backfill(src, years: int = 5, minutes: float = 40, delay: float = 2.5) -> dict:
+EARLIEST = date(2004, 2, 11)   # 證交所依日期查詢行情最早可查的日子
+FIRST_YEARS = 10               # 第一階段先補到 10 年；補完後自動往回補到 EARLIEST
+
+
+def target_start(st: dict, today: date | None = None) -> date:
+    """回補目標起點：先 10 年；10 年補完（stage1_done）後改為最早可查的日子"""
+    today = today or date.today()
+    ten = date(today.year - FIRST_YEARS, today.month, min(today.day, 28))
+    return EARLIEST if st.get("stage1_done") else ten
+
+
+def backfill(src, years: int | None = None, minutes: float = 40, delay: float = 2.5) -> dict:
     """由新到舊補行情、法人、融資融券；每次最多跑 minutes 分鐘，進度存在 progress.json。
-    休市日會記下來不再重試；連續失敗太多（可能被交易所暫時封鎖）就提早停止，下次再續。"""
+    目標：先補到 10 年，補完自動延伸到最早（2004-02）。years 有給就用固定年數（測試用）。
+    休市日會記下來不再重試；行情是必要的，法人／融資券在較舊的年份可能查無資料，各試 2 次後就放棄該日該類，
+    不影響行情回補。連續失敗太多（可能被交易所暫時封鎖）就提早停止，下次再續。"""
     old_delay = config.HTTP_DELAY
     config.HTTP_DELAY = delay
     t0 = time.time()
     st = _progress()
     today = date.today()
-    start = date(today.year - years, today.month, min(today.day, 28))
-    st.setdefault("start", start.isoformat())
-    start = date.fromisoformat(st["start"])
+    start = date(today.year - years, today.month, min(today.day, 28)) if years else target_start(st, today)
+    st["start"] = start.isoformat()
     closed = set(st.get("closed", []))
     fails = st.get("fails", {})
+    miss = st.setdefault("miss", {"inst": {}, "margin": {}})          # 次要資料查無的次數
+    gave_up = {k: set(v) for k, v in st.get("gave_up", {}).items()}   # 已放棄的日子（多半是那時還沒有這種資料）
+    no_tpex = set(st.get("no_tpex", []))
     seeded = seed_from_history()
     d = today - timedelta(days=1)
     done = streak = 0
@@ -217,7 +232,7 @@ def backfill(src, years: int = 5, minutes: float = 40, delay: float = 2.5) -> di
         if d.weekday() >= 5 or ds in closed or fails.get(ds, 0) >= 3:
             d -= timedelta(days=1)
             continue
-        need = [k for k in ("quotes", "inst", "margin") if not has(k, d)]
+        need = [k for k in ("quotes", "inst", "margin") if not has(k, d) and ds not in gave_up.get(k, set())]
         if not need:
             d -= timedelta(days=1)
             continue
@@ -229,32 +244,33 @@ def backfill(src, years: int = 5, minutes: float = 40, delay: float = 2.5) -> di
                 closed.add(ds)        # 休市：證交所回應『沒有符合條件的資料』
                 d -= timedelta(days=1)
                 continue
-            if not quotes or not any(q["market"] == "TWSE" for q in quotes):
-                ok = False
-            elif td != d:
+            if not quotes or not any(q["market"] == "TWSE" for q in quotes) or td != d:
                 ok = False
             else:
                 save_quotes(d, quotes)
                 if not any(q["market"] == "TPEX" for q in quotes):
+                    no_tpex.add(ds)
                     log.warning("%s 只有上市行情", ds)
-        if ok and "inst" in need:
-            inst = src.fetch_institutional(d)
-            if inst:
-                save_inst(d, inst)
+        for kind, fetch, save in (("inst", src.fetch_institutional, save_inst), ("margin", src.fetch_margin, save_margin)):
+            if not ok or kind not in need:
+                continue
+            got = fetch(d)
+            if got:
+                save(d, got)
+                miss[kind].pop(ds, None)
             else:
-                ok = False
-        if ok and "margin" in need:
-            m = src.fetch_margin(d)
-            if m:
-                save_margin(d, m)
-            else:
-                ok = False
+                miss[kind][ds] = miss[kind].get(ds, 0) + 1
+                if miss[kind][ds] >= 2:
+                    gave_up.setdefault(kind, set()).add(ds)
+                    miss[kind].pop(ds, None)
         if ok:
             done += 1
             streak = 0
             fails.pop(ds, None)
             if done % 20 == 0:
                 log.info("歷史回補：已完成 %d 天，目前到 %s", done, ds)
+                _save_progress({**st, "closed": sorted(closed), "fails": fails, "no_tpex": sorted(no_tpex),
+                                "gave_up": {k: sorted(v) for k, v in gave_up.items()}})
         else:
             fails[ds] = fails.get(ds, 0) + 1
             streak += 1
@@ -263,9 +279,14 @@ def backfill(src, years: int = 5, minutes: float = 40, delay: float = 2.5) -> di
                 break
         d -= timedelta(days=1)
     have = days("quotes")
-    st.update(closed=sorted(closed), fails=fails, last_run=time.strftime("%Y-%m-%d %H:%M"),
-              oldest=have[0] if have else None, n_days=len(have), stopped=stopped or "完成",
-              complete=not stopped and d < start)
+    complete = not stopped and d < start
+    st.update(closed=sorted(closed), fails=fails, no_tpex=sorted(no_tpex),
+              gave_up={k: sorted(v) for k, v in gave_up.items()}, last_run=time.strftime("%Y-%m-%d %H:%M"),
+              oldest=have[0] if have else None, n_days=len(have), stopped=stopped or "完成", complete=complete,
+              by_year=_year_summary(no_tpex, gave_up))
+    if complete and not years and not st.get("stage1_done"):
+        st["stage1_done"] = time.strftime("%Y-%m-%d")   # 10 年補完，下次起往回補到最早
+        st["complete"] = False
     _save_progress(st)
     config.HTTP_DELAY = old_delay
     log.info("歷史回補：本次 %d 天（先由現有歷史放入 %d 天），資料庫共 %d 天，最舊 %s，狀態：%s",
@@ -273,25 +294,51 @@ def backfill(src, years: int = 5, minutes: float = 40, delay: float = 2.5) -> di
     return st
 
 
-def backfill_notices(src, years: int = 5) -> None:
-    """上市注意股、處置股可依日期區間查詢：每月一次補齊（只補沒補過的月份）"""
+def _year_summary(no_tpex: set, gave_up: dict) -> dict:
+    """每年各類資料的天數（給人看回補到哪、哪些資料舊年份沒有）"""
+    out: dict[str, dict] = {}
+    for kind in ("quotes", "inst", "margin", "notices", "punish"):
+        for ds in days(kind):
+            out.setdefault(ds[:4], {}).setdefault(kind, 0)
+            out[ds[:4]][kind] += 1
+    for ds in no_tpex:
+        out.setdefault(ds[:4], {}).setdefault("no_tpex", 0)
+        out[ds[:4]]["no_tpex"] += 1
+    for kind, v in gave_up.items():
+        for ds in v:
+            out.setdefault(ds[:4], {}).setdefault(f"no_{kind}", 0)
+            out[ds[:4]][f"no_{kind}"] += 1
+    return dict(sorted(out.items()))
+
+
+def backfill_notices(src, years: int | None = None, max_months: int = 24) -> None:
+    """上市注意股、處置股可依日期區間查詢：每月一次補齊（只補沒補過的月份），目標起點同行情回補。
+    查無資料的月份記 2 次後放棄（太早期可能沒有資料）。每次最多補 max_months 個月。"""
     st = _progress()
     months = set(st.get("notice_months", []))
+    empty = st.get("notice_empty", {})
     t = date.today()
-    y, m = t.year - years, t.month
+    s0 = date(t.year - years, t.month, 1) if years else target_start(st, t)
+    y, m = s0.year, s0.month
+    n = 0
     while (y, m) <= (t.year, t.month):
         key = f"{y}-{m:02d}"
         a = date(y, m, 1)
         b = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1))
-        if key not in months and b < t:
+        if key not in months and b < t and empty.get(key, 0) < 2 and n < max_months:
+            n += 1
             ns = src.fetch_notices(a, b, tpex=False)
             ps = src.fetch_punish(a, b, tpex=False)
             save_notices(ns)
             save_punish(ps)
             if ns or ps:
                 months.add(key)
+                empty.pop(key, None)
+            else:
+                empty[key] = empty.get(key, 0) + 1
         y, m = (y + (m == 12), m % 12 + 1)
     st = _progress()
     st["notice_months"] = sorted(months)
+    st["notice_empty"] = empty
     _save_progress(st)
     log.info("注意／處置股歷史：已補 %d 個月", len(months))

@@ -5,7 +5,7 @@ import logging
 from collections import defaultdict
 from datetime import date
 
-from . import config, store, themes
+from . import config, spark, store, themes
 from .util import limit_up, parse_date, read_json, write_json
 
 log = logging.getLogger(__name__)
@@ -66,6 +66,9 @@ def build_daily(d: date, quotes: list[dict], companies: dict, context: dict[str,
             "inst": inst.get(q["code"]) or old.get(q["code"], {}).get("inst"),
         })
     stocks.sort(key=lambda s: (-s["streak"], -s["value_e"]))
+    sp = spark.build(d, {s["code"] for s in stocks})        # 小走勢圖只畫到這一天
+    for s in stocks:
+        s["spark"] = sp.get(s["code"])
 
     # 漲停原因
     why = themes.explain(stocks, context or {}, biz, use_ai=full)
@@ -144,6 +147,9 @@ def build_nextday(d: date, quotes: list[dict]) -> dict | None:
         })
     if not rows:
         return None
+    sp = spark.build(d, {x["code"] for x in rows})
+    for x in rows:
+        x["spark"] = sp.get(x["code"])
     mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else None  # noqa: E731
     win = lambda xs: round(sum(x > 0 for x in xs) / len(xs) * 100, 1) if xs else None  # noqa: E731
     o, a, c = [x["ret_open"] for x in rows], [x["ret_avg"] for x in rows], [x["ret_close"] for x in rows]

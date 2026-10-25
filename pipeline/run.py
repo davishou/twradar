@@ -9,7 +9,7 @@
   python -m pipeline.run announce       自結/季報/營收/庫藏/事件（每 5 分鐘）
   python -m pipeline.run all            以上全部
   python -m pipeline.run treasury 20    庫藏股歷史回補約 6 個月（每次跑 20 分鐘，續跑）
-  python -m pipeline.run history 40     長期資料庫：回補 5 年歷史（每次跑 40 分鐘，續跑）
+  python -m pipeline.run history 40     長期資料庫：回補歷史（先 10 年再到 2004）（每次跑 40 分鐘，續跑）
   python -m pipeline.run backfill 120   補抓最近 120 個交易日歷史行情（第一次部署必跑）
   python -m pipeline.run mock           以模擬資料產生完整示範網站（離線可用）
   python -m pipeline.run serve [port]   本機預覽網站
@@ -67,6 +67,7 @@ def _daily(src, td, quotes, light: bool = False, d=None) -> date | None:
         log.info("沒有行情資料（非交易日或尚未收盤）：%s", d or "最新")
         return None
     store.save_day(td, quotes)
+    store.prune()               # data/history 只留近 260 個交易日
     comp = companies(src)
     if not light and src is sources:
         heal_missing_tpex(td, comp)
@@ -295,9 +296,9 @@ def backfill(n: int) -> None:
 
 
 def job_history(minutes: float = 40) -> None:
-    """長期資料庫：分批回補 5 年行情／法人／融資融券、上市注意處置股、同步漲停族群、重算還原因子"""
-    st = archive.backfill(sources, years=5, minutes=minutes)
-    archive.backfill_notices(sources, years=5)
+    """長期資料庫：分批回補行情／法人／融資融券（先 10 年、再到 2004）、上市注意處置股、同步漲停族群、重算還原因子"""
+    st = archive.backfill(sources, minutes=minutes)          # 先 10 年，補完自動延伸到 2004
+    archive.backfill_notices(sources)
     archive.sync_limitup()
     try:
         job_treasury(minutes=10)          # 庫藏股回補沒補完就順便續補；補完後幾乎不花時間
@@ -340,6 +341,8 @@ def build_mock() -> None:
     job_borrow(src)
     active_etf.collect(src.days[-2], src)
     job_etf(src)
+    from . import spark
+    spark.write()
     brief.touch_meta("mock")
     meta = store.read_json(config.OUT_DIR / "meta.json", {})
     meta["mock"] = True

@@ -23,7 +23,88 @@ const sign = n => n == null ? "" : n > 0 ? "up" : n < 0 ? "down" : "";
 const pc = (n, d = 2) => n == null ? '<span class="muted">—</span>' : `<span class="${sign(n)}">${n > 0 ? "+" : ""}${fx(n, d)}%</span>`;
 const yi = n => n == null ? "—" : Math.abs(n) >= 1e8 ? fx(n / 1e8, 2) + " 億" : fx(n / 1e4, 0) + " 萬";
 const mk = m => `<span class="mk" title="${m === "TWSE" ? "上市" : "上櫃"}">${m === "TWSE" ? "市" : "櫃"}</span>`;
-const stockLink = (code, name) => `<a href="#/stock/${esc(code)}">${esc(name || code)}</a>`;
+const stockLink = (code, name, rec) => `<a href="#/stock/${esc(code)}">${esc(name || code)}</a>${spk(code, name, rec)}`;
+
+/* ---------------- 小走勢圖 ----------------
+   資料：spark.json（全部股票、最新一天）或每日漲停檔內嵌的 spark（只畫到那一天）。
+   外框顏色＝圖中最大一段波動的幅度（小圖看不出刻度，用框色分辨漲 2 倍和漲 10 倍）：
+   最大漲幅 ×10 以上 紅框、×5~10 黃框、×2~5 淡黃框；最大跌幅 −80% 以下 墨綠、−60~−80% 深綠、−30~−60% 淺綠。
+   漲、跌都有時，取幅度較大的一邊（以倍數的對數比較，例如 ×2 和 −50% 一樣大）。 */
+let SPARK = {};
+const SPK = [];                                  // 這一頁畫過的資料，給浮出大圖用
+const SPK_ALPHA = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
+const spkVals = v => [...v].map(c => SPK_ALPHA.indexOf(c) / 63);
+function spkTier(r) {
+  const up = r.u || 1, dn = r.w || 0, su = Math.log(up), sd = -Math.log1p(dn / 100);
+  if (su >= sd) {
+    const t = up >= 10 ? "r3" : up >= 5 ? "r2" : up >= 2 ? "r1" : "";
+    return [t, t ? "×" + (up < 10 ? up.toFixed(1) : Math.round(up)) : ""];
+  }
+  const t = dn <= -80 ? "g3" : dn <= -60 ? "g2" : dn <= -30 ? "g1" : "";
+  return [t, t ? Math.round(dn) + "%" : ""];
+}
+function spkPath(vals, w, h, pad) {
+  const n = vals.length;
+  return vals.map((y, i) => `${(pad + (n === 1 ? 0 : i / (n - 1)) * (w - 2 * pad)).toFixed(1)},${(pad + (1 - y) * (h - 2 * pad)).toFixed(1)}`);
+}
+function spk(code, name, rec) {
+  rec = rec && rec.v ? rec : SPARK[code];
+  if (!rec || !rec.v) return "";
+  const vals = spkVals(rec.v), w = 100, h = 24, pts = spkPath(vals, w, h, 2);
+  const dir = rec.b >= rec.a ? "up" : "down";
+  const [tier, lab] = spkTier(rec);
+  const dots = (rec.k || []).map(i => { const [x, y] = pts[i].split(","); return `<circle cx="${x}" cy="${y}" r="1.6"/>`; }).join("");
+  SPK.push({code, name, rec});
+  return `<span class="spk ${tier}" data-i="${SPK.length - 1}" tabindex="0" role="img" aria-label="${esc(name || code)} 近 ${vals.length} 日走勢，期間 ${((rec.b / rec.a - 1) * 100).toFixed(0)}%">`
+    + `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline class="${dir}" points="${pts.join(" ")}"/><g class="lu">${dots}</g></svg>`
+    + (lab ? `<b>${lab}</b>` : "") + `</span>`;
+}
+function spkBig(rec, w = 300, h = 120) {
+  const vals = spkVals(rec.v), pts = spkPath(vals, w, h, 6), dir = rec.b >= rec.a ? "up" : "down";
+  const hiI = vals.indexOf(1), loI = vals.indexOf(0);
+  const dots = (rec.k || []).map(i => { const [x, y] = pts[i].split(","); return `<circle cx="${x}" cy="${y}" r="2.4"/>`; }).join("");
+  const mark = (i, t, above) => { const [x, y] = pts[i].split(",").map(Number);
+    return `<text x="${Math.min(w - 4, Math.max(4, x))}" y="${above ? y - 5 : y + 13}" text-anchor="${x < 40 ? "start" : x > w - 40 ? "end" : "middle"}">${t}</text>`; };
+  return `<svg class="spkbig" viewBox="0 0 ${w} ${h + 8}" aria-hidden="true">
+    <polygon class="${dir}" points="6,${h - 6} ${pts.join(" ")} ${w - 6},${h - 6}"/><polyline class="${dir}" points="${pts.join(" ")}"/>
+    <g class="lu">${dots}</g>${hiI >= 0 ? mark(hiI, fp(rec.h), true) : ""}${loI >= 0 ? mark(loI, fp(rec.l), false) : ""}</svg>`;
+}
+function spkInfo(it) {
+  const r = it.rec, chg = (r.b / r.a - 1) * 100, [tier, lab] = spkTier(r);
+  return `<div class="spkh"><b>${esc(it.name || "")}</b> <span class="muted">${esc(it.code)}</span>
+      <span class="muted small">近 ${r.v.length} 個交易日</span> ${pc(chg, 1)}${lab ? ` <span class="spkt ${tier}">${lab}</span>` : ""}</div>
+    ${spkBig(r)}
+    <div class="spkf small muted"><span>${esc(r.d)} 起</span><span>最高 ${fp(r.h)}　最低 ${fp(r.l)}</span></div>
+    <div class="spkf small"><span>最大漲幅 <b class="up">×${r.u.toFixed(r.u < 10 ? 2 : 1)}</b></span><span>最大跌幅 <b class="down">${r.w.toFixed(1)}%</b></span>${(r.k || []).length ? `<span>漲停 <b class="up">${r.k.length}</b> 次</span>` : ""}</div>
+    <div class="small muted">還原權息價；紅點＝漲停日。${r.e ? `畫到 ${esc(r.e)}。` : ""}</div>`;
+}
+const spkTip = document.createElement("div");
+spkTip.className = "spktip"; spkTip.hidden = true; spkTip.setAttribute("role", "tooltip");
+document.body.appendChild(spkTip);
+let spkOn = null;
+function spkShow(el) {
+  const it = SPK[+el.dataset.i];
+  if (!it) return;
+  spkOn = el;
+  spkTip.innerHTML = spkInfo(it);
+  spkTip.hidden = false;
+  const b = el.getBoundingClientRect(), tw = spkTip.offsetWidth, th = spkTip.offsetHeight;
+  let x = Math.min(window.innerWidth - tw - 8, Math.max(8, b.left));
+  let y = b.bottom + 6;
+  if (y + th > window.innerHeight - 8) y = Math.max(8, b.top - th - 6);
+  spkTip.style.left = x + "px"; spkTip.style.top = y + "px";
+}
+function spkHide() { spkTip.hidden = true; spkOn = null; }
+const hoverable = matchMedia("(hover: hover)").matches;
+document.addEventListener("mouseover", e => { if (!hoverable) return; const el = e.target.closest?.(".spk"); if (el) spkShow(el); else if (spkOn && !e.target.closest?.(".spktip")) spkHide(); });
+document.addEventListener("click", e => {
+  const el = e.target.closest?.(".spk");
+  if (el) { e.preventDefault(); e.stopPropagation(); spkOn === el && !hoverable ? spkHide() : spkShow(el); return; }
+  if (!e.target.closest?.(".spktip")) spkHide();
+}, true);
+document.addEventListener("focusin", e => { const el = e.target.closest?.(".spk"); if (el) spkShow(el); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") spkHide(); });
+window.addEventListener("scroll", () => { if (spkOn) spkHide(); }, {passive: true});
 const md = s => s ? s.slice(5).replace("-", "/") : "";
 function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
 async function copy(text) {
@@ -159,7 +240,7 @@ P.daily = async (date) => {
   const instCell = k => r => r.inst ? `<span class="${sign(r.inst[k])}">${r.inst[k] > 0 ? "+" : ""}${fi(r.inst[k])}</span>` : '<span class="muted">—</span>';
   const srcTag = {manual: ["設定", ""], ai: ["AI", "ai"], keyword: ["關鍵字", ""], industry: ["產業別", ""]};
   const cols = [
-    {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
+    {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name, r.spark)},
     {k: "close", t: "收盤", n: 1, f: r => `<span class="up">${fp(r.close)}</span>`}, {k: "lots", t: "量(張)", n: 1, f: r => fi(r.lots)},
     {k: "inst_f", t: "外資", n: 1, s: r => r.inst?.f, f: instCell("f")}, {k: "inst_t", t: "投信", n: 1, s: r => r.inst?.t, f: instCell("t")},
     {k: "inst_d", t: "自營", n: 1, s: r => r.inst?.d, f: instCell("d")},
@@ -474,7 +555,7 @@ P.nextday = async (date) => {
     rowClick: r => { theme = theme === r.theme ? "" : r.theme; gt.set(data.groups); refresh(); }});
   const emo = Object.fromEntries(data.groups.map(g => [g.theme, g.emoji]));
   const tt = table(document.getElementById("t"), [
-    {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
+    {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name, r.spark)},
     {k: "ref", t: "漲停價", n: 1, f: r => fp(r.ref)}, {k: "vol_ratio", t: `量比 ${tipBtn("量比＝隔日成交量 ÷ 漲停日成交量（同原網站）。\n1x 以下：隔日量縮（常見於再鎖漲停）；10x 以上：隔日爆量換手。\n均量比（漲停日量 ÷ 前 5 日均量）在當日頁。")}`, n: 1, s: r => r.vol_ratio, f: r => r.vol_ratio == null ? "—" : fx(r.vol_ratio, 1) + "x"},
     {k: "ret_open", t: "隔日開", n: 1, f: r => `${fp(r.open)} ${pc(r.ret_open)}`}, {k: "ret_avg", t: "隔日均價", n: 1, f: r => `${fp(r.avg)} ${pc(r.ret_avg)}`},
     {k: "ret_close", t: "隔日收", n: 1, f: r => `${fp(r.close)} ${pc(r.ret_close)}`},
@@ -581,7 +662,7 @@ P.stats = async () => {
   Object.entries(await load("stock_history.json") || {}).forEach(([c, h]) => themeOf[c] = new Set(h.events.map(e => e.theme)));
   let sq = "";
   const stt = table(document.getElementById("st"), [
-    {k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
+    {k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name, r.spark)},
     {k: "n", t: "天", n: 1}, {k: "open", t: "開盤", n: 1, f: r => pc(r.open)}, {k: "avg", t: "均價", n: 1, f: r => pc(r.avg)}, {k: "close", t: "收盤", n: 1, f: r => pc(r.close)},
   ], [], {sort: ["n", -1]});
   function drawTables() {
@@ -625,7 +706,7 @@ const v2 = (x, d = 2) => x == null ? '<span class="muted">—</span>' : fx(x, d)
 const pct = x => x == null ? '<span class="muted">—</span>' : fx(x, 2) + "%";
 const MOPS = "https://mopsov.twse.com.tw/mops/web/t05sr01_1";
 const timeCol = {k: "time", t: "時間", f: r => `${md(r.date)} ${esc(r.time || "")}`, s: r => (r.date || "") + (r.time || "")};
-const idCols = [{k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`}, {k: "name", t: "名稱", f: r => `${stockLink(r.code, r.name)} ${newTag(r)}`}];
+const idCols = [{k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`}, {k: "name", t: "名稱", f: r => `${stockLink(r.code, r.name, r.spark)} ${newTag(r)}`}];
 const pxCols = [{k: "close", t: "股價", n: 1, f: r => fp(r.close)}, {k: "chg", t: "漲跌", n: 1, f: r => pc(r.chg)}];
 function rawBlock(r, extra = "") {
   return `<div class="ann-detail">${extra}
@@ -770,7 +851,7 @@ P.borrow = async () => {
   const by = {};
   js.detail.forEach(r => (by[r.code] ||= []).push(r));
   table(document.getElementById("s"), [
-    {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)}, {k: "market", t: "所", f: r => mk(r.market)},
+    {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name, r.spark)}, {k: "market", t: "所", f: r => mk(r.market)},
     {k: "close", t: "股價", n: 1, f: r => fp(r.close)}, {k: "chg", t: "漲幅", n: 1, f: r => pc(r.chg)},
     {k: "lots_traded", t: "成交量(張)", n: 1, f: r => fi(r.lots_traded)}, {k: "lots", t: "借量(張)", n: 1, f: r => fx(r.lots, 0)},
     {k: "avg_rate", t: "均費率", n: 1, f: r => `<b>${fx(r.avg_rate, 2)}%</b>`}, {k: "min_rate", t: "最低", n: 1, f: r => fx(r.min_rate) + "%"},
@@ -778,7 +859,7 @@ P.borrow = async () => {
   ], js.summary, {sort: ["avg_rate", -1], id: r => r.code, empty: "今日沒有券差借券",
     expand: r => `<table><thead><tr><th>借張</th><th>費率</th></tr></thead><tbody>${by[r.code].map(x => `<tr><td>${fx(x.lots, 0)}</td><td>${fx(x.rate)}%</td></tr>`).join("")}</tbody></table>`});
   table(document.getElementById("d"), [
-    {k: "date", t: "日期"}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)}, {k: "market", t: "所", f: r => mk(r.market)},
+    {k: "date", t: "日期"}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name, r.spark)}, {k: "market", t: "所", f: r => mk(r.market)},
     {k: "close", t: "股價", n: 1, f: r => fp(r.close)}, {k: "chg", t: "漲幅", n: 1, f: r => pc(r.chg)},
     {k: "lots_traded", t: "成交量", n: 1, f: r => fi(r.lots_traded)}, {k: "lots", t: "借張", n: 1, f: r => fx(r.lots, 0)}, {k: "rate", t: "費率", n: 1, f: r => fx(r.rate) + "%"},
   ], js.detail, {sort: ["rate", -1]});
@@ -848,7 +929,7 @@ P.disposal = async () => {
     <div class="notice">處置期間通常改為分盤集合競價（每數分鐘撮合一次），且買賣需預收款券。實際條件與期間以交易所、櫃買中心公告為準。</div>`;
   document.getElementById("cp").onclick = () => copy(js.line_text);
   const cols = [
-    {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
+    {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name, r.spark)},
     {k: "close", t: "收盤", n: 1, f: r => fp(r.close)}, {k: "main", t: "最接近的條件", f: r => esc(COND[r.main])},
     {k: "c1u", t: "第一款觸發", s: r => r.c1?.up?.pct, f: r => r.c1 ? (["可能", "跌停仍符合"].includes(r.c1.up.status) ? trig(r.c1.up, "↑") : ["可能", "漲停仍符合"].includes(r.c1.down.status) ? trig(r.c1.down, "↓") : '<span class="muted">明日不符合</span>') : "—"},
     {k: "xs", t: "其他款", sortable: false, f: r => ["c3", "c4", "c6", "c7"].filter(k => XOK.includes(r[k]?.status) || r[k]?.status === "需集中度").map(k => `<span class="tag ${r[k].status === "需集中度" ? "" : "up"}">${"③④⑤⑥⑦"["c3c4c5c6c7".indexOf(k) / 2]}</span>`).join(" ") || '<span class="muted">—</span>'},
@@ -859,7 +940,7 @@ P.disposal = async () => {
   table(document.getElementById("m1"), cols, js.minus1, {expand: dispDetail, id: r => r.code, empty: "沒有差 1 次就處置的股票"});
   table(document.getElementById("m2"), cols, js.minus2, {expand: dispDetail, id: r => r.code, empty: "沒有差 2 次的股票"});
   table(document.getElementById("cur"), [
-    {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)},
+    {k: "market", t: "所", f: r => mk(r.market)}, {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name, r.spark)},
     {k: "minutes", t: "撮合", f: r => r.minutes ? `${r.minutes} 分` : "—"}, {k: "start", t: "開始", f: r => md(r.start)}, {k: "end", t: "結束", f: r => md(r.end)},
     {k: "exit", t: "出關日", f: r => md(r.exit)}, {k: "remain", t: "剩餘交易日", n: 1, f: r => r.remain ? r.remain + " 天" : '<span class="tag down">出關</span>'},
     {k: "reason", t: "處置原因", w: 1, f: r => `${esc(r.reason)}｜第${r.times}次處置`},
@@ -886,7 +967,7 @@ P.etf = async () => {
   let fund = "";
   const ht = table(document.getElementById("h"), [
     {k: "fund", t: "基金", f: r => `${esc(r.fund)} <span class="muted small">${esc(r.fund_name !== r.fund ? r.fund_name : "")}</span>`},
-    {k: "name", t: "股票", f: r => `${stockLink(r.code, r.name)} <span class="muted small">${r.code}</span>`},
+    {k: "name", t: "股票", f: r => `${stockLink(r.code, r.name, r.spark)} <span class="muted small">${r.code}</span>`},
     {k: "weight", t: "比例", n: 1, f: r => r.weight == null ? "—" : fx(r.weight) + "%"}, {k: "lots", t: "張數", n: 1, f: r => fi(r.lots)},
     {k: "mv", t: "估市值", n: 1, f: r => yi(r.mv)}, {k: "delta_amt", t: "變動估金額", n: 1, f: r => `<span class="${sign(r.delta_amt)}">${r.delta_amt ? yi(r.delta_amt) : "—"}</span>`},
     {k: "delta_lots", t: "變動張數", n: 1, f: r => r.delta_lots ? `<span class="${sign(r.delta_lots)}">${r.delta_lots > 0 ? "+" : ""}${fi(r.delta_lots)}</span>` : "—"},
@@ -934,6 +1015,7 @@ P.stock = async (code) => {
   const name = h?.name || mine[0]?.name || dc?.name || cur?.name || "";
   app.innerHTML = `<h1>${esc(name)} <span class="muted">${esc(code)}</span></h1>
     <p class="sub">${h ? `近期共 ${h.events.length} 次漲停。` : "近期沒有漲停紀錄。"}${cur ? ` <span class="tag warn">處置中，${md(cur.exit)} 出關</span>` : ""}${dc ? ` <span class="tag up">差 ${dc.need} 次就處置</span>` : ""}</p>
+    ${SPARK[code] ? `<div class="panel spkpage">${spkInfo({code, name, rec: SPARK[code]})}</div>` : ""}
     <h2>漲停紀錄</h2><div id="e"></div>
     ${dc ? `<h2>處置預測</h2><div class="panel">${dispDetail(dc)}</div>` : ""}
     <h2>近期公告</h2><div id="a"></div>`;
@@ -957,6 +1039,7 @@ async function route() {
   const fn = routes[name] || P.home;
   document.querySelectorAll("nav.main a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#/" + name));
   app.innerHTML = '<p class="muted">載入中…</p>';
+  SPK.length = 0; spkHide();
   try { await fn(arg ? decodeURIComponent(arg) : undefined); }
   catch (e) { console.error(e); app.innerHTML = `<h1>這一頁載入失敗</h1><p class="sub">${esc(e.message)}。重新整理頁面，或確認資料流程是否正常執行。</p>`; }
   window.scrollTo(0, 0);
@@ -1006,7 +1089,9 @@ async function gate() {
 
 (async () => {
   await gate();
-  META = await load("meta.json") || {};
+  const [meta, sp] = await Promise.all([load("meta.json"), load("spark.json")]);
+  META = meta || {};
+  SPARK = sp?.s || {};
   if (META.site_name) { document.getElementById("siteName").textContent = META.site_name; }
   document.getElementById("mockbar").hidden = !META.mock;
   const j = META.jobs || {};

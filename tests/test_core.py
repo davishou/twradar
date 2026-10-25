@@ -283,3 +283,39 @@ class DisposalPeers(unittest.TestCase):
         finally:
             config.HISTORY_DIR = old
             store.trading_days.cache_clear(); store.load_day.cache_clear()
+
+
+class HistoryBackfill(unittest.TestCase):
+    def test_old_years_without_inst(self):
+        """舊年份查無法人資料時，行情照補、法人試 2 次後放棄，不會卡住或被當成封鎖"""
+        import tempfile
+        from pathlib import Path
+        from pipeline import archive, config as cfg
+        old = (archive.ROOT, archive.seed_from_history, cfg.HTTP_DELAY)
+        archive.ROOT = Path(tempfile.mkdtemp())
+        archive.seed_from_history = lambda: 0
+        cut = date.today().replace(day=1)
+        try:
+            class Src:
+                LAST_TWSE_STAT = "OK"
+
+                def fetch_quotes(self, d):
+                    return d, [{"code": "1101", "name": "台泥", "market": "TWSE", "open": 1, "high": 1, "low": 1,
+                                "close": 1, "change": 0, "prev_close": 1, "volume": 1, "value": 1, "trades": 1}]
+
+                def fetch_institutional(self, d):
+                    return {"1101": {"f": 1, "t": 0, "d": 0}} if d >= cut else {}
+
+                def fetch_margin(self, d):
+                    return {"1101": [1, 2, 3, 4]}
+            for _ in range(3):
+                st = archive.backfill(Src(), years=1, minutes=5, delay=0)
+            self.assertTrue(st["complete"])
+            self.assertGreater(len(archive.days("quotes")), 200)
+            self.assertGreater(len(st["gave_up"]["inst"]), 150)
+            self.assertTrue(all(x < cut.isoformat() for x in st["gave_up"]["inst"]))
+            self.assertEqual(len(archive.days("margin")), len(archive.days("quotes")))
+            self.assertEqual(archive.target_start({}, date(2026, 10, 25)), date(2016, 10, 25))
+            self.assertEqual(archive.target_start({"stage1_done": "x"}), archive.EARLIEST)
+        finally:
+            archive.ROOT, archive.seed_from_history, cfg.HTTP_DELAY = old

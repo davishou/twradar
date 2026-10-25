@@ -4,3 +4,4 @@ __pycache__/
 *.tmp
 site/gate.json
 data/.cache/
+site/data/spark.json

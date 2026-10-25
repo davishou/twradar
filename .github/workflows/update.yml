@@ -10,7 +10,7 @@ on:
     - cron: "8 12 * * 1-5"       # 20:08 券差
     - cron: "30 14 * * 1-5"      # 22:30 主動 ETF
     - cron: "*/5 0-15 * * 1-5"   # 08:00~23:55 每 5 分鐘公告偵測
-    - cron: "30 16 * * *"        # 00:30 長期資料庫回補 5 年歷史（補完後幾秒就結束）
+    - cron: "30 16 * * *"        # 00:30 長期資料庫回補歷史（先 10 年、再到 2004；補完後幾秒就結束）
   workflow_dispatch:
     inputs:
       job:
@@ -39,9 +39,22 @@ jobs:
       SITE_NAME: ${{ vars.SITE_NAME || '盤後雷達' }}
       SITE_URL: ${{ vars.SITE_URL }}
     steps:
+      # 長期資料庫的行情／法人／融資券（數百 MB）只有 history 工作需要讀；其他工作只寫入當天的新檔，
+      # 所以不下載它們（稀疏 checkout），每 5 分鐘的公告工作才不會每次下載整個資料庫
       - uses: actions/checkout@v4
+        if: github.event.schedule == '30 16 * * *' || github.event.inputs.job == 'history'
         with:
           ref: main   # 排隊等很久的工作也要從最新資料開始，避免存回時衝突
+      - uses: actions/checkout@v4
+        if: github.event.schedule != '30 16 * * *' && github.event.inputs.job != 'history'
+        with:
+          ref: main
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/data/archive/quotes/
+            !/data/archive/inst/
+            !/data/archive/margin/
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -71,12 +84,13 @@ jobs:
             # 每 45 分鐘存一次，萬一中途被中斷也不會白跑
             for i in 1 2 3 4 5; do
               python -m pipeline.run history 45
-              git add data
+              git add --sparse data
               if ! git diff --cached --quiet; then
                 git commit -m "data: history $(TZ=Asia/Taipei date '+%F %R')"
                 git pull --rebase --autostash && git push
               fi
-              python -c "import json,sys; sys.exit(0 if json.load(open('data/archive/progress.json')).get('stopped')=='時間到' else 1)" || break
+              # 時間到、或 10 年剛補完要接著往前補，就繼續下一輪
+              python -c "import json,sys; p=json.load(open('data/archive/progress.json')); sys.exit(0 if p.get('stopped')=='時間到' or (p.get('stopped')=='完成' and not p.get('complete')) else 1)" || break
             done
           elif [ "${{ steps.pick.outputs.job }}" = "backfill" ]; then
             python -m pipeline.run backfill 120 && python -m pipeline.run all
@@ -88,7 +102,7 @@ jobs:
         run: |
           git config user.name "data-bot"
           git config user.email "data-bot@users.noreply.github.com"
-          git add data site/data themes.json
+          git add --sparse data site/data themes.json
           if git diff --cached --quiet; then echo "沒有變更"; else
             git commit -m "data: ${{ steps.pick.outputs.job }} $(TZ=Asia/Taipei date '+%F %R')"
             git pull --rebase --autostash && git push
@@ -99,6 +113,9 @@ jobs:
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
         run: |
           python -c "import hashlib,os,json; p=os.environ.get('SITE_PASSWORD','').strip(); json.dump({'h': hashlib.sha256(('twradar:'+p).encode()).hexdigest()} if p else {}, open('site/gate.json','w'))"
+
+      - name: 小走勢圖（每次部署從 data/history 產生，不進 git）
+        run: python -m pipeline.spark || echo "小走勢圖產生失敗，網站照常部署"
 
       - uses: actions/upload-pages-artifact@v3
         with:
