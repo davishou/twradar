@@ -119,6 +119,85 @@ def update_material(fetch_day, today: date) -> dict:
     return db
 
 
+# ------------------------------------------------------------------ 庫藏股原始公告（長期保存）
+# material_db 只留 45 天，但買回期間最長 2 個月、執行結果可能在決議後 3 個月才公告，
+# 所以庫藏股相關公告另外存一份 treasury_raw（保留 TREASURY_DAYS 天），並可往回補抓。
+
+TREASURY_DAYS = 190
+TREASURY_SUBJ = re.compile(r"買回|庫藏")
+
+
+def _raw_key(m: dict) -> str:
+    return _key(m["date"], m["time"], m["code"], m["subject"][:60])
+
+
+def _trim(m: dict) -> dict:
+    return {**m, "body": (m.get("body") or "")[:4000]}
+
+
+def keep_treasury_raw(material: list[dict], today: date) -> dict:
+    """把公告資料庫裡的庫藏股相關公告存進 treasury_raw（每次 announce 都會跑，很快）"""
+    raw = store.state("treasury_raw", {}) or {}
+    for m in material:
+        if TREASURY_SUBJ.search(m.get("subject", "")):
+            raw.setdefault(_raw_key(m), _trim(m))
+    return _save_raw(raw, today)
+
+
+def _save_raw(raw: dict, today: date) -> dict:
+    cut = (today - timedelta(days=TREASURY_DAYS)).isoformat()
+    raw = {k: v for k, v in raw.items() if k.startswith("_") or v.get("date", "") >= cut}
+    raw["_days"] = {d: t for d, t in (raw.get("_days") or {}).items() if d >= cut}
+    store.save_state("treasury_raw", raw)
+    return raw
+
+
+def backfill_treasury(fetch_day, today: date, days: int = 185, minutes: float = 20) -> dict:
+    """往回補抓 days 天的重大訊息，只留下庫藏股相關公告。可中斷續跑（已抓過的日子記在 _days）。
+    不呼叫 AI。回傳 {'fetched': 本次抓了幾天, 'left': 還剩幾天, 'found': 本次找到幾筆}"""
+    raw = store.state("treasury_raw", {}) or {}
+    done = raw.setdefault("_days", {})
+    md = store.state("material_db", {}) or {}
+    have = set(done) | set((md.get("_fetched") or {}))   # 公告資料庫抓過的日子也算
+    todo = [d for d in (today - timedelta(days=i) for i in range(1, days + 1))
+            if d.weekday() < 5 and d.isoformat() not in have]
+    t0, fetched, found, fails = _time.monotonic(), 0, 0, 0
+    for d in todo:
+        if _time.monotonic() - t0 > minutes * 60:
+            break
+        rows = fetch_day(d)
+        if rows is None:
+            fails += 1
+            if fails >= 3:            # 連續被拒（查詢過於頻繁）就先停，下次再續
+                log.warning("庫藏股回補：觀測站連續拒絕，先停在 %s", d)
+                break
+            _time.sleep(30)
+            continue
+        fails = 0
+        for m in rows:
+            if TREASURY_SUBJ.search(m.get("subject", "")):
+                if _raw_key(m) not in raw:
+                    found += 1
+                raw.setdefault(_raw_key(m), _trim(m))
+        done[d.isoformat()] = now_tw().strftime("%Y-%m-%d %H:%M")
+        fetched += 1
+        if fetched % 10 == 0:          # 中途存檔，萬一被中斷也不會白跑
+            raw = _save_raw(raw, today)
+            done = raw["_days"]
+        _time.sleep(3)
+    left = len(todo) - fetched
+    raw["_bf"] = {"at": now_tw().strftime("%Y-%m-%d %H:%M"), "days": days, "left": left,
+                  "total": sum(1 for k in raw if not k.startswith("_"))}
+    _save_raw(raw, today)
+    log.info("庫藏股回補：本次抓 %d 天、新增 %d 筆公告、還剩 %d 天", fetched, found, left)
+    return {"fetched": fetched, "left": left, "found": found}
+
+
+def treasury_raw_items() -> list[dict]:
+    raw = store.state("treasury_raw", {}) or {}
+    return [v for k, v in raw.items() if not k.startswith("_")]
+
+
 # ------------------------------------------------------------------ 解析
 
 def _lines_with(body: str, word: str) -> list[list[float]]:
@@ -319,7 +398,8 @@ def _ai_extract_att(items: list[dict]) -> None:
 # ------------------------------------------------------------------ 主流程
 
 def build(material: list[dict], revenue: list[dict], quotes: list[dict], last_close_day: date | None,
-          exrights: list[dict] | None = None) -> dict:
+          exrights: list[dict] | None = None, treasury_extra: list[dict] | None = None) -> dict:
+    """treasury_extra：公告資料庫以外、較舊的庫藏股公告（treasury_raw），只用來建立買回計畫"""
     now = now_tw().strftime("%Y-%m-%d %H:%M")
     today = now_tw().date()
     qm = {q["code"]: q for q in quotes}
@@ -410,6 +490,17 @@ def build(material: list[dict], revenue: list[dict], quotes: list[dict], last_cl
             elif m["date"] >= show_cut:
                 kind = next((k for k, kws in EVENT_KINDS if any(w in s for w in kws)), "其他")
                 others.append(keep("others", {**base, "kind": kind}))
+    seen = {_raw_key(m) for m in material}
+    for m in sorted(treasury_extra or [], key=lambda x: (x["date"], x["time"])):
+        if _raw_key(m) in seen:
+            continue
+        s, b = m["subject"], m.get("body") or ""
+        base = {"key": _raw_key(m), "date": m["date"], "time": m["time"], "code": m["code"], "name": m["name"],
+                "market": m["market"], "subject": s, "body": b[:6000]}
+        if re.search(r"買回", s) and parse_treasury(b):
+            treasury_new.append({**base, **parse_treasury(b)})
+        elif re.search(r"買回|庫藏", s) and parse_treasury_done(b):
+            treasury_done.append({**base, **parse_treasury_done(b)})
 
     # ---------- 自結：AI 抽取補缺、比較基準、評分
     _ai_extract_att(att)
@@ -449,11 +540,12 @@ def build(material: list[dict], revenue: list[dict], quotes: list[dict], last_cl
     _ai_score("rev", rev)
 
     # ---------- 庫藏股：決議與執行結果合併成「買回計畫」
-    programs = {k: v for k, v in (store.state("treasury_db", {}) or {}).items()
-                if "原預定買回" not in (v.get("body") or "") and "已買回股份數量" not in (v.get("body") or "")}
-    for t in treasury_new:
+    # 每次都從原始公告（近 45 天公告資料庫 + treasury_raw 長期保存）重建，避免決議晚於執行結果補進來時重複
+    programs: dict[str, dict] = {}
+    for t in sorted(treasury_new, key=lambda x: (x["date"], x["time"])):
         programs.setdefault(t["key"], {k: t[k] for k in ("key", "code", "name", "market", "date", "time", "subject", "body",
                                                          "shares", "purpose", "low", "high", "start", "end", "board")})
+    treasury_done.sort(key=lambda x: (x["date"], x["time"]))
     for d in treasury_done:  # 對到同公司、期間相同的計畫；沒有（決議太早不在資料庫）就用執行結果建一筆
         cands = sorted((p for p in programs.values() if p["code"] == d["code"] and p["date"] <= d["date"]
                         and (not d.get("start") or p.get("start") == d["start"])), key=lambda p: p["date"])
@@ -466,15 +558,18 @@ def build(material: list[dict], revenue: list[dict], quotes: list[dict], last_cl
                 "purpose": "", "low": d.get("low"), "high": d.get("high"), "start": d.get("start"), "end": d.get("end"), "board": None})
         p.update({"done_shares": d["done"], "progress": d["pct"], "avg_price": d.get("avg_price"),
                   "done_date": d["date"], "done_body": d["body"][:3000]})
-    cut = (today - timedelta(days=180)).isoformat()
-    programs = {k: v for k, v in programs.items() if v["date"] >= cut}
+    cut = (today - timedelta(days=TREASURY_DAYS)).isoformat()
+    programs = {k: v for k, v in programs.items() if (v.get("board") or v["date"]) >= cut or v.get("done_date", "") >= cut}
     store.save_state("treasury_db", programs)
     treasury = []
     for p in programs.values():
         st = "完成" if p.get("progress") is not None or (p.get("end") and p["end"] < today.isoformat()) else \
              "執行中" if p.get("start") and p["start"] <= today.isoformat() else "待執行"
-        treasury.append(keep("treasury", {**p, "status": st, "traded": _traded(p["date"], p["time"], last_close_day),
-                                          "lots": round(p["shares"] / 10000, 1), **px(p["code"])}))
+        it = keep("treasury", {**p, "status": st, "traded": _traded(p["date"], p["time"], last_close_day),
+                               "lots": round(p["shares"] / 10000, 1), **px(p["code"])})
+        if it["new"] and p["date"] < (today - timedelta(days=3)).isoformat():   # 回補進來的舊公告不標「新」
+            it["new"], it["first_seen"] = False, f"{p['date']} {p['time']}"
+        treasury.append(it)
 
     # ---------- 事件行事曆（法說、財報、除權息），加上交易所除權息預告表補漏
     cal = {}

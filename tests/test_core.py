@@ -208,3 +208,45 @@ class ArchiveTest(unittest.TestCase):
             self.assertEqual(archive.build_adjust(), 1)
         finally:
             archive.ROOT = old
+
+
+class TreasuryBackfill(unittest.TestCase):
+    def test_backfill_and_merge(self):
+        """回補是可續跑的；決議比執行結果晚補進來也只會有一筆計畫"""
+        import tempfile
+        from pathlib import Path
+        from pipeline import announce as ann, store
+        old = (config.STATE_DIR, ann.OUT, ann._time.sleep)
+        tmp = Path(tempfile.mkdtemp())
+        config.STATE_DIR, ann.OUT, ann._time.sleep = tmp / "state", tmp / "out", (lambda s: None)
+        try:
+            dec = {"date": "2026-06-01", "time": "17:00", "code": "1234", "name": "測試", "market": "TWSE",
+                   "subject": "公告本公司董事會決議買回庫藏股",
+                   "body": "1.董事會決議日期:115/06/01\n2.買回股份目的:轉讓股份予員工\n5.預定買回之數量(股):1,000,000\n"
+                           "7.買回區間價格(元):20.00~30.00\n8.預定買回之期間:115/06/02~115/08/01"}
+            res = {"date": "2026-08-03", "time": "17:00", "code": "1234", "name": "測試", "market": "TWSE",
+                   "subject": "公告本公司買回股份期間屆滿", "body": "1.原預定買回之數量(股):1,000,000\n"
+                   "2.原預定買回之期間:115/06/02~115/08/01\n3.本次已買回股份數量(股):500,000\n6.平均每股買回價格(元):25.00"}
+            other = {**dec, "subject": "公告本公司董事會決議發放股利", "code": "9999"}
+            days = {"2026-06-01": [dec, other], "2026-08-03": [res]}
+            calls = []
+
+            def fetch(d):
+                calls.append(d)
+                return days.get(d.isoformat(), [])
+            today = date(2026, 10, 25)
+            r = ann.backfill_treasury(fetch, today, days=185, minutes=5)
+            self.assertEqual((r["found"], r["left"]), (2, 0))
+            raw = ann.treasury_raw_items()
+            self.assertEqual({x["code"] for x in raw}, {"1234"})   # 只留庫藏股公告
+            n = len(calls)
+            ann.backfill_treasury(fetch, today, days=185, minutes=5)
+            self.assertEqual(len(calls), n)                          # 抓過的日子不再抓
+            out = ann.build([], [], [], date(2026, 10, 23), [], treasury_extra=raw)["treasury"]
+            self.assertEqual(len(out), 1)
+            p = out[0]
+            self.assertEqual((p["shares"], p["done_shares"], p["progress"], p["purpose"]), (1000000, 500000, 50, "員工"))
+            self.assertEqual(p["status"], "完成")
+            self.assertFalse(p["new"])
+        finally:
+            config.STATE_DIR, ann.OUT, ann._time.sleep = old

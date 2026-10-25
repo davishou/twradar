@@ -8,6 +8,7 @@
   python -m pipeline.run etf            主動 ETF 持股異動（22:30）
   python -m pipeline.run announce       自結/季報/營收/庫藏/事件（每 5 分鐘）
   python -m pipeline.run all            以上全部
+  python -m pipeline.run treasury 20    庫藏股歷史回補約 6 個月（每次跑 20 分鐘，續跑）
   python -m pipeline.run history 40     長期資料庫：回補 5 年歷史（每次跑 40 分鐘，續跑）
   python -m pipeline.run backfill 120   補抓最近 120 個交易日歷史行情（第一次部署必跑）
   python -m pipeline.run mock           以模擬資料產生完整示範網站（離線可用）
@@ -231,13 +232,22 @@ def job_announce(src) -> None:
             store.save_state("findb_run", {"d": date.today().isoformat()})
         db = announce.update_material(sources.fetch_material_mops, now_tw().date())
         material = [v for k, v in db.items() if not k.startswith("_")]
+        announce.keep_treasury_raw(material, now_tw().date())
         exr = sources.fetch_exrights()
     else:
         material, exr = src.fetch_material(), []
-    res = announce.build(material, src.fetch_revenue(), quotes, today, exr)
+    res = announce.build(material, src.fetch_revenue(), quotes, today, exr,
+                         treasury_extra=announce.treasury_raw_items() if src is sources else None)
     brief.touch_meta("announce")
     brief.line_copy()
     log.info("公告：自結 %d、季報 %d、營收 %d、庫藏 %d、事件 %d、其他 %d", *(len(res[k]) for k in ("att", "fin", "rev", "treasury", "events", "others")))
+
+
+def job_treasury(minutes: float = 20, days: int = 185) -> None:
+    """庫藏股歷史回補：往回抓約 6 個月重大訊息，只留庫藏股公告，再重建庫藏頁。可續跑，不呼叫 AI"""
+    res = announce.backfill_treasury(sources.fetch_material_mops, now_tw().date(), days=days, minutes=minutes)
+    if res["fetched"] or res["found"]:
+        job_announce(sources)
 
 
 def job_borrow(src) -> None:
@@ -289,6 +299,10 @@ def job_history(minutes: float = 40) -> None:
     st = archive.backfill(sources, years=5, minutes=minutes)
     archive.backfill_notices(sources, years=5)
     archive.sync_limitup()
+    try:
+        job_treasury(minutes=10)          # 庫藏股回補沒補完就順便續補；補完後幾乎不花時間
+    except Exception as e:  # noqa: BLE001
+        log.exception("庫藏股回補失敗：%s", e)
     n = archive.build_adjust()
     log.info("還原因子 %d 筆；回補完成：%s", n, st.get("complete"))
 
@@ -359,6 +373,8 @@ def main(argv: list[str]) -> int:
     elif cmd == "all":
         for f in jobs.values():
             f()
+    elif cmd == "treasury":
+        job_treasury(float(argv[1]) if len(argv) > 1 else 20)
     elif cmd == "history":
         job_history(float(argv[1]) if len(argv) > 1 else 40)
     elif cmd == "backfill":
