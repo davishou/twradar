@@ -376,11 +376,26 @@ def backfill(minutes: float = 15) -> dict:
     return st["cb"]
 
 
+def write_hist_files(n: int = 250) -> int:
+    """部署時：每檔一個 site/data/cbh/代號.json（點開才載入），價格兩位小數、餘額以億元計"""
+    import shutil
+    h = history_series(n)
+    out = config.OUT_DIR / "cbh"
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True, exist_ok=True)
+    r2 = lambda x: None if x is None else round(x, 2)  # noqa: E731
+    for code, rows in h["s"].items():
+        ix = [x[0] for x in rows]
+        write_json(out / f"{code}.json", {"dates": [h["dates"][i] for i in ix],
+                                          "rows": [[r2(v) for v in x[1:8]] + [None if x[8] is None else round(x[8] / 1e8, 2)] for x in rows]})
+    return len(h["s"])
+
+
 def main() -> int:
-    """python -m pipeline.cb hist → 產生 site/data/cb_hist.json（部署時）"""
+    """python -m pipeline.cb hist → 產生 site/data/cbh/*.json（部署時，不進 git）"""
     import sys
     if sys.argv[1:] == ["hist"]:
-        write_json(config.OUT_DIR / "cb_hist.json", history_series())
+        write_hist_files()
         return 0
     return 0 if run() else 1
 

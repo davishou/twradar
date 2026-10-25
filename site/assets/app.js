@@ -886,15 +886,20 @@ P.borrow = async () => {
 // ---- 可轉債 ----
 const yi2 = n => n == null ? "—" : fx(n / 1e8, n >= 1e9 ? 0 : 1);
 const CB_P = [["1M", 21], ["3M", 63], ["6M", 126], ["1Y", 250]];
-/* K 線（開高低收）＋成交張數＋轉換價值虛線。h：[[日期索引, 開, 高, 低, 收, 張數, 轉換價值, 溢價率, 餘額], ...] */
-function cbChart(hAll, dates, n) {
-  const h = (hAll || []).filter(x => x[4] != null || x[6] != null).slice(-n);
+/* 三層圖：CB K 線（紅漲綠跌）、轉換溢價率、成交張數。hj：{dates, rows:[[開, 高, 低, 收, 張數, 轉換價值, 溢價率, 餘額(億)], ...]} */
+function cbChart(hj, n) {
+  const dates = hj?.dates || [];
+  const h = (hj?.rows || []).map((x, i) => [i, ...x]).filter(x => x[4] != null || x[7] != null).slice(-n);
   if (h.length < 2) return '<p class="muted small">歷史走勢會隨每日資料累積（目前不足 2 天）。</p>';
-  const w = 600, top = 150, vh = 40, p = 6, gap = 6;
-  const vals = h.flatMap(x => [x[2], x[3], x[4], x[6]]).filter(x => x != null);
-  const lo = Math.min(...vals), hi = Math.max(...vals), sp = hi - lo || 1;
-  const bw = (w - 2 * p) / h.length, X = i => p + (i + 0.5) * bw, Y = y => p + (1 - (y - lo) / sp) * (top - 2 * p);
-  const vmax = Math.max(1, ...h.map(x => x[5] || 0));
+  const w = 600, p = 6, k1 = 140, g = 10, k2 = 50, k3 = 34, axis = 44;
+  const pw = w - p - axis, bw = pw / h.length, X = i => p + (i + 0.5) * bw;
+  const px = h.flatMap(x => [x[2], x[3], x[4]]).filter(x => x != null);
+  const lo = Math.min(...px), hi = Math.max(...px), sp = hi - lo || 1;
+  const Y = y => p + (1 - (y - lo) / sp) * (k1 - 2 * p);
+  const pr = h.map(x => x[7]).filter(x => x != null);
+  const plo = Math.min(0, ...pr), phi = Math.max(...pr, plo + 1), psp = phi - plo || 1;
+  const y2 = k1 + g, Y2 = v => y2 + (1 - (v - plo) / psp) * k2;
+  const y3 = y2 + k2 + g, vmax = Math.max(1, ...h.map(x => x[5] || 0));
   let candles = "", vols = "";
   h.forEach((x, i) => {
     const [o, hh, l, c, v] = [x[1], x[2], x[3], x[4], x[5]];
@@ -903,16 +908,22 @@ function cbChart(hAll, dates, n) {
       candles += `<line class="${cls}" x1="${X(i)}" x2="${X(i)}" y1="${Y(hh ?? c)}" y2="${Y(l ?? c)}"/>`
         + `<rect class="${cls}" x="${X(i) - bw * 0.35}" y="${Math.min(Y(o), Y(c))}" width="${Math.max(1, bw * 0.7)}" height="${Math.max(1, Math.abs(Y(o) - Y(c)))}"/>`;
     }
-    if (v) vols += `<rect class="${c != null && o != null && c < o ? "down" : "up"}" x="${X(i) - bw * 0.35}" y="${top + gap + vh - v / vmax * vh}" width="${Math.max(1, bw * 0.7)}" height="${v / vmax * vh}"/>`;
+    if (v) vols += `<rect class="${c != null && o != null && c < o ? "down" : "up"}" x="${X(i) - bw * 0.35}" y="${y3 + k3 - v / vmax * k3}" width="${Math.max(1, bw * 0.7)}" height="${v / vmax * k3}"/>`;
   });
-  const cv = h.map((x, i) => x[6] == null ? null : `${X(i).toFixed(1)},${Y(x[6]).toFixed(1)}`).filter(Boolean).join(" ");
-  const y100 = lo <= 100 && hi >= 100 ? `<line class="ref" x1="${p}" x2="${w - p}" y1="${Y(100)}" y2="${Y(100)}"/><text x="${w - p}" y="${Y(100) - 3}" text-anchor="end">100</text>` : "";
-  const last = h.at(-1);
-  return `<svg class="cbchart" viewBox="0 0 ${w} ${top + gap + vh + 16}" role="img" aria-label="可轉債 K 線與轉換價值">${y100}
-    <g class="k">${candles}</g><polyline class="cv" points="${cv}"/><g class="v">${vols}</g>
-    <text x="${p}" y="${top + gap + vh + 13}">${esc(dates[h[0][0]] || "")}</text><text x="${w - p}" y="${top + gap + vh + 13}" text-anchor="end">${esc(dates[last[0]] || "")}</text>
-    <text x="${p}" y="12">高 ${fp(hi)}　低 ${fp(lo)}</text></svg>
-    <p class="small"><span class="lg px"></span>CB K 線（紅漲綠跌）　<span class="lg cv"></span>轉換價值　下方為成交張數</p>`;
+  const prem = h.map((x, i) => x[7] == null ? null : `${X(i).toFixed(1)},${Y2(x[7]).toFixed(1)}`).filter(Boolean).join(" ");
+  const ax = w - axis + 4, last = h.at(-1);
+  const lastC = [...h].reverse().find(x => x[4] != null);
+  const ref100 = lo <= 100 && hi >= 100 ? `<line class="ref" x1="${p}" x2="${w - axis}" y1="${Y(100)}" y2="${Y(100)}"/>` : "";
+  const zero = plo < 0 ? `<line class="ref" x1="${p}" x2="${w - axis}" y1="${Y2(0)}" y2="${Y2(0)}"/>` : "";
+  return `<svg class="cbchart" viewBox="0 0 ${w} ${y3 + k3 + 16}" role="img" aria-label="可轉債 K 線、溢價率與成交量">
+    ${ref100}<g class="k">${candles}</g>
+    ${!lastC || Math.abs(Y(hi) - Y(lastC[4])) > 12 ? `<text x="${ax}" y="${Y(hi) + 4}">${fp(hi)}</text>` : ""}${!lastC || Math.abs(Y(lo) - Y(lastC[4])) > 12 ? `<text x="${ax}" y="${Y(lo)}">${fp(lo)}</text>` : ""}${lastC ? `<text class="last" x="${ax}" y="${Y(lastC[4]) + 4}">${fp(lastC[4])}</text>` : ""}
+    <line class="sep" x1="${p}" x2="${w - axis}" y1="${y2 - g / 2}" y2="${y2 - g / 2}"/>
+    ${zero}<polyline class="prem" points="${prem}"/><text x="${p}" y="${y2 + 10}">溢價率</text>
+    <text x="${ax}" y="${y2 + 9}">${fx(phi, 0)}%</text><text x="${ax}" y="${y2 + k2}">${fx(plo, 0)}%</text>
+    <line class="sep" x1="${p}" x2="${w - axis}" y1="${y3 - g / 2}" y2="${y3 - g / 2}"/>
+    <g class="v">${vols}</g><text x="${ax}" y="${y3 + 9}">${fi(vmax)}張</text>
+    <text x="${p}" y="${y3 + k3 + 13}">${esc(dates[h[0][0]] || "")}</text><text x="${w - axis}" y="${y3 + k3 + 13}" text-anchor="end">${esc(dates[last[0]] || "")}</text></svg>`;
 }
 const CB_TIP = {
   cv: "轉換價值＝100 ÷ 轉換價 × 股價。代表立刻轉成股票值多少（以百元計）。",
@@ -965,7 +976,8 @@ P.cb = async () => {
     + dates.map(([k, t]) => `<label><span>${t}</span><span class="rng"><input type="date" data-k="${k}" data-b="lo">～<input type="date" data-k="${k}" data-b="hi"></span></label>`).join("")
     + `<label><span>擔保</span><select id="cg"><option value="">不拘</option><option value="1">有擔保</option><option value="0">無擔保</option></select></label>`
     + `<label><span>&nbsp;</span><button type="button" class="btn" id="cclr">清除全部條件</button></label>`;
-  let flt = "", q = "", hist = null, per = {};
+  let flt = "", q = "", per = {};
+  const H = {};   // 已載入的個別走勢 cbh/代號.json
   const adv = {};
   const t = table(document.getElementById("ct"), [
     {k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`},
@@ -988,8 +1000,9 @@ P.cb = async () => {
     expand: r => {
       const kv = (a, b) => `<tr><th>${a}</th><td>${b ?? "—"}</td></tr>`;
       const n = per[r.code] || 126;
-      const h = hist?.s?.[r.code];
-      const outs = (h || []).filter(x => x[8] != null);
+      const hj = H[r.code];
+      if (hj === undefined) { H[r.code] = null; load(`cbh/${r.code}.json`).then(x => { H[r.code] = x || {dates: [], rows: []}; apply(); }); }
+      const outs = (hj?.rows || []).map((x, i) => [i, ...x]).filter(x => x[8] != null);
       const weeks = [];
       for (let i = outs.length - 1; i >= 0 && weeks.length < 6; i -= 5) weeks.push(outs[i]);
       const inst = r.inst ? r.inst.map((v, i) => `${["外資", "投信", "自營"][i]} <span class="${sign(v)}">${v > 0 ? "+" : ""}${fi(v)}</span>`).join("　") : "—";
@@ -1000,9 +1013,9 @@ P.cb = async () => {
           <span>5 日均量 ${r.v5 == null ? "—" : fi(r.v5) + " 張"}（月均 ${r.v20 == null ? "—" : fi(r.v20)}）</span>
           <span>三大法人 ${inst}</span></div>
         <div class="cbd"><div><div class="chips small" data-per="${esc(r.code)}">${CB_P.map(([l, v]) => `<button type="button" class="chip ${v === n ? "on" : ""}" data-n="${v}">${l}</button>`).join("")}</div>
-          ${hist ? cbChart(h, hist.dates, n) : '<p class="muted small">載入走勢中…</p>'}
+          ${hj ? cbChart(hj, n) : '<p class="muted small">載入走勢中…</p>'}
           ${weeks.length > 1 ? `<h4>近幾週餘額</h4><table class="kv"><tbody>${weeks.map((x, i) => { const prev = weeks[i + 1]; const ch = prev && prev[8] ? (x[8] / prev[8] - 1) * 100 : null;
-            return `<tr><th>${esc(hist.dates[x[0]])}</th><td>${yi2(x[8])} 億${ch ? `　<span class="${sign(ch)}">${ch > 0 ? "+" : ""}${fx(ch, 2)}%</span>` : ""}</td></tr>`; }).join("")}</tbody></table>` : ""}</div>
+            return `<tr><th>${esc(hj.dates[x[0]])}</th><td>${fx(x[8], 2)} 億${ch ? `　<span class="${sign(ch)}">${ch > 0 ? "+" : ""}${fx(ch, 2)}%</span>` : ""}</td></tr>`; }).join("")}</tbody></table>` : ""}</div>
         <table class="kv"><tbody>
         ${kv("開／高／低／均", [r.open, r.high, r.low, r.avg].map(fp).join(" / "))}
         ${kv("成交", r.lots ? `${fi(r.lots)} 張、${fi(r.trades)} 筆、${yi(r.value)}${r.nego_lots ? `（議價 ${fi(r.nego_lots)} 張）` : ""}` : "今日無成交")}
@@ -1044,10 +1057,10 @@ P.cb = async () => {
     e.stopPropagation(); per[b.closest("[data-per]").dataset.per] = +b.dataset.n; apply();
   }, true);
   apply();
-  load("cb_hist.json").then(h => { hist = h || {dates: [], s: {}}; apply(); });
 };
 
 // ---- 可轉債 IPO ----
+const IPO_ORDER = {"詢圈中": 0, "競拍中": 1, "待開標": 2, "待詢圈": 3, "待競拍": 3, "待掛牌": 4, "已申報": 5, "已掛牌": 6, "取消": 7};
 const IPO_ST = {"詢圈中": "up", "競拍中": "up", "待開標": "warn", "待詢圈": "warn", "待競拍": "warn", "待掛牌": "ok", "已申報": "", "已掛牌": "pur", "取消": ""};
 P.cbipo = async () => {
   setTitle("可轉債 IPO");
@@ -1060,7 +1073,7 @@ P.cbipo = async () => {
   const items = js.items.map(r => ({...r, code: r.stock, name: r.stock_name || r.company, spark: SPARK[r.stock]}));
   let flt = "", q = "";
   const t = table(document.getElementById("it"), [
-    {k: "status", t: "狀態", f: r => `<span class="tag ${IPO_ST[r.status] || ""}">${esc(r.status)}</span>`},
+    {k: "status", t: "狀態", s: r => IPO_ORDER[r.status] ?? 9, f: r => `<span class="tag ${IPO_ST[r.status] || ""}">${esc(r.status)}</span>`},
     {k: "code", t: "代號", f: r => r.stock ? `<span class="code">${esc(r.stock)}</span>` : "—"},
     {k: "name", t: "名稱", f: r => `${r.stock ? stockLink(r.stock, r.stock_name) : esc(r.company)}${r.short ? `<br><span class="small muted">${esc(r.short)} ${esc(r.bond || "")}</span>` : ""}`},
     {k: "guaranteed", t: "擔保", f: r => r.guaranteed ? '<span class="tag ok">有</span>' : '<span class="muted small">無</span>', s: r => r.guaranteed ? 1 : 0},
@@ -1077,8 +1090,6 @@ P.cbipo = async () => {
     {k: "tenor", t: "年期", n: 1, f: r => r.tenor ? r.tenor + " 年" : "—"},
     {k: "cb_close", t: "上櫃後", n: 1, f: r => r.cb_close ? `${fp(r.cb_close)}<br><span class="small muted">溢價 ${fx(r.cb_premium, 1)}%</span>` : "—"},
   ], [], {sort: ["status", 1], id: r => (r.stock || r.company) + (r.bond || "") + r.method + (r.filed || ""), empty: "沒有資料"});
-  const order = {"詢圈中": 0, "競拍中": 1, "待開標": 2, "待詢圈": 3, "待競拍": 3, "待掛牌": 4, "已申報": 5, "已掛牌": 6, "取消": 7};
-  items.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
   const filters = [["", "全部", () => true], ["live", "進行中（詢圈／競拍）", r => /中|待開標/.test(r.status)],
     ["soon", "即將掛牌", r => r.status === "待掛牌"], ["new", "近 60 天已掛牌", r => r.status === "已掛牌"], ["g", "有擔保", r => r.guaranteed]];
   function apply() {

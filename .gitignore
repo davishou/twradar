@@ -7,3 +7,4 @@ data/.cache/
 site/data/spark.json
 site/repo_size.json
 site/data/cb_hist.json
+site/data/cbh/
