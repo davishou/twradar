@@ -1094,6 +1094,15 @@ async function gate() {
   SPARK = sp?.s || {};
   if (META.site_name) { document.getElementById("siteName").textContent = META.site_name; }
   document.getElementById("mockbar").hidden = !META.mock;
+  // 專案容量提醒：部署時寫入 repo_size.json（GitHub 建議 1GB 以內），超過 800MB 顯示
+  try {
+    const rs = await fetch("repo_size.json", {cache: "no-cache"}).then(r => r.ok ? r.json() : null);
+    if (rs && rs.mb >= 800) {
+      const bar = document.getElementById("sizebar");
+      bar.textContent = `提醒：GitHub 專案已達 ${rs.mb} MB（建議 1GB 以內），該處理長期資料庫的存放位置了。`;
+      bar.hidden = false;
+    }
+  } catch {}
   const j = META.jobs || {};
   document.getElementById("updated").textContent = Object.keys(j).length ? "最近更新：" + Object.entries(j).filter(([k]) => k !== "mock").map(([k, v]) => `${({daily: "漲停", disposal: "處置", announce: "公告", borrow: "券差", etf: "主動ETF", backfill: "補資料"})[k] || k} ${v}`).join("，") : "";
   window.addEventListener("hashchange", route);

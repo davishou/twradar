@@ -117,6 +117,14 @@ jobs:
         run: |
           python -c "import hashlib,os,json; p=os.environ.get('SITE_PASSWORD','').strip(); json.dump({'h': hashlib.sha256(('twradar:'+p).encode()).hexdigest()} if p else {}, open('site/gate.json','w'))"
 
+      - name: 專案容量（網站在 800MB 以上時顯示提醒）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          kb=$(gh api repos/${{ github.repository }} -q .size 2>/dev/null || echo 0)
+          echo "{\"mb\": $((kb / 1024)), \"at\": \"$(TZ=Asia/Taipei date '+%F %R')\"}" > site/repo_size.json
+          cat site/repo_size.json
+
       - name: 小走勢圖（每次部署從 data/history 產生，不進 git）
         run: python -m pipeline.spark || echo "小走勢圖產生失敗，網站照常部署"
 
