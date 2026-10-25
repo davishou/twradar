@@ -34,28 +34,30 @@ def _links(tr: str) -> list[str]:
 
 
 def _twsa_rows(page: str, head_word: str) -> list[dict]:
-    """找出表頭含 head_word 的表格，回傳 list[dict]（欄名→值），附公告檔連結"""
-    for tbl in re.findall(r"<table[^>]*>(.*?)</table>", page, re.S | re.I):
-        if head_word not in tbl or "<table" in tbl.lower():
+    """在整頁的 <tr> 中找表頭含 head_word 的那一列，之後欄數相同的列就是資料（表格有巢狀，不能靠 <table> 切）"""
+    trs = re.findall(r"<tr[^>]*>((?:(?!<tr[\s>]).)*?)</tr>", page, re.S | re.I)
+    head, out = None, []
+    for tr in trs:
+        if "<table" in tr.lower():
             continue
-        trs = re.findall(r"<tr[^>]*>(.*?)</tr>", tbl, re.S | re.I)
-        if not trs:
+        cells = [re.sub(r"\s+", "", _html.unescape(re.sub(r"<[^>]+>", "", x)))
+                 for x in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", tr, re.S | re.I)]
+        if head is None:
+            if head_word in cells and "序號" in cells:
+                head = cells
             continue
-        head = [re.sub(r"\s+", "", _html.unescape(re.sub(r"<[^>]+>", "", x)))
-                for x in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", trs[0], re.S | re.I)]
-        if head_word not in "".join(head):
+        c = _cells(tr)
+        if len(c) < len(head) - 1 or not c or not c[0][:1].isdigit():
+            if out:
+                break
             continue
-        out = []
-        for tr in trs[1:]:
-            c = _cells(tr)
-            if len(c) >= len(head) - 1 and c and c[0][:1].isdigit():
-                row = dict(zip(head, c))
-                links = [u for u in _links(tr) if u.lower().endswith(".pdf") or "file" in u.lower()]
-                if links:
-                    row["_pdf"] = links[0] if links[0].startswith("http") else "https://web.twsa.org.tw/edoc2/" + links[0].lstrip("./")
-                out.append(row)
-        return out
-    return []
+        row = dict(zip(head, c))
+        links = _links(tr)
+        if links:
+            u = links[0]
+            row["_pdf"] = u if u.startswith("http") else "https://web.twsa.org.tw/edoc2/" + u.lstrip("./")
+        out.append(row)
+    return out
 
 
 def fetch_twsa() -> dict[str, list[dict]]:
@@ -170,9 +172,14 @@ def build(today: date, twsa: dict, auctions: list[dict], issue: dict, cb_rows: l
     out = []
     for v in items.values():
         st = v.get("stock")
-        cand = sorted(iss_by_stock.get(st, []), key=lambda x: x.get("issue_date") or "", reverse=True)
-        iss = next((x for x in cand if v.get("bond") and x["bond"] == v["bond"]), None) or \
-            next((x for x in cand if (x.get("issue_date") or "") >= (today - timedelta(days=120)).isoformat()), None)
+        cand = sorted(iss_by_stock.get(st, []), key=lambda x: x.get("issue_date") or "")
+        anchor = v.get("auc_end") or v.get("bb_end") or v.get("filed")
+        iss = next((x for x in cand if v.get("bond") and x["bond"] == v["bond"]), None)
+        if not iss and anchor:
+            a = date.fromisoformat(anchor)
+            iss = next((x for x in cand if x.get("issue_date") and
+                        (a - timedelta(days=10)).isoformat() <= x["issue_date"] <= (a + timedelta(days=75)).isoformat()), None)
+        v["stale"] = bool(not iss and not v.get("listing") and anchor and anchor < (today - timedelta(days=90)).isoformat())
         if iss:
             v.setdefault("bond", iss["bond"])
             v.update({"conv_price": iss.get("conv_price_issue"), "tenor": iss.get("tenor"), "issue_date": iss.get("issue_date"),
@@ -192,7 +199,7 @@ def build(today: date, twsa: dict, auctions: list[dict], issue: dict, cb_rows: l
             v["amount"] = v["lots"] * 100000
         v["status"] = _status(v, today)
         out.append(v)
-    order = {"詢圈中": 0, "競拍中": 1, "待開標": 2, "待掛牌": 3, "已申報": 4, "已掛牌": 5, "取消": 6}
+    order = {"詢圈中": 0, "競拍中": 1, "待開標": 2, "待詢圈": 3, "待競拍": 3, "待掛牌": 4, "已申報": 5, "已掛牌": 6, "取消": 7}
     out.sort(key=lambda x: (order.get(x["status"], 9), -(int((x.get("listing") or x.get("filed") or "0000-00-00").replace("-", "")))))
     return {"date": today.isoformat(), "items": out}
 
@@ -203,6 +210,10 @@ def _status(v: dict, today: date) -> str:
         return "取消"
     if v.get("listing") and v["listing"] <= t:
         return "已掛牌"
+    if v.get("auc_start") and v["auc_start"] > t:
+        return "待競拍"
+    if v.get("bb_start") and v["bb_start"] > t:
+        return "待詢圈"
     if v.get("auc_start") and v["auc_start"] <= t <= (v.get("auc_end") or t):
         return "競拍中"
     if v.get("auc_end") and v["auc_end"] < t and not v.get("won_avg"):
@@ -222,7 +233,7 @@ def write_index(cb_rows: list[dict], ipo: dict) -> None:
             idx.setdefault(r["stock"], {}).setdefault("cb", 0)
             idx[r["stock"]]["cb"] += 1
     for v in ipo.get("items", []):
-        if v.get("stock") and v["status"] in ("已申報", "詢圈中", "競拍中", "待開標", "待掛牌"):
+        if v.get("stock") and v["status"] in ("已申報", "待詢圈", "待競拍", "詢圈中", "競拍中", "待開標", "待掛牌"):
             idx.setdefault(v["stock"], {})["ipo"] = v["status"]
     write_json(INDEX, idx)
 
@@ -238,7 +249,7 @@ def run(today: date | None = None) -> dict:
                 issue, cbjs.get("rows", []), comp, stocks)
     # 只留今年申報、或還沒掛牌、或 60 天內掛牌的
     cut = (today - timedelta(days=60)).isoformat()
-    res["items"] = [v for v in res["items"] if v["status"] != "已掛牌" or (v.get("listing") or "") >= cut]
+    res["items"] = [v for v in res["items"] if not v.get("stale") and (v["status"] != "已掛牌" or (v.get("listing") or "") >= cut)]
     write_json(OUT, res)
     write_index(cbjs.get("rows", []), res)
     log.info("可轉債 IPO：%d 筆", len(res["items"]))
