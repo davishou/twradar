@@ -44,7 +44,7 @@ for k, u in GET.items():
     try:
         r = session().get(u, timeout=40)
         b = r.content
-        (OUT / f"{k}.bin").write_bytes(b)
+        (OUT / f"{k}.bin").write_bytes(b[:400000])
         summary[k] = {"status": r.status_code, "bytes": len(b), "ctype": r.headers.get("content-type"), "head": b[:300].decode("utf-8", "replace")}
     except Exception as e:  # noqa: BLE001
         summary[k] = {"error": str(e)}
@@ -53,7 +53,7 @@ for k, (u, data) in POST.items():
     try:
         r = session().post(u, data=data, timeout=60)
         b = r.content
-        (OUT / f"{k}.bin").write_bytes(b)
+        (OUT / f"{k}.bin").write_bytes(b[:400000])
         summary[k] = {"status": r.status_code, "bytes": len(b), "head": b[:300].decode("utf-8", "replace")}
     except Exception as e:  # noqa: BLE001
         summary[k] = {"error": str(e)}
