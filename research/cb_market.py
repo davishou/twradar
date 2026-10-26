@@ -81,6 +81,19 @@ def fwd(s: pd.Series, n: int) -> pd.Series:
     return s.shift(-n) / s - 1
 
 
+def episodes(st, col, thr, below=True, gap=40):
+    s = st[col].astype(float)
+    hit = (s < thr) if below else (s > thr)
+    rows, last = [], None
+    for t in st.index[hit.fillna(False).astype(bool)]:
+        if last is None or (t - last).days > gap:
+            r = [st.loc[t, k] for k in ("ew20", "ew60", "big60")]
+            rows.append(f"{t.date()}  均價≈{st.loc[t, 'zheng']:.1f}  之後20日 {r[0]:+.1%}  60日 {r[1]:+.1%}  大型股60日 {r[2]:+.1%}"
+                        if not any(pd.isna(x) for x in r) else f"{t.date()}  均價≈{st.loc[t, 'zheng']:.1f}  （大盤資料不足）")
+        last = t
+    return rows
+
+
 def main():
     st = daily_stats()
     mk = market().reindex(st.index).ffill()
@@ -104,9 +117,16 @@ def main():
     out += ["", "== 平均轉換價值 ==", tab("conv", [0, 85, 90, 95, 100, 105, 110, 1e9], ["<85", "85-90", "90-95", "95-100", "100-105", "105-110", "≥110"])]
     out += ["", "== 價格 <110 的 CB 占比 ==", tab("lt110", [0, .4, .5, .55, .6, .65, 1.01], ["<40%", "40-50%", "50-55%", "55-60%", "60-65%", "≥65%"])]
     out += ["", "== 平均價兩年位階 ==", tab("avg_pct", [0, .05, .1, .25, .5, .75, .9, .95, 1.01], ["<5%", "5-10%", "10-25%", "25-50%", "50-75%", "75-90%", "90-95%", "≥95%"])]
+    # 用他公布過的 8 個數字（2025/1~2026/8）把平均轉換價值換算成「鄭大委買均價」的估計值（r=0.97，誤差約 ±3 元）
+    st["zheng"] = 0.655 * st["conv"] + 49.3
+    st["zheng_hi"] = st["zheng"] >= st["zheng"].rolling(500, min_periods=250).max() - 1e-9
+    out += ["", "== 換算的鄭大委買均價（0.655×平均轉換價值+49.3） ==",
+            tab("zheng", [0, 105, 108, 110, 113, 117, 121, 1e9], ["<105", "105-108", "108-110", "110-113", "113-117", "117-121", "≥121"])]
+    out += ["", "== 恐慌事件（換算均價首次 <110，與前一次相隔 40 天以上） =="]
+    out += episodes(st, "zheng", 110, True) + ["", "== 換算均價創兩年新高（相隔 40 天以上） =="] + episodes(st, "zheng_hi", 0.5, False)
     print("\n".join(out))
     OUT.parent.mkdir(exist_ok=True)
-    keep = ["n", "avg", "med", "pr75", "pr90", "lt100", "lt110", "ge120", "conv", "prem", "prem100", "avg_pct", "ew20", "ew60", "big60"]
+    keep = ["zheng", "n", "avg", "med", "pr75", "pr90", "lt100", "lt110", "ge120", "conv", "prem", "prem100", "avg_pct", "ew20", "ew60", "big60"]
     js = {"dates": [d.strftime("%Y-%m-%d") for d in st.index],
           "mkt": [None if pd.isna(x) else round(float(x), 4) for x in mk["ew"]],
           **{k: [None if pd.isna(x) else round(float(x), 4) for x in st[k]] for k in keep}}
