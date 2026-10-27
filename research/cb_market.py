@@ -131,7 +131,41 @@ def main():
           "mkt": [None if pd.isna(x) else round(float(x), 4) for x in mk["ew"]],
           **{k: [None if pd.isna(x) else round(float(x), 4) for x in st[k]] for k in keep}}
     OUT.write_text(json.dumps(js, ensure_ascii=False))
+    save_site_stats(st)
     return st
+
+
+def save_site_stats(st: pd.DataFrame) -> None:
+    """把回測結果存給網站的 CB 溫度計卡片（pipeline/cbtemp.py）"""
+    from pipeline import cbtemp
+    f = lambda x: None if pd.isna(x) else round(float(x), 4)  # noqa: E731
+    edges = [(None, 105), (105, 108), (108, 110), (110, 113), (113, 117), (117, 121), (121, None)]
+    buckets = []
+    for lo, hi in edges:
+        m = st["zheng"].notna() & st["ew60"].notna()
+        if lo is not None:
+            m &= st["zheng"] >= lo
+        if hi is not None:
+            m &= st["zheng"] < hi
+        g = st[m]
+        buckets.append({"lo": lo, "hi": hi, "n": int(len(g)), "r20": f(g["ew20"].mean()), "r60": f(g["ew60"].mean()),
+                        "w60": f((g["ew60"] > 0).mean()), "big60": f(g["big60"].mean())})
+
+    def ev(col, thr, below):
+        s = st[col].astype(float)
+        hit = (s < thr) if below else (s > thr)
+        rows, last = [], None
+        for t in st.index[hit.fillna(False).astype(bool)]:
+            if last is None or (t - last).days > 40:
+                rows.append({"date": t.strftime("%Y-%m-%d"), "value": f(st.loc[t, "zheng"]),
+                             "r20": f(st.loc[t, "ew20"]), "r60": f(st.loc[t, "ew60"]), "big60": f(st.loc[t, "big60"])})
+            last = t
+        return rows
+    v = st[st["ew60"].notna()]
+    cbtemp.save_stats({"buckets": buckets, "episodes": ev("zheng", 110, True), "highs": ev("zheng_hi", 0.5, False),
+                       "base": {"r20": f(v["ew20"].mean()), "r60": f(v["ew60"].mean()), "big60": f(v["big60"].mean())},
+                       "stats_range": [v.index.min().strftime("%Y-%m-%d"), v.index.max().strftime("%Y-%m-%d")],
+                       "stats_updated": pd.Timestamp.today().strftime("%Y-%m-%d")})
 
 
 if __name__ == "__main__":

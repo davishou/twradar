@@ -933,9 +933,71 @@ const CB_TIP = {
   opt: "理論權利金（百元報價）＝CB 價 − 賣回價 ÷ (1+折現率)^年數。這是用固定折現率估算，和券商實際 CBAS 報價（例如投資少數派引用的元大報價）可能不同。",
 };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+
+// ---- CB 溫度計（鄭詩翰「CB 整體市場委買均價」的換算版）----
+const TZ = {x: ["極端恐慌", "tz-x"], p: ["恐慌", "tz-p"], l: ["低迷", "tz-l"], n: ["正常", "tz-n"], h: ["偏熱", "tz-h"]};
+const TEMP_TIP = "鄭詩翰（社團「年輕人的投資夢」）用 XQ 追蹤全部可轉債的委買均價判斷市場溫度：121 正常、112 低迷、108~110 極端恐慌（他開始分批加碼）、2025/4/9 關稅崩盤 98。\n\n"
+  + "我們沒有委買價，改用全市場 CB 的平均轉換價值換算：換算均價 ≈ 0.655 × 平均轉換價值 + 49.3。用他公布過的 8 個數字對照，相關係數 0.97，誤差約 ±3 元。\n\n"
+  + "回測表是 2018 年以來，每天依當天溫度分組，看之後 20、60 個交易日全市場（等權）與大型股（成交金額前 50 大）的平均漲幅。歷史統計，不保證未來。";
+function tempZoneOf(v) { return v < 105 ? "x" : v < 110 ? "p" : v < 113 ? "l" : v < 121 ? "n" : "h"; }
+function cbTempChart(t, range) {
+  const src = range === "all" ? t.weekly : t.daily;
+  if (!src?.length) return "";
+  const W = Math.round(Math.min(760, Math.max(340, (window.innerWidth || 760) - 70))), H = W < 500 ? 170 : 190, L = 34, R = 10, T = 8, B = 20;
+  const vs = src.map(x => x[1]), lo = Math.min(95, Math.floor(Math.min(...vs) / 5) * 5), hi = Math.max(130, Math.ceil(Math.max(...vs) / 5) * 5);
+  const x = i => L + (W - L - R) * i / Math.max(1, src.length - 1), y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  const band = (a, b, cls) => `<rect class="${cls}" x="${L}" y="${y(Math.min(b, hi))}" width="${W - L - R}" height="${Math.max(0, y(Math.max(a, lo)) - y(Math.min(b, hi)))}"/>`;
+  let g = band(lo, 110, "tzb-p") + band(121, hi, "tzb-h");
+  for (let v = Math.ceil(lo / 10) * 10; v <= hi; v += 10) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 5}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+  let last = "";
+  const narrow = W < 500;
+  src.forEach(([d], i) => { const k = range === "all" ? d.slice(0, 4) : d.slice(0, 7); if (k !== last) { last = k;
+    if (range === "all" ? (!narrow || +k % 2 === 1) : +d.slice(5, 7) % (narrow ? 3 : 2) === 1) g += `<text class="ax" x="${x(i) + 2}" y="${H - 6}">${range === "all" ? k : (+d.slice(5, 7)) + "月"}</text>`; } });
+  g += `<path class="tline" d="${src.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p[1]).toFixed(1)}`).join("")}"/>`;
+  (t.his || []).forEach(([d, v]) => { const i = src.findIndex(p => p[0] >= d); if (i > 0 || (i === 0 && src[0][0].slice(0, 7) === d.slice(0, 7))) g += `<circle class="hisdot" cx="${x(i)}" cy="${y(v)}" r="3.5"><title>${d} 他公布 ${v}</title></circle>`; });
+  const lx = x(src.length - 1), ly = y(vs[vs.length - 1]);
+  g += `<circle class="tnow" cx="${lx}" cy="${ly}" r="4"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="CB 溫度計走勢">${g}</svg>`;
+}
+function cbTempCard(t) {
+  if (!t) return "";
+  const z = TZ[t.zone.key] || TZ.n, pct = v => v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+  const b = (t.buckets || []).find(b => (b.lo == null || t.value >= b.lo) && (b.hi == null || t.value < b.hi));
+  const gLo = 95, gHi = 130, gp = v => Math.max(0, Math.min(100, (v - gLo) / (gHi - gLo) * 100));
+  const segs = [[gLo, 105, "x"], [105, 110, "p"], [110, 113, "l"], [113, 121, "n"], [121, gHi, "h"]];
+  const lab = b => b.lo == null ? `< ${b.hi}` : b.hi == null ? `≥ ${b.lo}` : `${b.lo} ~ ${b.hi}`;
+  const flag = t.high2y ? '<span class="tag warn">創兩年新高</span>' : t.low2y ? '<span class="tag ok">創兩年新低</span>' : "";
+  return `<section class="tcard" aria-label="CB 溫度計">
+    <div class="thead"><h2>CB 溫度計 ${tipBtn(TEMP_TIP)}</h2><span class="small muted">${esc(t.date)}，${fi(t.n)} 檔可轉債</span></div>
+    <div class="tbody">
+      <div class="tnum"><b>${t.value.toFixed(1)}</b><span class="tz ${z[1]}">${z[0]}</span> ${flag}
+        <p class="small">${esc(t.zone.desc)}</p>
+        <p class="small muted">平均轉換價值 ${t.conv.toFixed(1)}｜5 日 ${t.chg5 == null ? "—" : (t.chg5 >= 0 ? "+" : "") + t.chg5.toFixed(1)}｜兩年位階 ${t.pct2y ?? "—"}%</p></div>
+      <div class="tgauge" aria-hidden="true"><div class="tbar">${segs.map(([a, c, k]) => `<i class="${TZ[k][1]}" style="left:${gp(a)}%;width:${gp(c) - gp(a)}%"></i>`).join("")}
+        <em style="left:${gp(t.value)}%"></em></div>
+        <div class="tticks">${[95, 105, 110, 113, 121, 130].map(v => `<span style="left:${gp(v)}%">${v}</span>`).join("")}</div>
+        ${b ? `<p class="small">過去溫度在 <b>${lab(b)}</b> 的 ${fi(b.n)} 天，之後 60 天大盤平均 <b class="${b.r60 >= 0 ? "up" : "down"}">${pct(b.r60)}</b>（上漲比例 ${Math.round(b.w60 * 100)}%），大型股 ${pct(b.big60)}；全部日子平均 ${pct(t.base?.r60)}。</p>` : ""}</div>
+    </div>
+    <div class="trange chips" id="trg"></div><div id="tchart">${cbTempChart(t, "1y")}</div>
+    <details class="adv"><summary>回測明細：各溫度之後的大盤、歷次恐慌</summary>
+      <div class="tw"><table><thead><tr><th>換算均價</th><th class="n">天數</th><th class="n">之後 20 天</th><th class="n">之後 60 天</th><th class="n">60 天上漲比例</th><th class="n">大型股 60 天</th></tr></thead>
+      <tbody>${(t.buckets || []).map(b => `<tr class="${b === bNow(t) ? "sel" : ""}"><td><span class="tz ${TZ[tempZoneOf(b.lo ?? 100)][1]}">${lab(b)}</span></td><td class="n">${fi(b.n)}</td><td class="n">${pct(b.r20)}</td><td class="n">${pct(b.r60)}</td><td class="n">${b.w60 == null ? "—" : Math.round(b.w60 * 100) + "%"}</td><td class="n">${pct(b.big60)}</td></tr>`).join("")}
+      <tr><td>全部</td><td></td><td class="n">${pct(t.base?.r20)}</td><td class="n">${pct(t.base?.r60)}</td><td></td><td class="n">${pct(t.base?.big60)}</td></tr></tbody></table></div>
+      <h4>首次跌破 110（恐慌，相隔 40 天以上算一次）</h4>
+      <div class="tw"><table><thead><tr><th>日期</th><th class="n">換算均價</th><th class="n">之後 20 天</th><th class="n">之後 60 天</th><th class="n">大型股 60 天</th></tr></thead>
+      <tbody>${(t.episodes || []).map(e => `<tr><td>${esc(e.date)}</td><td class="n">${e.value.toFixed(1)}</td><td class="n">${pct(e.r20)}</td><td class="n">${pct(e.r60)}</td><td class="n">${pct(e.big60)}</td></tr>`).join("")}</tbody></table></div>
+      <h4>創兩年新高（偏熱）</h4>
+      <div class="tw"><table><thead><tr><th>日期</th><th class="n">換算均價</th><th class="n">之後 20 天</th><th class="n">之後 60 天</th><th class="n">大型股 60 天</th></tr></thead>
+      <tbody>${(t.highs || []).map(e => `<tr><td>${esc(e.date)}</td><td class="n">${e.value.toFixed(1)}</td><td class="n">${pct(e.r20)}</td><td class="n">${pct(e.r60)}</td><td class="n">${pct(e.big60)}</td></tr>`).join("")}</tbody></table></div>
+      <p class="small muted">統計期間 ${esc((t.stats_range || []).join(" ~ "))}。恐慌之後大盤多半上漲，越深越強；但第一次跌破 110 常常不是最低點（2020/2 之後 3 月才見底），他一律分批、波段最多 6 成。創兩年新高之後大盤沒有明顯下跌，比較適合拿來降部位、保留子彈，不適合放空。圖上黑點是他在 FB 公布的數字。</p>
+    </details>
+  </section>`;
+}
+function bNow(t) { return (t.buckets || []).find(b => (b.lo == null || t.value >= b.lo) && (b.hi == null || t.value < b.hi)); }
+
 P.cb = async () => {
   setTitle("可轉債");
-  const [js, ipo] = await Promise.all([load("cb.json"), load("cbipo.json")]);
+  const [js, ipo, temp] = await Promise.all([load("cb.json"), load("cbipo.json"), load("cb_temp.json")]);
   if (!js) { app.innerHTML = `<h1>可轉債</h1>${emptyBox("可轉債資料還沒產生（每個交易日收盤後更新）")}`; return; }
   const today = js.date;
   const rows = js.rows.map(r => ({...r, spark: SPARK[r.stock]}));
@@ -946,6 +1008,7 @@ P.cb = async () => {
     <div class="kcards">${card(rows.length, "可轉債檔數")}${card(new Set(rows.map(r => r.stock)).size, "發行公司數")}
       ${card(rows.filter(r => r.maturity && r.maturity <= addDays(today, 182)).length, "6 個月內到期")}
       ${card(rows.filter(r => r.lots > 0).length, "今日有成交")}${card(nIpo, "即將發行（IPO）", "#/cbipo")}</div>
+    ${cbTempCard(temp)}
     <div class="toolbar"><span class="chips" id="cf"></span></div>
     <details class="adv"><summary>進階篩選（區間）</summary><div class="advgrid" id="adv"></div>
       <p class="small muted">留空＝不限制。條件可以組合，例如溢價率 −3～3（股債緊密連動）＋剩餘比率 ≥ 80＋有擔保。</p></details>
@@ -953,6 +1016,7 @@ P.cb = async () => {
     <div id="ct"></div>
     <p class="small muted">資料來源：證券櫃檯買賣中心（每日轉(交)換公司債買賣斷交易行情表、轉換公司債資訊看板、轉(交)換債發行資料）。走勢欄是標的股票近 160 日。
     理論權利金折現率 ${(js.discount * 100).toFixed(1)}%。所有數字由程式計算，僅供參考。</p>`;
+  if (temp) chips(document.getElementById("trg"), [["1y", "近一年"], ["all", "2017 至今"]], "1y", v => { document.getElementById("tchart").innerHTML = cbTempChart(temp, v); });
   const quick = [
     ["", "全部", () => true],
     ["r30", "剩餘比率 < 30%", r => r.remain != null && r.remain < 30],

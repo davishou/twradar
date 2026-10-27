@@ -412,3 +412,32 @@ details.adv summary{cursor:pointer;font-weight:600;font-size:14px}
 tr.hascb>td{background:color-mix(in srgb,var(--warn-bg) 55%,transparent)}
 .tag.ipo{background:#e8590c;color:#fff;font-size:11px;padding:0 4px;text-decoration:none}
 .legend{display:inline-flex;align-items:center;gap:4px;margin-bottom:4px} .sw{display:inline-block;width:14px;height:10px;border-radius:2px;border:1px solid var(--line)} .sw.hascb{background:color-mix(in srgb,var(--warn-bg) 55%,transparent)}
+
+/* ---------- CB 溫度計 ---------- */
+.tcard{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:0 0 16px}
+.thead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;justify-content:space-between}
+.thead h2{margin:0;font-size:17px;font-family:var(--serif)}
+.tbody{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:12px 24px;margin:8px 0 6px;align-items:start}
+@media (max-width:720px){.tbody{grid-template-columns:1fr}}
+.tnum b{font-family:var(--serif);font-size:42px;line-height:1;margin-right:8px;font-variant-numeric:tabular-nums}
+.tnum p{margin:6px 0 0}
+.tz{display:inline-block;font-size:12.5px;padding:1px 9px;border-radius:10px;font-weight:700;vertical-align:middle;white-space:nowrap}
+.tz-x,.tbar i.tz-x{background:var(--down);color:#fff} .tz-p,.tbar i.tz-p{background:var(--down-bg);color:var(--down)}
+.tz-l,.tbar i.tz-l{background:var(--line-2);color:var(--ink-2)} .tz-n,.tbar i.tz-n{background:var(--line);color:var(--ink-2)}
+.tz-h,.tbar i.tz-h{background:var(--up-bg);color:var(--up)}
+.tgauge{padding-top:10px}
+.tbar{position:relative;height:12px;border-radius:6px;overflow:visible;background:var(--line-2)}
+.tbar i{position:absolute;top:0;bottom:0}
+.tbar i:first-child{border-radius:6px 0 0 6px} .tbar i:last-of-type{border-radius:0 6px 6px 0}
+.tbar em{position:absolute;top:-5px;width:4px;height:22px;margin-left:-2px;background:var(--ink);border-radius:2px;box-shadow:0 0 0 2px var(--paper)}
+.tticks{position:relative;height:18px;font-size:11.5px;color:var(--ink-3)} .tticks span{position:absolute;transform:translateX(-50%);top:2px}
+.tgauge p{margin:8px 0 0}
+.trange{margin:6px 0 2px}
+#tchart svg{display:block;max-width:100%}
+#tchart .grid{stroke:var(--line-2)} #tchart .ax{font-size:11px;fill:var(--ink-3)}
+#tchart .tzb-p{fill:var(--down-bg);opacity:.8} #tchart .tzb-h{fill:var(--up-bg);opacity:.8}
+#tchart .tline{fill:none;stroke:var(--brand-2);stroke-width:2} #tchart .tnow{fill:var(--brand-2);stroke:var(--paper);stroke-width:2}
+#tchart .hisdot{fill:var(--warn);stroke:var(--paper);stroke-width:1.5}
+.tcard h4{margin:14px 0 6px;font-size:14px}
+.tcard .tbl-wrap{overflow-x:auto}
+.tcard tr.sel td{background:var(--warn-bg)}

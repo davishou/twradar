@@ -108,8 +108,11 @@ def job_cb(src, d: date | None = None, inst: dict | None = None) -> None:
         return
     from . import cb
     try:
-        if cb.run(d, inst=inst):
+        res = cb.run(d, inst=inst)
+        if res:
             brief.touch_meta("cb", d)
+            from . import cbtemp
+            cbtemp.update(date.fromisoformat(res["date"]))   # CB 溫度計（鄭大委買均價換算）
         from . import cbipo
         cbipo.run()
     except Exception as e:  # noqa: BLE001  可轉債失敗不影響其他資料
