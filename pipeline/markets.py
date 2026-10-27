@@ -1,6 +1,7 @@
 """國際行情：商品（金銀油銅鐵礦、農產品）、各國指數、匯率利率的全部歷史與現價。
 
 資料源：Yahoo Finance 圖表介面（不需金鑰；商品是期貨連續月，報價延遲約 10~20 分鐘）。
+Yahoo 沒有的指數（台灣櫃買、滬深300、泰國、菲律賓、越南、波蘭、挪威、俄羅斯、沙烏地）改用鉅亨網圖表介面（代號前綴 cnyes:）。
 第一次抓某個代號時一次拿全部歷史，之後每次只補最近幾天。
 選用：GitHub Secret FRED_API_KEY（美國聖路易聯準銀行，免費申請）有設時，用官方資料核對收盤價。
 
@@ -93,10 +94,12 @@ GROUPS = [
     ]),
     ("東亞股市", [
         ("taiex", "^TWII", "台灣加權", "點"),
+        ("otc", "cnyes:TWS:OTC01:INDEX", "台灣櫃買指數", "點"),
         ("n225", "^N225", "日經 225", "點"),
         ("kospi", "^KS11", "韓國綜合", "點"),
         ("hsi", "^HSI", "香港恆生", "點"),
         ("hscei", "^HSCE", "恆生國企", "點"),
+        ("csi300", "cnyes:GI:CSI300:INDEX", "滬深 300", "點"),
         ("sse", "000001.SS", "上證綜合", "點"),
         ("szse", "399001.SZ", "深證成指", "點"),
     ]),
@@ -106,6 +109,9 @@ GROUPS = [
         ("sti", "^STI", "新加坡海峽時報", "點"),
         ("klci", "^KLSE", "馬來西亞 KLCI", "點"),
         ("jkse", "^JKSE", "印尼綜合", "點"),
+        ("set", "cnyes:GI:SET:INDEX", "泰國 SET", "點"),
+        ("psei", "cnyes:GI:PCOMP:INDEX", "菲律賓 PSEi", "點"),
+        ("vni", "cnyes:GI:VNI:INDEX", "越南 VN 指數", "點"),
         ("asx", "^AXJO", "澳洲 ASX 200", "點"),
         ("nz50", "^NZ50", "紐西蘭 NZX 50", "點"),
     ]),
@@ -125,10 +131,14 @@ GROUPS = [
         ("omxs30", "^OMX", "瑞典 OMX 30", "點"),
         ("omxc25", "^OMXC25", "丹麥 OMX 25", "點"),
         ("omxh25", "^OMXH25", "芬蘭 OMX 25", "點"),
+        ("osebx", "cnyes:GI:OSEBX:INDEX", "挪威 OSEBX", "點"),
+        ("wig", "cnyes:GI:WIG:INDEX", "波蘭 WIG", "點"),
+        ("rts", "cnyes:GI:RTSI:INDEX", "俄羅斯 RTS", "點"),
     ]),
     ("中東・非洲", [
         ("bist100", "XU100.IS", "土耳其 BIST 100", "點"),
         ("ta125", "^TA125.TA", "以色列 TA-125", "點"),
+        ("tasi", "cnyes:GI:TASI:INDEX", "沙烏地 Tadawul", "點"),
         ("jse", "^J203.JO", "南非全股", "點"),
     ]),
     ("匯率", [
@@ -172,6 +182,12 @@ GROUPS = [
         ("eth", "ETH-USD", "以太幣", "美元"),
     ]),
 ]
+# 網頁的大分類（使用者要求：金屬放一起、各國股市一個區塊、匯率利率加密放一起）；細分類顯示在名稱旁
+COARSE = {"貴金屬": "金屬", "工業金屬": "金屬", "能源": "能源", "農產品": "農畜產", "畜產・林產": "農畜產",
+          "美國股市": "全球股市", "美洲股市": "全球股市", "東亞股市": "全球股市", "南亞・東南亞・大洋洲": "全球股市",
+          "歐洲股市": "全球股市", "中東・非洲": "全球股市", "匯率": "匯率・利率・加密", "利率・波動率": "匯率・利率・加密", "加密貨幣": "匯率・利率・加密"}
+SUBNAME = {"美國股市": "美國", "美洲股市": "美洲", "東亞股市": "東亞", "南亞・東南亞・大洋洲": "南亞・東南亞・大洋洲", "歐洲股市": "歐洲",
+           "中東・非洲": "中東・非洲", "利率・波動率": "利率・波動率", "加密貨幣": "加密貨幣"}
 SERIES = {s[0]: {"id": s[0], "sym": s[1], "name": s[2], "unit": s[3], "group": g} for g, items in GROUPS for s in items}
 
 # FRED 對照（選用核對）：id → (FRED 代號, 容許的中位數誤差, 是否用絕對差)
@@ -283,6 +299,38 @@ def fetch_yahoo(sym: str, start: int | None = None, rng: str | None = None) -> t
     return None
 
 
+CNYES = "https://ws.api.cnyes.com/ws/api/v1/charting/history"
+
+
+def fetch_cnyes(sym: str, since: str | None = None, max_pages: int = 15) -> tuple[dict, dict] | None:
+    """鉅亨網日線：每次約回 1,250 天（新到舊），往前翻頁直到沒資料或早於 since。"""
+    s = _session()
+    rows: dict[str, list] = {}
+    frm = int(time.time()) + 86400
+    for _ in range(max_pages):
+        try:
+            r = s.get(CNYES, params={"resolution": "D", "symbol": sym, "from": frm, "to": 0},
+                      headers={"User-Agent": UA, "Referer": "https://www.cnyes.com/"}, timeout=40)
+            d = (r.json().get("data") or {}) if r.status_code == 200 else {}
+        except Exception as e:  # noqa: BLE001
+            log.warning("鉅亨 %s 失敗：%s", sym, e)
+            break
+        t = d.get("t") or []
+        if not t:
+            break
+        col = lambda k: d.get(k) or [None] * len(t)  # noqa: E731
+        for i, ts in enumerate(t):
+            c = _num(col("c")[i])
+            if c is None:
+                continue
+            rows[datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()] = [_num(col("o")[i]), _num(col("h")[i]), _num(col("l")[i]), c, _num(col("v")[i])]
+        frm = min(t) - 1
+        if since and min(rows) <= since:
+            break
+        time.sleep(0.4)
+    return (rows, {"source": "cnyes"}) if rows else None
+
+
 def _check(sid: str, rows: dict[str, list]) -> list[str]:
     """可疑資料：單日跳動很大又立刻彈回（常見的錯誤報價）。只記錄不刪除，避免把真實行情（例如 2020/4 油價負值）刪掉。"""
     ds = sorted(rows)
@@ -306,9 +354,12 @@ def update(full: bool = False, quick: bool = False) -> dict:
     ok = fail = 0
     for sid, s in SERIES.items():
         rows = load(sid)
-        if full or not rows:
+        if s["sym"].startswith("cnyes:"):
+            got = fetch_cnyes(s["sym"][6:], since=None if (full or not rows) else (date.fromisoformat(max(rows)) - timedelta(days=14)).isoformat(),
+                              max_pages=1 if quick and rows else 15)
+        elif full or not rows:
             got = fetch_yahoo(s["sym"])
-            if got and len(got[0]) < 30:          # 少數代號（泰國、菲律賓、滬深300…）用起始日查只回一天，改用 range=max
+            if got and len(got[0]) < 30:          # 少數代號用起始日查只回一天，改用 range=max
                 time.sleep(0.6)
                 alt = fetch_yahoo(s["sym"], rng="max")
                 if alt and len(alt[0]) > len(got[0]):
@@ -343,6 +394,9 @@ def update(full: bool = False, quick: bool = False) -> dict:
     if not quick:
         try:
             st["fred"] = verify_fred()
+            chk = verify_tpex()
+            if chk:
+                st["fred"].setdefault("items", {})["otc"] = chk
         except Exception as e:  # noqa: BLE001
             log.warning("FRED 核對失敗：%s", e)
     store.save_state("markets", st)
@@ -382,9 +436,27 @@ def verify_fred() -> dict:
             continue
         diffs = sorted(abs(rows[d][3] - obs[d]) if absdiff else abs(rows[d][3] / obs[d] - 1) for d in common if obs[d])
         med = diffs[len(diffs) // 2]
-        out["items"][sid] = {"fred": fid, "n": len(common), "median": round(med, 5), "ok": med <= tol}
+        out["items"][sid] = {"fred": fid, "label": f"FRED {fid}", "n": len(common), "median": round(med, 5), "ok": med <= tol}
         time.sleep(0.3)
     return out
+
+
+def verify_tpex() -> dict | None:
+    """櫃買指數（鉅亨）和櫃買中心官方本月資料核對"""
+    try:
+        r = _session().get("https://www.tpex.org.tw/www/zh-tw/indexInfo/inx", params={"date": date.today().strftime("%Y/%m/%d"), "response": "json"}, timeout=30)
+        data = ((r.json().get("tables") or [{}])[0].get("data")) or []
+    except Exception as e:  # noqa: BLE001
+        log.warning("櫃買指數核對失敗：%s", e)
+        return None
+    off = {x[0].replace("/", "-"): float(x[4].replace(",", "")) for x in data if len(x) > 4}
+    rows = load("otc")
+    common = [d for d in off if d in rows]
+    if not common:
+        return {"label": "櫃買中心官方", "n": 0}
+    diffs = sorted(abs(rows[d][3] / off[d] - 1) for d in common)
+    med = diffs[len(diffs) // 2]
+    return {"label": "櫃買中心官方", "n": len(common), "median": round(med, 5), "ok": med <= 0.001}
 
 
 # ---------------- 網站 JSON ----------------
@@ -402,6 +474,16 @@ def _ret(ds: list[str], cs: list[float], days: int | None = None, since: str | N
     if not base or base <= 0 or last is None:
         return None
     return round((last / base - 1) * 100, 2)
+
+
+def _coarse_groups() -> list[dict]:
+    out: dict[str, dict] = {}
+    for g, its in GROUPS:
+        c = COARSE.get(g, g)
+        o = out.setdefault(c, {"name": c, "ids": [], "subs": []})
+        o["subs"].append({"name": SUBNAME.get(g, g), "ids": [x[0] for x in its]})
+        o["ids"] += [x[0] for x in its]
+    return list(out.values())
 
 
 def build_site() -> int:
@@ -432,7 +514,8 @@ def build_site() -> int:
                 wk.append(c)
         wk[-1] = cs[-1]
         it = {
-            "name": s["name"], "sym": s["sym"], "unit": s["unit"],
+            "name": s["name"], "sym": s["sym"].replace("cnyes:", ""), "src": "鉅亨網" if s["sym"].startswith("cnyes:") else "Yahoo",
+            "unit": s["unit"], "sub": SUBNAME.get(s["group"], s["group"]),
             "date": ds[-1], "close": cs[-1], "prev": cs[-2] if len(cs) > 1 else None,
             "chg": round((cs[-1] / cs[-2] - 1) * 100, 2) if len(cs) > 1 and cs[-2] and cs[-2] > 0 else None,
             "w1": _ret(ds, cs, 7), "m1": _ret(ds, cs, 30), "m3": _ret(ds, cs, 91), "ytd": _ret(ds, cs, since=ds[-1][:4] + "-01-01"),
@@ -462,7 +545,7 @@ def build_site() -> int:
             json.dump({"id": sid, "d": ds, "c": cs, "o": [rows[d][0] for d in ds[-520:]], "h": [rows[d][1] for d in ds[-520:]],
                        "l": [rows[d][2] for d in ds[-520:]]}, f, ensure_ascii=False, separators=(",", ":"))
     out = {"updated": st.get("updated"), "fred": st.get("fred", {}).get("skipped") or st.get("fred", {}).get("at"),
-           "groups": [{"name": g, "ids": [x[0] for x in its]} for g, its in GROUPS], "items": items}
+           "groups": _coarse_groups(), "items": items}
     store.write_json(config.OUT_DIR / "mkt.json", out)
     return sum(1 for v in items.values() if not v.get("empty"))
 

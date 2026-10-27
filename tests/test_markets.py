@@ -42,3 +42,23 @@ class MarketsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CnyesTest(unittest.TestCase):
+    def test_pages_newest_first(self):
+        pages = [{"t": [1793059200, 1792972800], "o": [2, 1], "h": [2, 1], "l": [2, 1], "c": [11.0, 10.0], "v": [5, 4]}, {"t": []}]
+        calls = []
+
+        class R:
+            status_code = 200
+            def __init__(self, d): self.d = d
+            def json(self): return {"data": self.d}
+
+        def get(url, params=None, **kw):
+            calls.append(params["from"])
+            return R(pages[len(calls) - 1])
+        with mock.patch.object(markets, "_session", return_value=mock.Mock(get=get)), mock.patch.object(markets.time, "sleep"):
+            rows, meta = markets.fetch_cnyes("GI:SET:INDEX")
+        self.assertEqual(sorted(rows), ["2026-10-26", "2026-10-27"])
+        self.assertEqual(rows["2026-10-27"][3], 11.0)
+        self.assertEqual(calls[1], 1792972800 - 1)       # 第二頁從最舊那天往前翻
