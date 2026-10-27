@@ -544,7 +544,9 @@ h3.sgt{font-size:15px;margin:12px 0 6px}
 .mkcard .mkbox{grid-column:1/-1;margin:4px 0 3px}
 .mkbox{display:block;border:1px solid var(--spk-frame);border-radius:3px;padding:1px 2px;line-height:0}
 .mkbox svg{display:block;width:100%;height:34px;overflow:visible}
-.mkbox .grid line{stroke:var(--spk-grid);stroke-width:1;vector-effect:non-scaling-stroke}
+.mkbox .grid line{vector-effect:non-scaling-stroke}
+.mkbox .grid line.y10{stroke:var(--spk-frame);stroke-width:.9;opacity:.75}
+.mkbox .grid line.y5{stroke:var(--spk-grid);stroke-width:.6}
 .mkbox .grid line.base{stroke:var(--spk-base);stroke-width:.8;stroke-dasharray:2 2}
 .mkbox polyline{fill:none;stroke-width:1.3;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .mkbox polyline.up{stroke:var(--up)} .mkbox polyline.down{stroke:var(--down)}

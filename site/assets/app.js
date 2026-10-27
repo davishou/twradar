@@ -1491,8 +1491,8 @@ function lvBar(v, big) {
 const ym = d => d ? `${d.slice(0, 4)}/${d.slice(5, 7)}` : "";
 const lvLegend = () => `<div class="lvleg">${LV_C.map((c, i) => `<span style="background:${c};color:${LV_T[i]}">${i * 10}</span>`).join("")}<b>${tipBtn(LV_TIP)}</b>
   <small><span>← 史低區</span><span>低檔</span><span>中段</span><span>高檔</span><span>史高區 →</span></small></div>`;
-/* 小走勢圖：全部歷史（spark_all），外觀比照股票的小走勢圖：外框、直線＝年份格線（期間 25 年以上每 10 年一條，
-   否則每 5 年；不到 5 年每年一條）、虛線＝期初價位；線色紅漲綠跌（和期初比）；紅點史高、綠點史低。
+/* 小走勢圖：全部歷史（spark_all），外觀比照股票的小走勢圖：外框、直線＝年份格線（固定每 5 年一條，
+   逢 10 年較深）、虛線＝期初價位；線色紅漲綠跌（和期初比）；紅點史高、綠點史低。
    漲很多倍的用對數刻度，早年才看得出起伏 */
 function mkSpark(sp, w = 120, h = 34) {
   const v = Array.isArray(sp) ? sp : sp?.v;
@@ -1503,11 +1503,10 @@ function mkSpark(sp, w = 120, h = 34) {
   const X = i => (i / (v.length - 1) * (w - 2 * pad) + pad), Y = x => pad + (1 - (tf(x) - lo) / rg) * (h - 2 * pad);
   const pts = v.map((x, i) => x == null ? null : `${X(i).toFixed(1)},${Y(x).toFixed(1)}`).filter(Boolean);
   const hiI = sp?.hi ?? v.indexOf(mx), loI = sp?.lo ?? v.indexOf(mn);
-  const span = sp?.d0 ? (+sp.d1.slice(0, 4)) - (+sp.d0.slice(0, 4)) : 0;
-  const step = span >= 25 ? 10 : span >= 5 ? 5 : 1;
-  const grid = (sp?.y || []).filter(([, y]) => y % step === 0).map(([k]) => `<line x1="${X(k).toFixed(1)}" x2="${X(k).toFixed(1)}" y1="0" y2="${h}"/>`).join("");
+  // 直線固定每 5 年一條（逢 5 的年份）；逢 10 的年份（2000、2010…）顏色稍深，其他較淡較細
+  const grid = (sp?.y || []).filter(([, y]) => y % 5 === 0).map(([k, y]) => `<line class="${y % 10 ? "y5" : "y10"}" x1="${X(k).toFixed(1)}" x2="${X(k).toFixed(1)}" y1="0" y2="${h}"/>`).join("");
   const by = Y(vs[0]).toFixed(1), dir = vs.at(-1) >= vs[0] ? "up" : "down";
-  const tip = sp?.d0 ? `${sp.d0.slice(0, 4)}～${sp.d1.slice(0, 4)} 全部歷史${lg ? "（對數刻度）" : ""}｜直線：每 ${step} 年｜虛線：期初價位｜紅點史高、綠點史低` : "";
+  const tip = sp?.d0 ? `${sp.d0.slice(0, 4)}～${sp.d1.slice(0, 4)} 全部歷史${lg ? "（對數刻度）" : ""}｜直線：每 5 年一條（較深的是 2000、2010…）｜虛線：期初價位｜紅點史高、綠點史低` : "";
   return `<span class="mkbox" title="${esc(tip)}"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
     <g class="grid">${grid}<line class="base" x1="0" x2="${w}" y1="${by}" y2="${by}"/></g><polyline class="${dir}" points="${pts.join(" ")}"/>
     <line class="shi" x1="${X(hiI)}" x2="${X(hiI)}" y1="${Y(v[hiI])}" y2="${Y(v[hiI])}"/><line class="slo" x1="${X(loI)}" x2="${X(loI)}" y1="${Y(v[loI])}" y2="${Y(v[loI])}"/></svg></span>`;
