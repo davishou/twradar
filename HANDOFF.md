@@ -74,7 +74,8 @@
 - 部署時 index.html 的 app.js／style.css 會加 ?v=版本號，避免瀏覽器用舊檔。
 
 ## 國際行情（pipeline/markets.py、頁面 #/mkt，2026-10-27）
-- 商品（金銀白金鈀、WTI／布蘭特／天然氣、銅／鐵礦／鋁、玉米小麥黃豆咖啡）、美亞歐指數、美元指數／匯率／美債 10 年／比特幣，共 36 個，清單在 markets.GROUPS（加代號只改這裡）。
+- 共 111 個（2026-10-27 擴充）：貴金屬、能源、工業金屬（含熱軋鋼捲）、農產品、畜產林產、美國／美洲／東亞／南亞東南亞大洋洲／歐洲／中東非洲股市、25 種匯率、美債 13 週～30 年殖利率與 VIX／黃金／原油波動率、比特幣以太幣。清單在 markets.GROUPS（加代號只改這裡；先用 probe 確認 Yahoo 有歷史）。Yahoo 沒有的：越南指數、波蘭 WIG20、俄羅斯 MOEX、智利、埃及、台灣櫃買指數。泰國 SET、菲律賓、滬深 300、挪威 OBX、沙烏地 用 period1 只回一天，程式自動改 range=max。
+- 歷史水位：site 輸出 lv.all／lv.y10（最低、最高、日期、百分位＝多少 % 交易日收盤低於現價）；前端用現價算位置 0~100%，每 10% 一色（藍低紅高），可切全部歷史／近 10 年。總表模式（一次看全部，可排序；手機只留名稱／現價／1 年／水位）。明細圖標出區間最高最低，若剛好是歷史最高最低就寫「歷史」。
 - 來源：Yahoo 圖表介面 `query1/2.finance.yahoo.com/v8/finance/chart/<代號>`，GitHub runner 直接用 requests 可抓（不需 yfinance、不需金鑰）。第一次抓某代號自動抓全部歷史（period1=1900），之後只補最近 14 天。商品是期貨連續近月、延遲 10~20 分。
 - 存放 `data/archive/mkt/<id>/<年>.csv`（純文字、每年一檔，只有今年的檔變動）；沒有被稀疏 checkout 排除。部署時 `python -m pipeline.markets site` 產生 `site/data/mkt.json`、`site/data/mkt/<id>.json`（不進 git）。
 - 排程：announce 每 30 分鐘一次快速更新現價（range=5d）；history（每晚 00:30，週末也跑）補收盤並做 FRED 核對；手動 job `markets`（`markets full` 重抓全部歷史）。
@@ -83,6 +84,7 @@
 - 本機預覽：`python -m pipeline.markets mock`（模擬資料，**預覽完要刪 data/archive/mkt 與 data/state/markets.json，不要提交**）。
 
 ## 外觀（2026-10-27）
+- 版面寬度 1400；可轉債、CB 策略、CB IPO、國際行情加 body.wide（最寬 1800、欄距縮小、表頭可換行），1280 寬螢幕以上沒有橫向捲軸。
 - 使用者選：淺色模式標題欄＝黑金（深底＋金屬漸層金字＋金線），深色模式＝香檳銀（銀白緞面底＋深金字）；選中頁籤金色按鈕；h1 下方短金線；國際行情頁卡片金框、圖線金色。漲跌仍是紅綠。變數在 style.css 開頭 top bar 區（--gold*、--top-*）。
 
 ## 小走勢圖（pipeline/spark.py、app.js 的 spk*）

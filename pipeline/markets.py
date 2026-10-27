@@ -47,47 +47,134 @@ GROUPS = [
         ("wti", "CL=F", "WTI 原油", "美元/桶"),
         ("brent", "BZ=F", "布蘭特原油", "美元/桶"),
         ("natgas", "NG=F", "天然氣", "美元/百萬英熱單位"),
+        ("gasoline", "RB=F", "汽油 RBOB", "美元/加侖"),
+        ("heatoil", "HO=F", "熱燃油", "美元/加侖"),
     ]),
     ("工業金屬", [
         ("copper", "HG=F", "銅", "美元/磅"),
         ("ironore", "TIO=F", "鐵礦石 62%", "美元/噸"),
+        ("hrc", "HRC=F", "熱軋鋼捲", "美元/短噸"),
         ("aluminum", "ALI=F", "鋁", "美元/噸"),
     ]),
     ("農產品", [
         ("corn", "ZC=F", "玉米", "美分/英斗"),
         ("wheat", "ZW=F", "小麥", "美分/英斗"),
+        ("kcwheat", "KE=F", "硬紅冬麥", "美分/英斗"),
         ("soybean", "ZS=F", "黃豆", "美分/英斗"),
+        ("soyoil", "ZL=F", "黃豆油", "美分/磅"),
+        ("soymeal", "ZM=F", "黃豆粉", "美元/短噸"),
+        ("oats", "ZO=F", "燕麥", "美分/英斗"),
+        ("rice", "ZR=F", "稻米", "美元/英擔"),
         ("coffee", "KC=F", "咖啡", "美分/磅"),
+        ("cocoa", "CC=F", "可可", "美元/噸"),
+        ("sugar", "SB=F", "原糖", "美分/磅"),
+        ("cotton", "CT=F", "棉花", "美分/磅"),
+        ("oj", "OJ=F", "柳橙汁", "美分/磅"),
+    ]),
+    ("畜產・林產", [
+        ("cattle", "LE=F", "活牛", "美分/磅"),
+        ("feeder", "GF=F", "育肥牛", "美分/磅"),
+        ("hogs", "HE=F", "瘦豬", "美分/磅"),
+        ("lumber", "LBR=F", "木材", "美元/千板呎"),
     ]),
     ("美國股市", [
         ("spx", "^GSPC", "S&P 500", "點"),
         ("dji", "^DJI", "道瓊工業", "點"),
         ("nasdaq", "^IXIC", "那斯達克", "點"),
         ("sox", "^SOX", "費城半導體", "點"),
-        ("vix", "^VIX", "VIX 恐慌指數", "點"),
+        ("rut", "^RUT", "羅素 2000", "點"),
+        ("nya", "^NYA", "紐約綜合", "點"),
     ]),
-    ("亞洲股市", [
+    ("美洲股市", [
+        ("tsx", "^GSPTSE", "加拿大 S&P/TSX", "點"),
+        ("bvsp", "^BVSP", "巴西 Bovespa", "點"),
+        ("mxx", "^MXX", "墨西哥 IPC", "點"),
+        ("merv", "^MERV", "阿根廷 Merval", "點"),
+    ]),
+    ("東亞股市", [
         ("taiex", "^TWII", "台灣加權", "點"),
         ("n225", "^N225", "日經 225", "點"),
         ("kospi", "^KS11", "韓國綜合", "點"),
         ("hsi", "^HSI", "香港恆生", "點"),
+        ("hscei", "^HSCE", "恆生國企", "點"),
         ("sse", "000001.SS", "上證綜合", "點"),
+        ("szse", "399001.SZ", "深證成指", "點"),
+        ("csi300", "000300.SS", "滬深 300", "點"),
+    ]),
+    ("南亞・東南亞・大洋洲", [
         ("sensex", "^BSESN", "印度 Sensex", "點"),
+        ("nifty", "^NSEI", "印度 Nifty 50", "點"),
+        ("sti", "^STI", "新加坡海峽時報", "點"),
+        ("klci", "^KLSE", "馬來西亞 KLCI", "點"),
+        ("jkse", "^JKSE", "印尼綜合", "點"),
+        ("set", "^SET.BK", "泰國 SET", "點"),
+        ("psei", "PSEI.PS", "菲律賓 PSEi", "點"),
+        ("asx", "^AXJO", "澳洲 ASX 200", "點"),
+        ("nz50", "^NZ50", "紐西蘭 NZX 50", "點"),
     ]),
     ("歐洲股市", [
         ("dax", "^GDAXI", "德國 DAX", "點"),
         ("ftse", "^FTSE", "英國富時 100", "點"),
         ("cac", "^FCHI", "法國 CAC 40", "點"),
         ("sx5e", "^STOXX50E", "歐洲斯托克 50", "點"),
+        ("aex", "^AEX", "荷蘭 AEX", "點"),
+        ("ibex", "^IBEX", "西班牙 IBEX 35", "點"),
+        ("ftsemib", "FTSEMIB.MI", "義大利 FTSE MIB", "點"),
+        ("smi", "^SSMI", "瑞士 SMI", "點"),
+        ("bel20", "^BFX", "比利時 BEL 20", "點"),
+        ("atx", "^ATX", "奧地利 ATX", "點"),
+        ("psi", "PSI20.LS", "葡萄牙 PSI", "點"),
+        ("iseq", "^ISEQ", "愛爾蘭 ISEQ", "點"),
+        ("omxs30", "^OMX", "瑞典 OMX 30", "點"),
+        ("obx", "OBX.OL", "挪威 OBX", "點"),
+        ("omxc25", "^OMXC25", "丹麥 OMX 25", "點"),
+        ("omxh25", "^OMXH25", "芬蘭 OMX 25", "點"),
     ]),
-    ("匯率・利率・加密", [
+    ("中東・非洲", [
+        ("bist100", "XU100.IS", "土耳其 BIST 100", "點"),
+        ("ta125", "^TA125.TA", "以色列 TA-125", "點"),
+        ("tasi", "^TASI.SR", "沙烏地 Tadawul", "點"),
+        ("jse", "^J203.JO", "南非全股", "點"),
+    ]),
+    ("匯率", [
         ("dxy", "DX-Y.NYB", "美元指數", "點"),
         ("usdtwd", "TWD=X", "美元/台幣", "台幣"),
         ("usdjpy", "JPY=X", "美元/日圓", "日圓"),
         ("usdcny", "CNY=X", "美元/人民幣", "人民幣"),
+        ("usdkrw", "KRW=X", "美元/韓元", "韓元"),
+        ("usdhkd", "HKD=X", "美元/港幣", "港幣"),
+        ("usdsgd", "SGD=X", "美元/新加坡幣", "新加坡幣"),
+        ("usdinr", "INR=X", "美元/印度盧比", "盧比"),
+        ("usdthb", "THB=X", "美元/泰銖", "泰銖"),
+        ("usdidr", "IDR=X", "美元/印尼盾", "印尼盾"),
+        ("usdmyr", "MYR=X", "美元/馬幣", "令吉"),
+        ("usdphp", "PHP=X", "美元/菲律賓披索", "披索"),
+        ("usdvnd", "VND=X", "美元/越南盾", "越南盾"),
         ("eurusd", "EURUSD=X", "歐元/美元", "美元"),
+        ("gbpusd", "GBPUSD=X", "英鎊/美元", "美元"),
+        ("audusd", "AUDUSD=X", "澳幣/美元", "美元"),
+        ("nzdusd", "NZDUSD=X", "紐幣/美元", "美元"),
+        ("usdchf", "CHF=X", "美元/瑞郎", "瑞郎"),
+        ("usdcad", "CAD=X", "美元/加幣", "加幣"),
+        ("eurjpy", "EURJPY=X", "歐元/日圓", "日圓"),
+        ("usdbrl", "BRL=X", "美元/巴西幣", "雷亞爾"),
+        ("usdmxn", "MXN=X", "美元/墨西哥披索", "披索"),
+        ("usdzar", "ZAR=X", "美元/南非幣", "蘭特"),
+        ("usdtry", "TRY=X", "美元/土耳其里拉", "里拉"),
+        ("usdrub", "RUB=X", "美元/盧布", "盧布"),
+    ]),
+    ("利率・波動率", [
+        ("us13w", "^IRX", "美國 13 週國庫券", "%"),
+        ("us5y", "^FVX", "美國 5 年債殖利率", "%"),
         ("us10y", "^TNX", "美國 10 年債殖利率", "%"),
+        ("us30y", "^TYX", "美國 30 年債殖利率", "%"),
+        ("vix", "^VIX", "VIX 恐慌指數", "點"),
+        ("gvz", "^GVZ", "黃金波動率", "點"),
+        ("ovx", "^OVX", "原油波動率", "點"),
+    ]),
+    ("加密貨幣", [
         ("btc", "BTC-USD", "比特幣", "美元"),
+        ("eth", "ETH-USD", "以太幣", "美元"),
     ]),
 ]
 SERIES = {s[0]: {"id": s[0], "sym": s[1], "name": s[2], "unit": s[3], "group": g} for g, items in GROUPS for s in items}
@@ -100,6 +187,8 @@ FRED = {
     "nasdaq": ("NASDAQCOM", 0.003, False), "vix": ("VIXCLS", 0.02, False),
     "usdtwd": ("DEXTAUS", 0.01, False), "usdjpy": ("DEXJPUS", 0.01, False),
     "usdcny": ("DEXCHUS", 0.01, False), "eurusd": ("DEXUSEU", 0.01, False),
+    "us5y": ("DGS5", 0.05, True), "us30y": ("DGS30", 0.05, True), "usdkrw": ("DEXKOUS", 0.01, False), "gbpusd": ("DEXUSUK", 0.01, False),
+    "usdinr": ("DEXINUS", 0.01, False), "usdcad": ("DEXCAUS", 0.01, False), 
 }
 
 FIELDS = ("date", "open", "high", "low", "close", "volume")
@@ -224,12 +313,17 @@ def update(full: bool = False, quick: bool = False) -> dict:
         rows = load(sid)
         if full or not rows:
             got = fetch_yahoo(s["sym"])
+            if got and len(got[0]) < 30:          # 少數代號（泰國、菲律賓、滬深300…）用起始日查只回一天，改用 range=max
+                time.sleep(0.6)
+                alt = fetch_yahoo(s["sym"], rng="max")
+                if alt and len(alt[0]) > len(got[0]):
+                    got = alt
         elif quick:
             got = fetch_yahoo(s["sym"], rng="5d")
         else:
             last = max(rows)
             got = fetch_yahoo(s["sym"], start=int(datetime.fromisoformat(last).replace(tzinfo=timezone.utc).timestamp()) - 14 * 86400)
-        time.sleep(0.6)
+        time.sleep(0.4)
         if not got or not got[0]:
             fail += 1
             info.setdefault(sid, {})["error"] = now_tw().strftime("%Y-%m-%d %H:%M") + " 抓取失敗"
@@ -354,6 +448,18 @@ def build_site() -> int:
             "spark": [_num(x, 4) for x in wk],
             "suspect": (info.get(sid) or {}).get("suspect") or [],
         }
+        # 歷史水位：全部歷史、近 10 年的最高最低（前端用現價算位置），以及有幾 % 的交易日收盤低於現在
+        lv = {}
+        y10 = (date.fromisoformat(ds[-1]) - timedelta(days=3652)).isoformat()
+        for key, sub in (("all", list(zip(ds, cs))), ("y10", [(d, c) for d, c in zip(ds, cs) if d > y10])):
+            if len(sub) < 3:
+                continue
+            lo_d, lo = min(sub, key=lambda x: x[1])
+            hi_d, hi = max(sub, key=lambda x: x[1])
+            below = sum(1 for _, c in sub if c < cs[-1])
+            lv[key] = {"lo": lo, "lo_d": lo_d, "hi": hi, "hi_d": hi_d, "pr": round(below / len(sub) * 100, 1), "from": sub[0][0]}
+        it["lv"] = lv
+        it["atl"], it["atl_date"] = (lv["all"]["lo"], lv["all"]["lo_d"]) if "all" in lv else (min(cs), ds[cs.index(min(cs))])
         if sid in fred:
             it["fred"] = fred[sid]
         items[sid] = it

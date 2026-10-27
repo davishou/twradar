@@ -152,7 +152,7 @@ function table(el, columns, rows, opts = {}) {
     const body = data.map((r, i) => {
       const id = opts.id ? opts.id(r) : i;
       const tr = `<tr class="${opts.expand || opts.rowClick ? "click" : ""} ${opts.rowClass ? opts.rowClass(r) : ""} ${r.code && CBIDX[r.code]?.cb ? "hascb" : ""}" data-i="${esc(id)}"${opts.expand ? ` aria-expanded="${open.has(String(id))}"` : ""}>${columns.map(c =>
-        `<td class="${c.n ? "n" : ""} ${c.w ? "wrap" : ""} ${c.k === "_spk" ? "spkc" : ""}">${c.f ? c.f(r) : esc(r[c.k] ?? "—")}</td>`).join("")}</tr>`;
+        `<td class="${c.n ? "n" : ""} ${c.w ? "wrap" : ""} ${c.cls || ""} ${c.k === "_spk" ? "spkc" : ""}">${c.f ? c.f(r) : esc(r[c.k] ?? "—")}</td>`).join("")}</tr>`;
       const ex = opts.expand && open.has(String(id)) ? `<tr class="detail"><td colspan="${columns.length}">${opts.expand(r)}</td></tr>` : "";
       return tr + ex;
     }).join("");
@@ -1240,7 +1240,7 @@ P.cbipo = async () => {
   const t = table(document.getElementById("it"), [
     {k: "status", t: "狀態", s: r => IPO_ORDER[r.status] ?? 9, f: r => `<span class="tag ${IPO_ST[r.status] || ""}">${esc(r.status)}</span>`},
     {k: "code", t: "代號", f: r => r.stock ? `<span class="code">${esc(r.stock)}</span>` : "—"},
-    {k: "name", t: "名稱", f: r => `${r.stock ? stockLink(r.stock, r.stock_name) : esc(r.company)}${r.short ? `<br><span class="small muted">${esc(r.short)} ${esc(r.bond || "")}</span>` : ""}`},
+    {k: "name", t: "名稱", cls: "soft", f: r => `${r.stock ? stockLink(r.stock, r.stock_name) : esc(r.company)}${r.short ? `<br><span class="small muted">${esc(r.short)} ${esc(r.bond || "")}</span>` : ""}`},
     {k: "guaranteed", t: "擔保", f: r => r.guaranteed ? '<span class="tag ok">有</span>' : '<span class="muted small">無</span>', s: r => r.guaranteed ? 1 : 0},
     {k: "method", t: "方式", f: r => esc(r.method === "詢價圈購" ? "詢圈" : "競拍")},
     {k: "amount", t: "發行量(億)", n: 1, f: r => r.amount ? fx(r.amount / 1e8, 2) : (r.auc_lots ? `<span class="small muted">競拍 ${fi(r.auc_lots)} 張</span>` : "—")},
@@ -1465,21 +1465,45 @@ P.stock = async (code) => {
 const MK_R = [["1m", "1月", 31], ["3m", "3月", 92], ["6m", "6月", 183], ["1y", "1年", 366], ["3y", "3年", 1096], ["5y", "5年", 1827], ["10y", "10年", 3653], ["all", "全部", 0]];
 const mkPx = (v, it) => v == null ? "—" : it?.unit === "%" ? fx(v, 3) : Math.abs(v) < 10 ? fx(v, 4) : Math.abs(v) < 1000 ? fx(v, 2) : fx(v, Math.abs(v) < 1e5 ? 2 : 0);
 const mkNow = it => it.live != null && it.live_time && it.live_time.slice(0, 10) >= it.date ? it.live : it.close;
+/* 歷史水位：現價在「史低～史高」之間的位置，每 10% 一個顏色（藍＝低檔、紅＝高檔） */
+const LV_C = ["#1d4f91", "#2f6db5", "#5b8fd0", "#93b6e2", "#c8d6ea", "#efdcc2", "#f3bb86", "#ea9056", "#d6602f", "#b32d1e"];
+const LV_T = ["#fff", "#fff", "#fff", "#10264a", "#10264a", "#4a2a08", "#4a2a08", "#fff", "#fff", "#fff"];
+const LV_N = ["史低區", "低檔", "低檔", "中段", "中段", "中段", "中段", "高檔", "高檔", "史高區"];
+const LV_W = {all: "全部歷史", y10: "近 10 年"};
+const LV_TIP = "水位＝現價在「最低～最高」之間的位置：0% 是歷史最低、100% 是歷史最高，每 10% 一個顏色。\n0~10% 史低區｜10~30% 低檔｜30~70% 中段｜70~90% 高檔｜90~100% 史高區\n\n可切換「全部歷史」或「近 10 年」。各商品資料起始年不同（例如 S&P 500 從 1927 年、黃金從 2000 年），長期一路上漲的指數用全部歷史幾乎都在高檔，看近 10 年比較有參考性。\n\n百分位＝歷史上有幾 % 的交易日收盤比現在低（看現在的價格有多少見）。";
+let MK = {view: "card", win: "all", grp: "all"};
+try { Object.assign(MK, JSON.parse(localStorage.getItem("mk") || "{}")); } catch {}
+const mkSave = () => { try { localStorage.setItem("mk", JSON.stringify(MK)); } catch {} };
+function mkLv(it, win = MK.win) {
+  const L = it?.lv?.[win] || it?.lv?.all;
+  if (!L) return null;
+  const now = mkNow(it), sp = L.hi - L.lo;
+  const pos = sp > 0 ? Math.max(0, Math.min(1, (now - L.lo) / sp)) : 0.5;
+  return {...L, pos, dec: Math.min(9, Math.floor(pos * 10)), now};
+}
+const lvChip = v => v ? `<span class="lv" style="background:${LV_C[v.dec]};color:${LV_T[v.dec]}">${LV_N[v.dec]} ${Math.round(v.pos * 100)}%</span>` : '<span class="muted">—</span>';
+function lvBar(v, big) {
+  if (!v) return "";
+  return `<span class="lvbar${big ? " big" : ""}" aria-label="水位 ${Math.round(v.pos * 100)}%">${LV_C.map(c => `<i style="background:${c}"></i>`).join("")}<em style="left:${(v.pos * 100).toFixed(1)}%"></em></span>`;
+}
+const lvLegend = () => `<div class="lvleg">${LV_C.map((c, i) => `<span style="background:${c};color:${LV_T[i]}">${i * 10}</span>`).join("")}<b>${tipBtn(LV_TIP)}</b>
+  <small><span>← 史低區</span><span>低檔</span><span>中段</span><span>高檔</span><span>史高區 →</span></small></div>`;
 function mkSpark(vals, w = 120, h = 34) {
   const v = (vals || []).filter(x => x != null);
   if (v.length < 2) return "";
   const lo = Math.min(...v), hi = Math.max(...v), sp = hi - lo || 1;
   const pts = v.map((x, i) => `${(i / (v.length - 1) * w).toFixed(1)},${(2 + (1 - (x - lo) / sp) * (h - 4)).toFixed(1)}`);
-  const cls = v.at(-1) >= v[0] ? "up" : "down";
-  return `<svg class="mkspk ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.join(" ")}"/></svg>`;
+  return `<svg class="mkspk ${v.at(-1) >= v[0] ? "up" : "down"}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.join(" ")}"/></svg>`;
 }
+const mkChg = it => { const now = mkNow(it); return it.prev ? (now / it.prev - 1) * 100 : it.chg; };
 function mkCard(id, it) {
   if (!it || it.empty) return `<a class="mkcard empty" href="#/mkt/${id}"><span class="mkname">${esc(it?.name || id)}</span><span class="muted small">暫無資料</span></a>`;
-  const now = mkNow(it), chg = it.prev ? (now / it.prev - 1) * 100 : it.chg;
+  const v = mkLv(it);
   return `<a class="mkcard" href="#/mkt/${id}">
     <span class="mkname">${esc(it.name)}<small>${esc(it.unit)}</small></span>
-    <span class="mkpx">${mkPx(now, it)}</span><span class="mkchg">${pc(chg)}</span>
+    <span class="mkpx">${mkPx(mkNow(it), it)}</span><span class="mkchg">${pc(mkChg(it))}</span>
     ${mkSpark(it.spark)}
+    <span class="mklv">${lvBar(v)}${lvChip(v)}</span>
     <span class="mkret"><i>1月 ${pc(it.m1, 1)}</i><i>今年 ${pc(it.ytd, 1)}</i><i>1年 ${pc(it.y1, 1)}</i></span></a>`;
 }
 const MK_TIP = "資料來源：Yahoo Finance。商品是期貨「連續近月」價格（換月時會小跳一下），報價延遲約 10~20 分鐘；盤中每 30 分鐘更新一次現價，每晚補齊收盤。\n各代號歷史從 Yahoo 最早有資料的那天開始（例如黃金 2000 年、S&P 500 1927 年、台灣加權 1997 年）。\n有設 FRED 金鑰時，原油、美債、美股指數、匯率會和美國聯準會（FRED）官方資料核對。";
@@ -1488,21 +1512,65 @@ P.mkt = async (id) => {
   if (!js) { setTitle("國際行情"); app.innerHTML = `<h1>國際行情</h1>${emptyBox("還沒有資料：下一次排程更新後就會出現。")}`; return; }
   if (id && js.items[id]) return mkDetail(js, id);
   setTitle("國際行情");
+  const n = Object.values(js.items).filter(x => !x.empty).length;
   app.innerHTML = `<h1>國際行情 ${tipBtn(MK_TIP)}</h1>
-    <p class="sub">金、銀、油、銅、鐵礦、農產品、各國股市指數與匯率利率的現價和全部歷史。點卡片看長期走勢。<span class="small muted">更新：${esc(js.updated || "—")}</span></p>
-    ${js.groups.map(g => `<section class="mkgrp"><h2>${esc(g.name)}</h2><div class="mkgrid">${g.ids.map(i => mkCard(i, js.items[i])).join("")}</div></section>`).join("")}`;
+    <p class="sub">${n} 項商品、各國股市指數、匯率利率的現價、全部歷史與歷史水位。點一項看長期走勢。<span class="small muted">更新：${esc(js.updated || "—")}</span></p>
+    <div class="mktools"><span class="chips" id="mkv"></span><span class="chips" id="mkw"></span>${lvLegend()}</div>
+    <div class="chips mkgchips" id="mkg"></div><div id="mkbody"></div>`;
+  const draw = () => {
+    const groups = js.groups.filter(g => MK.grp === "all" || g.name === MK.grp);
+    const body = document.getElementById("mkbody");
+    if (MK.view === "card") {
+      body.innerHTML = groups.map(g => `<section class="mkgrp"><h2>${esc(g.name)}</h2><div class="mkgrid">${g.ids.map(i => mkCard(i, js.items[i])).join("")}</div></section>`).join("");
+      return;
+    }
+    let ord = 0;
+    const rows = groups.flatMap(g => g.ids.map(i => ({id: i, grp: g.name, ord: ord++, ...js.items[i]}))).filter(r => !r.empty)
+      .map(r => { const v = mkLv(r); return {...r, now: mkNow(r), chgx: mkChg(r), v, pos: v ? v.pos : null, pr: v ? v.pr : null, offhi: r.ath ? (mkNow(r) / r.ath - 1) * 100 : null}; });
+    body.innerHTML = '<div id="mktb"></div>';
+    if (matchMedia("(max-width: 640px)").matches) {   // 手機：只留重點欄位，不用左右滑
+      table(document.getElementById("mktb"), [
+        {k: "ord", t: "名稱", f: r => `<a href="#/mkt/${r.id}">${esc(r.name)}</a><br><span class="small muted">${esc(r.grp)}</span>`},
+        {k: "now", t: "現價", n: 1, f: r => `${mkPx(r.now, r)}<br>${pc(r.chgx)}`},
+        {k: "y1", t: "1年", n: 1, f: r => pc(r.y1, 1)},
+        {k: "pos", t: "水位", n: 1, f: r => lvChip(r.v)},
+      ], rows, {sort: ["ord", 1], rowClick: r => { location.hash = "#/mkt/" + r.id; }});
+      return;
+    }
+    table(document.getElementById("mktb"), [
+      {k: "ord", t: "分類", f: r => `<span class="small muted">${esc(r.grp)}</span>`},
+      {k: "nm", t: "名稱", s: r => r.name, f: r => `<a href="#/mkt/${r.id}">${esc(r.name)}</a> <span class="small muted">${esc(r.unit)}</span>`},
+      {k: "now", t: "現價", n: 1, f: r => mkPx(r.now, r)},
+      {k: "chgx", t: "漲跌", n: 1, f: r => pc(r.chgx)},
+      {k: "w1", t: "1週", n: 1, f: r => pc(r.w1, 1)}, {k: "m1", t: "1月", n: 1, f: r => pc(r.m1, 1)},
+      {k: "ytd", t: "今年", n: 1, f: r => pc(r.ytd, 1)}, {k: "y1", t: "1年", n: 1, f: r => pc(r.y1, 1)}, {k: "y5", t: "5年", n: 1, f: r => pc(r.y5, 1)},
+      {k: "pos", t: `水位（${LV_W[MK.win]}）`, n: 1, f: r => lvChip(r.v)},
+      {k: "pr", t: "百分位", n: 1, f: r => r.pr == null ? "—" : `${fx(r.pr, 0)}%`},
+      {k: "offhi", t: "距史高", n: 1, f: r => pc(r.offhi, 1)},
+      {k: "first", t: "資料起始", f: r => `<span class="small muted">${esc((r.first || "").slice(0, 4))}</span>`},
+    ], rows, {sort: ["ord", 1], rowClick: r => { location.hash = "#/mkt/" + r.id; }});
+  };
+  const pick = () => { mkSave(); draw(); };
+  chips(document.getElementById("mkv"), [["card", "卡片"], ["table", "總表（一次看全部）"]], MK.view, v => { MK.view = v; pick(); });
+  chips(document.getElementById("mkw"), [["all", "水位：全部歷史"], ["y10", "水位：近 10 年"]], MK.win, v => { MK.win = v; pick(); });
+  chips(document.getElementById("mkg"), [["all", "全部"], ...js.groups.map(g => [g.name, g.name])], MK.grp, v => { MK.grp = v; pick(); });
+  draw();
 };
 function mkChart(d, c, it, logScale) {
-  const W = Math.round(Math.min(1000, Math.max(330, (app.clientWidth || 760)))), H = W < 560 ? 230 : 300, L = 8, R = 62, T = 10, B = 24;
+  const W = Math.round(Math.min(1100, Math.max(330, (app.clientWidth || 760)))), H = W < 560 ? 240 : 320, L = 8, R = 62, T = 22, B = 24;
   let idx = d.map((_, i) => i);
   const step = Math.ceil(idx.length / 900);
   if (step > 1) idx = idx.filter((i, k) => k % step === 0 || i === d.length - 1);
+  // 區間最高、最低一定要畫到（抽樣時不能漏掉）
+  let iHi = 0, iLo = 0;
+  c.forEach((v, i) => { if (v > c[iHi]) iHi = i; if (v < c[iLo]) iLo = i; });
+  idx = [...new Set([...idx, iHi, iLo])].sort((a, b) => a - b);
   const vals = idx.map(i => c[i]);
   const useLog = logScale && Math.min(...vals) > 0;
   const tf = v => useLog ? Math.log(v) : v;
-  let lo = Math.min(...vals), hi = Math.max(...vals);
+  let lo = c[iLo], hi = c[iHi];
   if (lo === hi) { lo -= 1; hi += 1; }
-  const a = tf(lo), b = tf(hi), pad = (b - a) * 0.06;
+  const a = tf(lo), b = tf(hi), pad = (b - a) * 0.08;
   const X = k => L + (W - L - R) * k / Math.max(1, idx.length - 1), Y = v => T + (H - T - B) * (1 - (tf(v) - a + pad) / (b - a + 2 * pad));
   let g = "";
   const ticks = [];
@@ -1514,38 +1582,54 @@ function mkChart(d, c, it, logScale) {
   const span = (new Date(d.at(-1)) - new Date(d[idx[0]])) / 864e5;
   let last = "", lastX = -99;
   idx.forEach((i, k) => {
-    const key = span > 1500 ? d[i].slice(0, 4) : span > 200 ? d[i].slice(0, 7) : d[i].slice(0, 7);
+    const key = span > 1500 ? d[i].slice(0, 4) : d[i].slice(0, 7);
     if (key !== last) { last = key; const x = X(k);
       if (x - lastX > (span > 1500 ? 46 : 40) && k > 0) { g += `<line class="vgrid" x1="${x}" x2="${x}" y1="${T}" y2="${H - B}"/><text class="ax" x="${x + 3}" y="${H - 7}">${span > 1500 ? key : (+key.slice(5)) === 1 ? key.slice(0, 4) : (+key.slice(5)) + "月"}</text>`; lastX = x; } }
   });
   const line = idx.map((i, k) => `${k ? "L" : "M"}${X(k).toFixed(1)},${Y(c[i]).toFixed(1)}`).join("");
   const area = `${line}L${X(idx.length - 1).toFixed(1)},${H - B}L${L},${H - B}Z`;
-  const up = c.at(-1) >= c[idx[0]];
-  return {html: `<svg class="mkchart ${up ? "up" : "down"}" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(it.name)}走勢">
+  // 最高、最低標記：如果剛好是歷史最高／最低就寫「歷史」，否則寫「區間」
+  const mark = (i, kind) => {
+    const k = idx.indexOf(i), x = X(k), y = Y(c[i]);
+    const isAll = kind === "hi" ? (it.ath != null && c[i] >= it.ath) : (it.atl != null && c[i] <= it.atl);
+    const lab = `${isAll ? "歷史" : "區間"}${kind === "hi" ? "最高" : "最低"} ${mkPx(c[i], it)}（${d[i]}）`;
+    const anchor = x < W * 0.25 ? "start" : x > (W - R) * 0.75 ? "end" : "middle";
+    const ty = kind === "hi" ? Math.max(12, y - 8) : Math.min(H - B - 4, y + 16);
+    return `<circle class="mk${kind}${isAll ? " ath" : ""}" cx="${x}" cy="${y}" r="${isAll ? 5 : 4}"/><text class="mklab mk${kind}${isAll ? " ath" : ""}" x="${x}" y="${ty}" text-anchor="${anchor}">${esc(lab)}</text>`;
+  };
+  return {html: `<svg class="mkchart ${c.at(-1) >= c[idx[0]] ? "up" : "down"}" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(it.name)}走勢">
     <defs><linearGradient id="mkA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="a0"/><stop offset="1" class="a1"/></linearGradient></defs>
-    ${g}<path class="area" d="${area}"/><path class="ln" d="${line}"/>
+    ${g}<path class="area" d="${area}"/><path class="ln" d="${line}"/>${mark(iHi, "hi")}${mark(iLo, "lo")}
     <line class="xh" id="mkx" y1="${T}" y2="${H - B}" hidden/><circle class="dot" id="mkd" r="4" hidden/>
-    <text class="last" x="${W - R + 6}" y="${Y(c.at(-1)) + 4}">${mkPx(c.at(-1), it)}</text></svg>`, idx, X, Y, W};
+    <text class="last" x="${W - R + 6}" y="${yLast + 4}">${mkPx(c.at(-1), it)}</text></svg>`, idx, X, Y, W};
+}
+function lvBlock(it, win) {
+  const v = mkLv(it, win);
+  if (!v) return "";
+  return `<div class="lvblk"><div class="lvhd"><b>${LV_W[win]}</b><span class="small muted">${esc(v.from.slice(0, 4))} 起</span>${lvChip(v)}<span class="small">百分位 ${fx(v.pr, 0)}%</span></div>
+    ${lvBar(v, 1)}<div class="lvends"><span>最低 <b>${mkPx(v.lo, it)}</b> <small>${esc(v.lo_d)}</small></span><span>最高 <b>${mkPx(v.hi, it)}</b> <small>${esc(v.hi_d)}</small></span></div></div>`;
 }
 async function mkDetail(js, id) {
   const it = js.items[id];
   setTitle(it.name);
   const h = await load(`mkt/${id}.json`);
   const grp = js.groups.find(g => g.ids.includes(id));
-  const now = mkNow(it), chg = it.prev ? (now / it.prev - 1) * 100 : it.chg;
+  const now = mkNow(it);
   const fr = it.fred;
-  const fredTxt = !fr ? "" : fr.ok ? `<span class="tag ok">已和 FRED ${esc(fr.fred)} 核對</span>` : fr.n ? `<span class="tag warn">和 FRED ${esc(fr.fred)} 差 ${fx(fr.median * (id === "us10y" ? 1 : 100), 2)}${id === "us10y" ? "" : "%"}</span>` : "";
+  const fredTxt = !fr ? "" : fr.ok ? `<span class="tag ok">已和 FRED ${esc(fr.fred)} 核對</span>` : fr.n ? `<span class="tag warn">和 FRED ${esc(fr.fred)} 差 ${fx(fr.median * (it.unit === "%" ? 1 : 100), 2)}${it.unit === "%" ? "" : "%"}</span>` : "";
   const R = [["1 週", it.w1], ["1 個月", it.m1], ["3 個月", it.m3], ["今年", it.ytd], ["1 年", it.y1], ["5 年", it.y5], ["10 年", it.y10]];
-  app.innerHTML = `<p class="small"><a href="#/mkt">← 國際行情</a>${grp ? `　${grp.ids.filter(x => x !== id).map(x => `<a class="mklink" href="#/mkt/${x}">${esc(js.items[x]?.name || x)}</a>`).join("")}` : ""}</p>
+  app.innerHTML = `<p class="small"><a href="#/mkt">← 國際行情</a>${grp ? `　<span class="muted">${esc(grp.name)}：</span>${grp.ids.filter(x => x !== id).map(x => `<a class="mklink" href="#/mkt/${x}">${esc(js.items[x]?.name || x)}</a>`).join("")}` : ""}</p>
     <h1>${esc(it.name)} <span class="small muted">${esc(it.sym)}｜${esc(it.unit)}</span></h1>
-    <div class="mkhead"><b class="mkbig">${mkPx(now, it)}</b><span class="mkchg">${pc(chg)}</span>
+    <div class="mkhead"><b class="mkbig">${mkPx(now, it)}</b><span class="mkchg">${pc(mkChg(it))}</span>
       <span class="small muted">${it.live_time && it.live === now ? `現價 ${esc(it.live_time)}（延遲約 10~20 分）` : `收盤 ${esc(it.date)}`}</span> ${fredTxt}</div>
+    <div class="lvwrap">${lvBlock(it, "all")}${lvBlock(it, "y10")}<div class="lvnote">${lvLegend()}</div></div>
     <div class="mkrets">${R.map(([t, v]) => `<div><span>${t}</span>${pc(v, 1)}</div>`).join("")}</div>
     <div class="mkbar"><div class="chips" id="mkr"></div><label class="small"><input type="checkbox" id="mklog"> 對數刻度</label></div>
     <div class="mkwrap"><div id="mkc"></div><div class="mktip" id="mkt" hidden></div></div>
     <div class="mkstats">
       <div><span>52 週最高</span><b>${mkPx(it.hi52, it)}</b></div><div><span>52 週最低</span><b>${mkPx(it.lo52, it)}</b></div>
-      <div><span>歷史最高</span><b>${mkPx(it.ath, it)}</b><small>${esc(it.ath_date)}</small></div>
+      <div><span>歷史最高</span><b>${mkPx(it.ath, it)}</b><small>${esc(it.ath_date)}，距今 ${pc(it.ath ? (now / it.ath - 1) * 100 : null, 1)}</small></div>
+      <div><span>歷史最低</span><b>${mkPx(it.atl, it)}</b><small>${esc(it.atl_date || "")}</small></div>
       <div><span>資料起始</span><b>${esc(it.first)}</b><small>${fi(it.n)} 個交易日</small></div></div>
     ${it.suspect?.length ? `<p class="small muted">這幾天的價格單日大跳又立刻彈回，可能是報價錯誤（保留原值）：${it.suspect.map(esc).join("、")}</p>` : ""}
     <p class="small muted">${esc(MK_TIP.split("\n")[0])}</p>`;
@@ -1568,10 +1652,8 @@ async function mkDetail(js, id) {
       const i = ch.idx[k], px = ch.X(k), py = ch.Y(c[i]);
       xh.setAttribute("x1", px); xh.setAttribute("x2", px); xh.hidden = dot.hidden = false; tip.hidden = false;
       dot.setAttribute("cx", px); dot.setAttribute("cy", py);
-      const ret = c[0] ? (c[i] / c[0] - 1) * 100 : null;
-      tip.innerHTML = `${esc(d[i])}<b>${mkPx(c[i], it)}</b><span class="small">區間 ${pc(ret, 1)}</span>`;
-      const left = px / ch.W * r.width;
-      tip.style.left = Math.min(Math.max(0, left - 60), r.width - 130) + "px";
+      tip.innerHTML = `${esc(d[i])}<b>${mkPx(c[i], it)}</b><span class="small">區間 ${pc(c[0] ? (c[i] / c[0] - 1) * 100 : null, 1)}</span>`;
+      tip.style.left = Math.min(Math.max(0, px / ch.W * r.width - 60), r.width - 130) + "px";
     };
     svg.onpointermove = move; svg.onpointerdown = move;
     svg.onpointerleave = () => { xh.hidden = dot.hidden = true; tip.hidden = true; };
@@ -1589,6 +1671,7 @@ async function route() {
   const [name, arg] = path.split("/");
   const fn = routes[name] || P.home;
   document.querySelectorAll("nav.main a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#/" + name));
+  document.body.classList.toggle("wide", ["cb", "cbsig", "cbipo", "mkt"].includes(name));
   app.innerHTML = '<p class="muted">載入中…</p>';
   SPK.length = 0; spkHide();
   try { await fn(arg ? decodeURIComponent(arg) : undefined); }

@@ -26,6 +26,9 @@ class MarketsTest(unittest.TestCase):
                 self.assertEqual(g["ytd"], 32.0)            # 去年底 100 → 132
                 self.assertEqual(g["ath"], 132.0)
                 self.assertTrue((t / "out" / "mkt" / "gold.json").exists())
+                self.assertEqual(g["lv"]["all"]["lo"], 100.0)
+                self.assertEqual(g["lv"]["all"]["hi"], 132.0)
+                self.assertEqual(g["lv"]["all"]["pr"], 75.0)   # 4 天中有 3 天低於現價
 
     def test_suspect_spike_kept_but_flagged(self):
         rows = {f"2025-01-0{i}": [None, None, None, c, None] for i, c in enumerate([100, 101, 300, 102, 103], 1)}

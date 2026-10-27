@@ -45,7 +45,7 @@ button{font:inherit;color:inherit}
   --top-nav:#3e3d39; --top-hover:#1d1a12; --top-hover-bg:rgba(160,120,30,.12); --top-sep:rgba(120,100,50,.3); --logo:var(--gold-deep);}
 .top{background:var(--top-bg);color:var(--top-nav);position:relative}
 .top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--gold-line)}
-.top-in{max-width:1240px;margin:0 auto;padding:10px 16px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px}
+.top-in{max-width:1400px;margin:0 auto;padding:10px 16px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px}
 .logo{font-family:var(--serif);font-weight:700;font-size:21px;letter-spacing:.06em;display:flex;align-items:center;gap:8px}
 .logo span{background:var(--logo);-webkit-background-clip:text;background-clip:text;color:transparent}
 .logo:hover{text-decoration:none}
@@ -60,7 +60,13 @@ nav.main a.on{background:var(--gold-btn);color:#2a1f05;font-weight:600;box-shado
 h1::after{content:"";display:block;width:44px;height:2px;margin-top:6px;background:var(--gold-line);border-radius:2px}
 .mockbar{background:var(--warn-bg);color:var(--warn);text-align:center;font-size:13px;padding:5px 16px}
 
-main{max-width:1240px;margin:0 auto;padding:22px 16px 60px}
+main{max-width:1400px;margin:0 auto;padding:22px 16px 60px}
+/* 可轉債等欄位多的頁面：放寬版面、縮小欄距，盡量不出現橫向捲軸 */
+body.wide main{max-width:1800px}
+body.wide th,body.wide td{padding:7px 6px}
+body.wide table{font-size:13.5px}
+body.wide th{font-size:12.5px;white-space:normal;min-width:2.6em}
+body.wide td.soft{white-space:normal;min-width:120px}
 h1{font-family:var(--serif);font-size:30px;line-height:1.25;margin:0 0 4px;font-weight:700}
 h2{font-family:var(--serif);font-size:20px;margin:34px 0 10px;font-weight:700}
 h3{font-size:16px;margin:18px 0 8px}
@@ -166,7 +172,7 @@ tr.detail:hover td{background:var(--bg)}
 .detail-grid p{margin:0}
 
 .notice{background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:4px;padding:10px 14px;font-size:14px;color:var(--ink-2);margin:12px 0}
-footer{max-width:1240px;margin:0 auto;padding:22px 16px 40px;border-top:1px solid var(--line);color:var(--ink-3);font-size:13px}
+footer{max-width:1400px;margin:0 auto;padding:22px 16px 40px;border-top:1px solid var(--line);color:var(--ink-3);font-size:13px}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:4px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 
@@ -537,7 +543,7 @@ h3.sgt{font-size:15px;margin:12px 0 6px}
 .mkchart .xh{stroke:var(--ink-3);stroke-dasharray:3 3} .mkchart .dot{fill:var(--gold);stroke:var(--paper);stroke-width:2}
 .mktip{position:absolute;top:8px;background:var(--paper);border:1px solid var(--gold);border-radius:6px;padding:4px 9px;font-size:12.5px;pointer-events:none;display:flex;flex-direction:column;min-width:120px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
 .mktip b{font-size:15px}
-.mkstats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.mkstats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:12px 0}
 .mkstats div{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column}
 .mkstats span{font-size:12px;color:var(--ink-3)} .mkstats b{font-size:17px} .mkstats small{color:var(--ink-3);font-size:11.5px}
 .mklink{margin-right:10px;white-space:nowrap}
@@ -549,3 +555,32 @@ h3.sgt{font-size:15px;margin:12px 0 6px}
   .mkbar .chip{padding:3px 9px}
   .mkret i:first-child{display:none}
 }
+/* 國際行情：歷史水位 */
+.lv{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:999px;white-space:nowrap;line-height:1.5}
+.lvbar{position:relative;display:flex;height:6px;border-radius:3px;overflow:visible;flex:1;min-width:60px}
+.lvbar i{flex:1;height:100%} .lvbar i:first-child{border-radius:3px 0 0 3px} .lvbar i:last-child{border-radius:0 3px 3px 0}
+.lvbar em{position:absolute;top:-4px;width:4px;height:14px;margin-left:-2px;background:var(--ink);border:1.5px solid var(--paper);border-radius:2px;box-sizing:content-box}
+.lvbar.big{height:10px;margin:6px 0 4px} .lvbar.big em{top:-5px;height:20px;width:5px}
+.mklv{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:2px 0 4px}
+.mktools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin:0 0 8px}
+.mkgchips{margin:0 0 6px}
+.mktools .chip.on,.mkgchips .chip.on{background:var(--gold-btn);border-color:var(--gold);color:#2a1f05}
+.lvleg{display:inline-grid;grid-template-columns:repeat(10,26px) auto;align-items:center;font-size:10.5px;row-gap:1px}
+.lvleg>span{text-align:center;padding:1px 0;font-weight:600}
+.lvleg>span:first-child{border-radius:3px 0 0 3px} .lvleg>span:nth-child(10){border-radius:0 3px 3px 0}
+.lvleg>b{padding-left:4px}
+.lvleg small{grid-column:1/11;display:flex;justify-content:space-between;color:var(--ink-3);font-size:10.5px}
+.lvwrap{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin:0 0 12px;align-items:stretch}
+.lvblk{background:var(--paper);border:1px solid var(--gold-soft);border-radius:8px;padding:8px 12px}
+.lvhd{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.lvends{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-2)} .lvends small{color:var(--ink-3)}
+.lvnote{display:flex;align-items:center}
+.mkchart .mklab{font-size:11.5px;font-weight:600;paint-order:stroke;stroke:var(--paper);stroke-width:4px;stroke-linejoin:round}
+.mkchart text.mkhi{fill:var(--up)} .mkchart text.mklo{fill:var(--down)}
+.mkchart circle.mkhi{fill:var(--up);stroke:var(--paper);stroke-width:2} .mkchart circle.mklo{fill:var(--down);stroke:var(--paper);stroke-width:2}
+.mkchart circle.ath{stroke:var(--gold);stroke-width:2.5}
+.mkchart text.ath{font-weight:800}
+@media (max-width:900px){.lvwrap{grid-template-columns:1fr}}
+@media (max-width:640px){.lvleg{grid-template-columns:repeat(10,minmax(0,1fr)) auto;width:100%}}
+.mktip[hidden],.mkchart [hidden]{display:none}
+@media (max-width:640px){body.wide #mktb th,body.wide #mktb td{padding:6px 5px;white-space:normal} body.wide #mktb .lv{font-size:11px;padding:1px 5px}}
