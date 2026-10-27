@@ -1,7 +1,8 @@
 """國際行情：商品（金銀油銅鐵礦、農產品）、各國指數、匯率利率的全部歷史與現價。
 
 資料源：Yahoo Finance 圖表介面（不需金鑰；商品是期貨連續月，報價延遲約 10~20 分鐘）。
-Yahoo 沒有的指數（台灣櫃買、滬深300、泰國、菲律賓、越南、波蘭、挪威、俄羅斯、沙烏地）改用鉅亨網圖表介面（代號前綴 cnyes:）。
+Yahoo 沒有的指數：台灣櫃買、滬深300、泰國、菲律賓、波蘭、沙烏地用鉅亨網（cnyes:）；
+俄羅斯用莫斯科交易所官方 ISS（moex:）；越南用 DNSE／SSI 券商介面（vn:）；挪威用 Euronext 官方歷史檔（euronext:）。
 第一次抓某個代號時一次拿全部歷史，之後每次只補最近幾天。
 選用：GitHub Secret FRED_API_KEY（美國聖路易聯準銀行，免費申請）有設時，用官方資料核對收盤價。
 
@@ -111,7 +112,7 @@ GROUPS = [
         ("jkse", "^JKSE", "印尼綜合", "點"),
         ("set", "cnyes:GI:SET:INDEX", "泰國 SET", "點"),
         ("psei", "cnyes:GI:PCOMP:INDEX", "菲律賓 PSEi", "點"),
-        ("vni", "cnyes:GI:VNI:INDEX", "越南 VN 指數", "點"),
+        ("vni", "vn:VNINDEX", "越南 VN 指數", "點"),
         ("asx", "^AXJO", "澳洲 ASX 200", "點"),
         ("nz50", "^NZ50", "紐西蘭 NZX 50", "點"),
     ]),
@@ -131,9 +132,10 @@ GROUPS = [
         ("omxs30", "^OMX", "瑞典 OMX 30", "點"),
         ("omxc25", "^OMXC25", "丹麥 OMX 25", "點"),
         ("omxh25", "^OMXH25", "芬蘭 OMX 25", "點"),
-        ("osebx", "cnyes:GI:OSEBX:INDEX", "挪威 OSEBX", "點"),
+        ("osebx", "euronext:NO0007035327-XOSL", "挪威 OSEBX", "點"),
         ("wig", "cnyes:GI:WIG:INDEX", "波蘭 WIG", "點"),
-        ("rts", "cnyes:GI:RTSI:INDEX", "俄羅斯 RTS", "點"),
+        ("imoex", "moex:IMOEX", "俄羅斯 MOEX（盧布）", "點"),
+        ("rts", "moex:RTSI", "俄羅斯 RTS（美元）", "點"),
     ]),
     ("中東・非洲", [
         ("bist100", "XU100.IS", "土耳其 BIST 100", "點"),
@@ -182,10 +184,10 @@ GROUPS = [
         ("eth", "ETH-USD", "以太幣", "美元"),
     ]),
 ]
-# 網頁的大分類（使用者要求：金屬放一起、各國股市一個區塊、匯率利率加密放一起）；細分類顯示在名稱旁
+# 網頁的大分類（使用者要求：金屬放一起、各國股市一個區塊、匯率獨立、利率波動率加密放一起）；細分類顯示在名稱旁
 COARSE = {"貴金屬": "金屬", "工業金屬": "金屬", "能源": "能源", "農產品": "農畜產", "畜產・林產": "農畜產",
           "美國股市": "全球股市", "美洲股市": "全球股市", "東亞股市": "全球股市", "南亞・東南亞・大洋洲": "全球股市",
-          "歐洲股市": "全球股市", "中東・非洲": "全球股市", "匯率": "匯率・利率・加密", "利率・波動率": "匯率・利率・加密", "加密貨幣": "匯率・利率・加密"}
+          "歐洲股市": "全球股市", "中東・非洲": "全球股市", "匯率": "匯率", "利率・波動率": "利率・波動率・加密", "加密貨幣": "利率・波動率・加密"}
 SUBNAME = {"美國股市": "美國", "美洲股市": "美洲", "東亞股市": "東亞", "南亞・東南亞・大洋洲": "南亞・東南亞・大洋洲", "歐洲股市": "歐洲",
            "中東・非洲": "中東・非洲", "利率・波動率": "利率・波動率", "加密貨幣": "加密貨幣"}
 SERIES = {s[0]: {"id": s[0], "sym": s[1], "name": s[2], "unit": s[3], "group": g} for g, items in GROUPS for s in items}
@@ -338,6 +340,80 @@ def fetch_cnyes(sym: str, since: str | None = None, max_pages: int = 15) -> tupl
     return (rows, {"source": "cnyes"}) if rows else None
 
 
+
+def fetch_moex(sec: str, since: str | None = None) -> tuple[dict, dict] | None:
+    """莫斯科交易所官方 ISS：每頁 100 筆，從 since（沒有就從頭）往後翻。"""
+    s = _session()
+    rows: dict[str, list] = {}
+    start = 0
+    while start < 20000:
+        try:
+            r = s.get(f"https://iss.moex.com/iss/history/engines/stock/markets/index/securities/{sec}.json",
+                      params={"from": since or "1990-01-01", "start": start, "iss.meta": "off", "history.columns": "TRADEDATE,OPEN,HIGH,LOW,CLOSE"},
+                      headers={"User-Agent": UA}, timeout=40)
+            data = (r.json().get("history") or {}).get("data") or []
+        except Exception as e:  # noqa: BLE001
+            log.warning("MOEX %s 失敗：%s", sec, e)
+            break
+        if not data:
+            break
+        for d, o, h, l, c in data:
+            if _num(c) is not None:
+                rows[d] = [_num(o), _num(h), _num(l), _num(c), None]
+        start += len(data)
+        time.sleep(0.2)
+    return (rows, {"source": "moex"}) if rows else None
+
+
+def fetch_vn(sym: str) -> tuple[dict, dict] | None:
+    """越南：DNSE（entrade）圖表介面，失敗改 SSI。時間戳換成越南時間（UTC+7）取日期。"""
+    s = _session()
+    now = int(time.time()) + 86400
+    for url, params in (("https://services.entrade.com.vn/chart-api/v2/ohlcs/index", {"from": 0, "to": now, "symbol": sym, "resolution": "1D"}),
+                        ("https://iboard-api.ssi.com.vn/statistics/charts/history", {"resolution": "1D", "symbol": sym, "from": 946684800, "to": now})):
+        try:
+            j = s.get(url, params=params, headers={"User-Agent": UA}, timeout=60).json()
+            d = j.get("data") if isinstance(j.get("data"), dict) else j
+            t = d.get("t") or []
+        except Exception as e:  # noqa: BLE001
+            log.warning("越南 %s（%s）失敗：%s", sym, url, e)
+            continue
+        if not t:
+            continue
+        col = lambda k: d.get(k) or [None] * len(t)  # noqa: E731
+        rows = {}
+        for i, ts in enumerate(t):
+            c = _num(col("c")[i])
+            if c is not None:
+                rows[datetime.fromtimestamp(int(ts) + 7 * 3600, tz=timezone.utc).date().isoformat()] = [_num(col("o")[i]), _num(col("h")[i]), _num(col("l")[i]), c, _num(col("v")[i])]
+        if rows:
+            return rows, {"source": url}
+    return None
+
+
+def fetch_euronext(code: str, since: str | None = None) -> tuple[dict, dict] | None:
+    """Euronext 官方歷史檔（CSV，分號分隔，日期 dd/mm/yyyy）"""
+    try:
+        r = _session().get(f"https://live.euronext.com/en/ajax/AwlHistoricalPrice/getFullDownloadAjax/{code}",
+                           params={"format": "csv", "decimal_separator": ".", "date_form": "d/m/Y", "op": "", "adjusted": "Y", "base100": "",
+                                   "startdate": since or "1990-01-01", "enddate": date.today().isoformat()},
+                           headers={"User-Agent": UA}, timeout=60)
+        lines = r.text.lstrip("\ufeff").splitlines()
+    except Exception as e:  # noqa: BLE001
+        log.warning("Euronext %s 失敗：%s", code, e)
+        return None
+    rows = {}
+    for ln in lines:
+        f = ln.split(";")
+        if len(f) < 6 or f[0].count("/") != 2:
+            continue
+        dd, mm, yy = f[0].split("/")
+        c = _num(f[5])
+        if c is not None:
+            rows[f"{yy}-{mm}-{dd}"] = [_num(f[1]), _num(f[2]), _num(f[3]), c, None]
+    return (rows, {"source": "euronext"}) if rows else None
+
+
 def _check(sid: str, rows: dict[str, list]) -> list[str]:
     """可疑資料：單日跳動很大又立刻彈回（常見的錯誤報價）。只記錄不刪除，避免把真實行情（例如 2020/4 油價負值）刪掉。"""
     ds = sorted(rows)
@@ -363,7 +439,16 @@ def update(full: bool = False, quick: bool = False, only: list[str] | None = Non
         if only and sid not in only:
             continue
         rows = load(sid)
-        if s["sym"].startswith("cnyes:"):
+        if quick and rows and s["sym"].split(":")[0] in ("moex", "vn", "euronext"):
+            continue                       # 這幾個來源每晚更新收盤就好，盤中不重抓
+        since = None if (full or not rows) else (date.fromisoformat(max(rows)) - timedelta(days=14)).isoformat()
+        if s["sym"].startswith("moex:"):
+            got = fetch_moex(s["sym"][5:], since)
+        elif s["sym"].startswith("vn:"):
+            got = fetch_vn(s["sym"][3:])
+        elif s["sym"].startswith("euronext:"):
+            got = fetch_euronext(s["sym"][9:], since)
+        elif s["sym"].startswith("cnyes:"):
             got = fetch_cnyes(s["sym"][6:], since=None if (full or not rows) else (date.fromisoformat(max(rows)) - timedelta(days=14)).isoformat(),
                               max_pages=1 if quick and rows else 15)
         elif full or not rows:
@@ -523,7 +608,8 @@ def build_site() -> int:
                 wk.append(c)
         wk[-1] = cs[-1]
         it = {
-            "name": s["name"], "sym": s["sym"].replace("cnyes:", ""), "src": "鉅亨網" if s["sym"].startswith("cnyes:") else "Yahoo",
+            "name": s["name"], "sym": s["sym"].split(":", 1)[1] if ":" in s["sym"] and not s["sym"].startswith("^") else s["sym"],
+            "src": {"cnyes": "鉅亨網", "moex": "莫斯科交易所", "vn": "DNSE／SSI", "euronext": "Euronext"}.get(s["sym"].split(":")[0], "Yahoo"),
             "unit": s["unit"], "sub": SUBNAME.get(s["group"], s["group"]),
             "date": ds[-1], "close": cs[-1], "prev": cs[-2] if len(cs) > 1 else None,
             "chg": round((cs[-1] / cs[-2] - 1) * 100, 2) if len(cs) > 1 and cs[-2] and cs[-2] > 0 else None,

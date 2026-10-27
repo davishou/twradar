@@ -595,3 +595,6 @@ h3.sgt{font-size:15px;margin:12px 0 6px}
 .mksub:first-of-type{margin-top:4px}
 #mktb th:nth-child(1),#mktb th:nth-child(2){width:1%}
 #mktb td{vertical-align:middle}
+.mkends{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--ink-3);margin:-2px 0 3px}
+.mkends i{font-style:normal;white-space:nowrap} .mkends i:first-child{color:var(--down)} .mkends i:last-child{color:var(--up)}
+.mkends s{text-decoration:none;color:var(--ink-3);font-size:10.5px}

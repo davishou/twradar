@@ -1487,6 +1487,7 @@ function lvBar(v, big) {
   if (!v) return "";
   return `<span class="lvbar${big ? " big" : ""}" aria-label="水位 ${Math.round(v.pos * 100)}%">${LV_C.map(c => `<i style="background:${c}"></i>`).join("")}<em style="left:${(v.pos * 100).toFixed(1)}%"></em></span>`;
 }
+const ym = d => d ? `${d.slice(2, 4)}/${d.slice(5, 7)}` : "";
 const lvLegend = () => `<div class="lvleg">${LV_C.map((c, i) => `<span style="background:${c};color:${LV_T[i]}">${i * 10}</span>`).join("")}<b>${tipBtn(LV_TIP)}</b>
   <small><span>← 史低區</span><span>低檔</span><span>中段</span><span>高檔</span><span>史高區 →</span></small></div>`;
 function mkSpark(vals, w = 120, h = 34) {
@@ -1504,10 +1505,10 @@ function mkCard(id, it) {
     <span class="mkname">${esc(it.name)}<small>${esc(it.unit)}</small> ${mkStale(it)}</span>
     <span class="mkpx">${mkPx(mkNow(it), it)}</span><span class="mkchg">${pc(mkChg(it))}</span>
     ${mkSpark(it.spark)}
-    <span class="mklv">${lvBar(v)}${lvChip(v)}</span>
+    <span class="mklv">${lvBar(v)}${lvChip(v)}</span>${v ? `<span class="mkends"><i title="${esc(LV_W[MK.win])}最低（${esc(v.lo_d)}）">低 ${mkPx(v.lo, it)} <s>${esc(ym(v.lo_d))}</s></i><i title="${esc(LV_W[MK.win])}最高（${esc(v.hi_d)}）">高 ${mkPx(v.hi, it)} <s>${esc(ym(v.hi_d))}</s></i></span>` : ""}
     <span class="mkret"><i>1月 ${pc(it.m1, 1)}</i><i>今年 ${pc(it.ytd, 1)}</i><i>1年 ${pc(it.y1, 1)}</i></span></a>`;
 }
-const MK_TIP = "資料來源：Yahoo Finance（台灣櫃買、滬深 300、泰國、菲律賓、越南、波蘭、挪威、俄羅斯、沙烏地用鉅亨網）。商品是期貨「連續近月」價格（換月時會小跳一下），報價延遲約 10~20 分鐘；盤中每 30 分鐘更新一次現價，每晚補齊收盤。\n各代號歷史從 Yahoo 最早有資料的那天開始（例如黃金 2000 年、S&P 500 1927 年、台灣加權 1997 年）。\n有設 FRED 金鑰時，原油、美債、美股指數、匯率會和美國聯準會（FRED）官方資料核對。";
+const MK_TIP = "資料來源：Yahoo Finance（台灣櫃買、滬深 300、泰國、菲律賓、波蘭、沙烏地用鉅亨網；俄羅斯用莫斯科交易所、越南用 DNSE／SSI、挪威用 Euronext 官方資料）。商品是期貨「連續近月」價格（換月時會小跳一下），報價延遲約 10~20 分鐘；盤中每 30 分鐘更新一次現價，每晚補齊收盤。\n各代號歷史從 Yahoo 最早有資料的那天開始（例如黃金 2000 年、S&P 500 1927 年、台灣加權 1997 年）。\n有設 FRED 金鑰時，原油、美債、美股指數、匯率會和美國聯準會（FRED）官方資料核對。";
 P.mkt = async (id) => {
   const js = await load("mkt.json");
   if (!js) { setTitle("國際行情"); app.innerHTML = `<h1>國際行情</h1>${emptyBox("還沒有資料：下一次排程更新後就會出現。")}`; return; }
@@ -1636,7 +1637,7 @@ async function mkDetail(js, id) {
       <div><span>歷史最低</span><b>${mkPx(it.atl, it)}</b><small>${esc(it.atl_date || "")}</small></div>
       <div><span>資料起始</span><b>${esc(it.first)}</b><small>${fi(it.n)} 個交易日</small></div></div>
     ${it.suspect?.length ? `<p class="small muted">這幾天的價格單日大跳又立刻彈回，可能是報價錯誤（保留原值）：${it.suspect.map(esc).join("、")}</p>` : ""}
-    <p class="small muted">資料來源：${it.src === "鉅亨網" ? "鉅亨網（Yahoo 沒有這個指數）。每晚更新收盤" : esc(MK_TIP.split("\n")[0].replace("資料來源：", ""))}${(it.n || 0) < 250 ? `。目前只有 ${fi(it.n)} 天資料，之後每天累積，滿一年才算歷史水位` : ""}</p>`;
+    <p class="small muted">資料來源：${it.src && it.src !== "Yahoo" ? `${esc(it.src)}（Yahoo 沒有這個指數）。每晚更新收盤` : esc(MK_TIP.split("\n")[0].replace("資料來源：", ""))}${(it.n || 0) < 250 ? `。目前只有 ${fi(it.n)} 天資料，之後每天累積，滿一年才算歷史水位` : ""}</p>`;
   if (!h?.d?.length) { document.getElementById("mkc").innerHTML = '<p class="muted">走勢資料載入失敗。</p>'; return; }
   let range = "1y", logScale = false;
   const draw = () => {

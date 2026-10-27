@@ -62,3 +62,21 @@ class CnyesTest(unittest.TestCase):
         self.assertEqual(sorted(rows), ["2026-10-26", "2026-10-27"])
         self.assertEqual(rows["2026-10-27"][3], 11.0)
         self.assertEqual(calls[1], 1792972800 - 1)       # 第二頁從最舊那天往前翻
+
+
+class OtherSourcesTest(unittest.TestCase):
+    def test_euronext_csv(self):
+        txt = '﻿"Historical Data"\n"From 2000-01-01 to 2026-10-27"\nNO0007035327\nDate;Open;High;Low;Last;Close;"Number of Shares"\n26/10/2026;2098.36;2125.60;2096.17;2125.05;2125.05;0\n23/10/2026;2085.67;2106.09;2082.98;2101.12;2101.12;0\n'
+        sess = mock.Mock(get=mock.Mock(return_value=mock.Mock(text=txt)))
+        with mock.patch.object(markets, "_session", return_value=sess):
+            rows, _ = markets.fetch_euronext("NO0007035327-XOSL")
+        self.assertEqual(rows["2026-10-26"][3], 2125.05)
+        self.assertEqual(sorted(rows), ["2026-10-23", "2026-10-26"])
+
+    def test_moex_pages(self):
+        pages = [{"history": {"data": [["2026-10-01", 1, 2, 0.5, 2278.53], ["2026-10-02", 1, 2, 0.5, 2279.75]]}}, {"history": {"data": []}}]
+        it = iter(pages)
+        sess = mock.Mock(get=lambda *a, **k: mock.Mock(json=lambda: next(it)))
+        with mock.patch.object(markets, "_session", return_value=sess), mock.patch.object(markets.time, "sleep"):
+            rows, _ = markets.fetch_moex("IMOEX")
+        self.assertEqual(rows["2026-10-02"][3], 2279.75)
