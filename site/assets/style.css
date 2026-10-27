@@ -502,7 +502,7 @@ h3.sgt{font-size:15px;margin:12px 0 6px}
 /* ---------- 國際行情 ---------- */
 .mkgrp h2{display:flex;align-items:center;gap:10px}
 .mkgrp h2::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--gold-soft),transparent)}
-.mkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:10px}
+.mkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:10px}
 .mkcard{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:2px 8px;background:var(--paper);border:1px solid var(--gold-soft);border-radius:10px;padding:10px 12px 9px;color:var(--ink);position:relative;overflow:hidden}
 .mkcard::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--gold-line);opacity:.85}
 .mkcard:hover{text-decoration:none;border-color:var(--gold);box-shadow:0 2px 10px rgba(168,123,31,.15)}
