@@ -1482,6 +1482,7 @@ function mkLv(it, win = MK.win) {
   return {...L, pos, dec: Math.min(9, Math.floor(pos * 10)), now};
 }
 const lvChip = v => v ? `<span class="lv" style="background:${LV_C[v.dec]};color:${LV_T[v.dec]}">${LV_N[v.dec]} ${Math.round(v.pos * 100)}%</span>` : '<span class="muted small">累積中</span>';
+const mkNote = it => it?.note ? `<span class="tag note" title="${esc(it.note.text)}">⚠ ${esc(it.note.tag)}</span>` : "";
 const mkStale = it => it?.date && it.date < addDays(new Date().toISOString().slice(0, 10), -30) ? `<span class="tag warn" title="資料來源已停止更新">停更 ${esc(it.date)}</span>` : "";
 function lvBar(v, big) {
   if (!v) return "";
@@ -1508,13 +1509,13 @@ function mkCard(id, it) {
   if (!it || it.empty) return `<a class="mkcard empty" href="#/mkt/${id}"><span class="mkname">${esc(it?.name || id)}</span><span class="muted small">暫無資料</span></a>`;
   const v = mkLv(it);
   return `<a class="mkcard" href="#/mkt/${id}">
-    <span class="mkname">${esc(it.name)}<small>${esc(it.unit)}</small> ${mkStale(it)}</span>
+    <span class="mkname">${esc(it.name)}<small>${esc(it.unit)}</small> ${mkStale(it)}${mkNote(it)}</span>
     <span class="mkpx">${mkPx(mkNow(it), it)}</span><span class="mkchg">${pc(mkChg(it))}</span>
     ${mkSpark(it.spark_all || it.spark)}
     <span class="mklv">${lvBar(v)}${lvChip(v)}</span>${v ? `<span class="mkends"><i title="${esc(LV_W[MK.win])}最低（${esc(v.lo_d)}）">低 ${mkPx(v.lo, it)} <s>${esc(ym(v.lo_d))}</s></i><i title="${esc(LV_W[MK.win])}最高（${esc(v.hi_d)}）">高 ${mkPx(v.hi, it)} <s>${esc(ym(v.hi_d))}</s></i></span>` : ""}
     <span class="mkret"><i>1月 ${pc(it.m1, 1)}</i><i>今年 ${pc(it.ytd, 1)}</i><i>1年 ${pc(it.y1, 1)}</i></span></a>`;
 }
-const MK_TIP = "資料來源：Yahoo Finance（台灣櫃買、滬深 300、泰國、菲律賓、波蘭、沙烏地用鉅亨網；俄羅斯用莫斯科交易所、越南用 DNSE／SSI、挪威用 Euronext 官方資料）。商品是期貨「連續近月」價格（換月時會小跳一下），報價延遲約 10~20 分鐘；盤中每 30 分鐘更新一次現價，每晚補齊收盤。\n各代號歷史從 Yahoo 最早有資料的那天開始（例如黃金 2000 年、S&P 500 1927 年、台灣加權 1997 年）。\n有設 FRED 金鑰時，原油、美債、美股指數、匯率會和美國聯準會（FRED）官方資料核對。";
+const MK_TIP = "資料來源：Yahoo Finance（台灣櫃買、滬深 300、泰國、菲律賓、波蘭用鉅亨網；沙烏地用 KSA ETF 代替；俄羅斯用莫斯科交易所、越南用 DNSE／SSI、挪威用 Euronext 官方資料）。商品是期貨「連續近月」價格（換月時會小跳一下），報價延遲約 10~20 分鐘；盤中每 30 分鐘更新一次現價，每晚補齊收盤。\n各代號歷史從 Yahoo 最早有資料的那天開始（例如黃金 2000 年、S&P 500 1927 年、台灣加權 1997 年）。\n有設 FRED 金鑰時，原油、美債、美股指數、匯率會和美國聯準會（FRED）官方資料核對。";
 P.mkt = async (id) => {
   const js = await load("mkt.json");
   if (!js) { setTitle("國際行情"); app.innerHTML = `<h1>國際行情</h1>${emptyBox("還沒有資料：下一次排程更新後就會出現。")}`; return; }
@@ -1540,7 +1541,7 @@ P.mkt = async (id) => {
     body.innerHTML = '<div id="mktb"></div>';
     if (matchMedia("(max-width: 640px)").matches) {   // 手機：只留重點欄位，不用左右滑
       table(document.getElementById("mktb"), [
-        {k: "ord", t: "名稱", f: r => `<a href="#/mkt/${r.id}">${esc(r.name)}</a><br><span class="small muted">${esc(r.grp)}</span>`},
+        {k: "ord", t: "名稱", f: r => `<a href="#/mkt/${r.id}">${esc(r.name)}</a>${r.note ? ` <span class="tag note">⚠ ${esc(r.note.tag)}</span>` : ""}<br><span class="small muted">${esc(r.grp)}</span>`},
         {k: "now", t: "現價", n: 1, f: r => `${mkPx(r.now, r)}<br>${pc(r.chgx)}`},
         {k: "y1", t: "1年", n: 1, f: r => pc(r.y1, 1)},
         {k: "pos", t: "水位", n: 1, f: r => lvChip(r.v)},
@@ -1549,7 +1550,7 @@ P.mkt = async (id) => {
     }
     table(document.getElementById("mktb"), [
       {k: "ord", t: "分類", cls: "mkc1", f: r => `<span class="small muted" title="${esc(r.grp)}">${esc(r.grp)}</span>`},
-      {k: "nm", t: "名稱", cls: "mkc2", s: r => r.name, f: r => `<a href="#/mkt/${r.id}" title="${esc(r.name)}（${esc(r.unit)}）">${esc(r.name)}</a>${mkStale(r) ? '<span class="tag warn">停更</span>' : ""}`},
+      {k: "nm", t: "名稱", cls: "mkc2", s: r => r.name, f: r => `<a href="#/mkt/${r.id}" title="${esc(r.name)}（${esc(r.unit)}）">${esc(r.name)}</a>${mkStale(r) ? '<span class="tag warn">停更</span>' : ""}${r.note ? ` <span class="tag note" title="${esc(r.note.text)}">⚠</span>` : ""}`},
       {k: "now", t: "現價", n: 1, f: r => mkPx(r.now, r)},
       {k: "chgx", t: "漲跌", n: 1, f: r => pc(r.chgx)},
       {k: "", t: "歷史走勢", sortable: false, cls: "mksp", f: r => mkSpark(r.spark_all || r.spark, 110, 28)},
@@ -1631,7 +1632,7 @@ async function mkDetail(js, id) {
   const fredTxt = !fr ? "" : fr.ok ? `<span class="tag ok" title="最近 ${fr.n} 個共同交易日的收盤，中位數差距 ${fx(fr.median * (it.unit === "%" ? 1 : 100), 3)}${it.unit === "%" ? "" : "%"}">已和 ${esc(lab)} 核對</span>` : fr.n ? `<span class="tag warn">和 ${esc(lab)} 差 ${fx(fr.median * (it.unit === "%" ? 1 : 100), 2)}${it.unit === "%" ? "" : "%"}</span>` : "";
   const R = [["1 週", it.w1], ["1 個月", it.m1], ["3 個月", it.m3], ["今年", it.ytd], ["1 年", it.y1], ["5 年", it.y5], ["10 年", it.y10]];
   app.innerHTML = `<p class="small"><a href="#/mkt">← 國際行情</a>${grp ? `　<span class="muted">${esc(grp.name)}：</span>${grp.ids.filter(x => x !== id).map(x => `<a class="mklink" href="#/mkt/${x}">${esc(js.items[x]?.name || x)}</a>`).join("")}` : ""}</p>
-    <h1>${esc(it.name)} <span class="small muted">${esc(it.sym)}｜${esc(it.unit)}</span></h1>${mkStale(it) ? `<p class="small">${mkStale(it)} 資料來源已停止更新，數字停在最後一天。</p>` : ""}
+    <h1>${esc(it.name)} <span class="small muted">${esc(it.sym)}｜${esc(it.unit)}</span></h1>${mkStale(it) ? `<p class="small">${mkStale(it)} 資料來源已停止更新，數字停在最後一天。</p>` : ""}${it.note ? `<p class="mknote"><b>⚠ ${esc(it.note.tag)}</b>　${esc(it.note.text)}</p>` : ""}
     <div class="mkhead"><b class="mkbig">${mkPx(now, it)}</b><span class="mkchg">${pc(mkChg(it))}</span>
       <span class="small muted">${it.live_time && it.live === now ? `現價 ${esc(it.live_time)}（延遲約 10~20 分）` : `收盤 ${esc(it.date)}`}</span> ${fredTxt}</div>
     <div class="lvwrap">${lvBlock(it, "all")}${lvBlock(it, "y10")}<div class="lvnote">${lvLegend()}</div></div>

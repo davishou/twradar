@@ -1,7 +1,7 @@
 """國際行情：商品（金銀油銅鐵礦、農產品）、各國指數、匯率利率的全部歷史與現價。
 
 資料源：Yahoo Finance 圖表介面（不需金鑰；商品是期貨連續月，報價延遲約 10~20 分鐘）。
-Yahoo 沒有的指數：台灣櫃買、滬深300、泰國、菲律賓、波蘭、沙烏地用鉅亨網（cnyes:）；
+Yahoo 沒有的指數：台灣櫃買、滬深300、泰國、菲律賓、波蘭用鉅亨網（cnyes:）；沙烏地指數沒有免費歷史，改用 iShares MSCI 沙烏地 ETF（KSA）；
 俄羅斯用莫斯科交易所官方 ISS（moex:）；越南用 DNSE／SSI 券商介面（vn:）；挪威用 Euronext 官方歷史檔（euronext:）。
 第一次抓某個代號時一次拿全部歷史，之後每次只補最近幾天。
 選用：GitHub Secret FRED_API_KEY（美國聖路易聯準銀行，免費申請）有設時，用官方資料核對收盤價。
@@ -140,7 +140,7 @@ GROUPS = [
     ("中東・非洲", [
         ("bist100", "XU100.IS", "土耳其 BIST 100", "點"),
         ("ta125", "^TA125.TA", "以色列 TA-125", "點"),
-        ("tasi", "cnyes:GI:TASI:INDEX", "沙烏地 Tadawul", "點"),
+        ("ksa", "KSA", "沙烏地（KSA ETF）", "美元"),
         ("jse", "^J203.JO", "南非全股", "點"),
     ]),
     ("匯率", [
@@ -202,6 +202,12 @@ FRED = {
     "usdcny": ("DEXCHUS", 0.01, False), "eurusd": ("DEXUSEU", 0.01, False),
     "us5y": ("DGS5", 0.05, True), "us30y": ("DGS30", 0.05, True), "usdkrw": ("DEXKOUS", 0.01, False), "gbpusd": ("DEXUSUK", 0.01, False),
     "usdinr": ("DEXINUS", 0.01, False), "usdcad": ("DEXCAUS", 0.01, False), 
+}
+
+# 有特殊狀況的項目：tag 是卡片／總表上的短標記，text 是說明（滑鼠移上與明細頁顯示）
+NOTES = {
+    "ksa": {"tag": "ETF 代替", "text": "沙烏地 Tadawul 指數沒有免費的歷史資料（交易所網站擋程式，Yahoo、鉅亨也沒有），這裡改用美國掛牌的 iShares MSCI 沙烏地 ETF（代號 KSA，2015 年起，美元計價）代替。走勢和沙烏地大盤接近，但數字是 ETF 價格、不是指數點數，也會受匯率與基金費用影響。"},
+    "osebx": {"tag": "僅近 2 年", "text": "挪威 OSEBX 的官方來源 Euronext 只開放最近約 2 年（2024-10 起）的資料，Yahoo、鉅亨也沒有更早的歷史。之後每天累積；目前的「歷史最高／最低」與水位只代表這 2 年，不是真正的歷史位置。"},
 }
 
 FIELDS = ("date", "open", "high", "low", "close", "volume")
@@ -639,7 +645,7 @@ def build_site() -> int:
         it = {
             "name": s["name"], "sym": s["sym"].split(":", 1)[1] if ":" in s["sym"] and not s["sym"].startswith("^") else s["sym"],
             "src": {"cnyes": "鉅亨網", "moex": "莫斯科交易所", "vn": "DNSE／SSI", "euronext": "Euronext"}.get(s["sym"].split(":")[0], "Yahoo"),
-            "unit": s["unit"], "sub": SUBNAME.get(s["group"], s["group"]),
+            "unit": s["unit"], "sub": SUBNAME.get(s["group"], s["group"]), "note": NOTES.get(sid),
             "date": ds[-1], "close": cs[-1], "prev": cs[-2] if len(cs) > 1 else None,
             "chg": round((cs[-1] / cs[-2] - 1) * 100, 2) if len(cs) > 1 and cs[-2] and cs[-2] > 0 else None,
             "w1": _ret(ds, cs, 7), "m1": _ret(ds, cs, 30), "m3": _ret(ds, cs, 91), "ytd": _ret(ds, cs, since=ds[-1][:4] + "-01-01"),
