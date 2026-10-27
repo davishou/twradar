@@ -58,8 +58,14 @@ def panel():
     q["v20"] = g["lots"].transform(lambda s: s.shift(1).rolling(20, min_periods=20).mean())
     q["chg"] = g["price"].diff()
     q["cret20"] = g["price"].transform(lambda s: s / s.shift(20) - 1)
+    # 提前下市（強制贖回、轉換完、到期、賣回）的 CB：持有期還沒滿就沒有價格了。
+    # 不能直接丟掉（會漏掉被贖回的大賺、到期的平盤），改用下市前最後價格出場。
+    last_px = g["price"].transform("last")
+    gone = q.groupby("code")["date"].transform("max") < q["date"].max()
     for n in H:
-        q[f"cb{n}"] = g["price"].transform(lambda s, n=n: s.shift(-1 - n) / s.shift(-1) - 1)
+        nxt, fut = g["price"].shift(-1), g["price"].shift(-1 - n)
+        fut = fut.where(fut.notna() | ~gone | nxt.isna(), last_px)
+        q[f"cb{n}"] = fut / nxt - 1
 
     b = _read("cbb", {"code", "conv_price", "stock_price", "put_end", "out_amt", "issue_amt", "conv_end"})
     for c in ("conv_price", "stock_price", "out_amt", "issue_amt"):

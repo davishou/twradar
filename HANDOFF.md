@@ -69,6 +69,7 @@
 - CB 溫度計（pipeline/cbtemp.py、可轉債頁卡片）：全市場平均轉換價值換算成他的「CB 委買均價」= 0.655×conv+49.3（他 8 個公布值擬合，r=0.97）。區間 <105 極端恐慌、105–110 恐慌、110–113 低迷、113–121 正常、≥121 偏熱；回測在 research/cb_market.py。
 - CB 訊號（pipeline/cbsig.py：SIGNALS、detect、NOTES 分組回測補充；每日在 job_cb 標記 → site/data/cb_sig.json）；回測 research/cb_signals.py（判定看 60 日 CB 超額＋大賺／大賠機率，2022/7 前後兩段都成立才通過；另算 1/5/10/20/60 天）；條件分組探索 research/cb_signals_horizon.py。頁面：可轉債頁名稱下標籤＋「鄭大訊號」篩選列；#/cbsig「CB 策略」頁。
 - 結論（2026-10）：只有「站上轉換價」通過；使用者對週期的假設（CB 過高股未過高＝短線、爆量要低檔、股崩 CB 撐＝會反彈）回測都不支持，細節在 NOTES。
+- 回測的 CB 報酬：持有期內提前下市（強制贖回、轉換完、到期、賣回）用下市前最後價出場，不丟掉（約 8% 的 CB-日會遇到；已下市 872 檔中 38% 最後價 ≥130、50% <105）。cbq 是每天的全市場檔，下市的 CB 也在，沒有倖存者偏差。
 - history 工作每週六（台北）少補一輪，裝 requirements-backtest.txt 重跑 research.cb_market 與 research.cb_signals，結果自動上網站。
 - 部署時 index.html 的 app.js／style.css 會加 ?v=版本號，避免瀏覽器用舊檔。
 
