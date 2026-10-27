@@ -1491,18 +1491,26 @@ function lvBar(v, big) {
 const ym = d => d ? `${d.slice(0, 4)}/${d.slice(5, 7)}` : "";
 const lvLegend = () => `<div class="lvleg">${LV_C.map((c, i) => `<span style="background:${c};color:${LV_T[i]}">${i * 10}</span>`).join("")}<b>${tipBtn(LV_TIP)}</b>
   <small><span>← 史低區</span><span>低檔</span><span>中段</span><span>高檔</span><span>史高區 →</span></small></div>`;
-/* 小走勢圖：全部歷史（spark_all），標出歷史最高（紅點）、最低（綠點）；漲很多倍的用對數刻度，早年才看得出起伏 */
+/* 小走勢圖：全部歷史（spark_all），外觀比照股票的小走勢圖：外框、直線＝年份格線（期間 25 年以上每 10 年一條，
+   否則每 5 年；不到 5 年每年一條）、虛線＝期初價位；線色紅漲綠跌（和期初比）；紅點史高、綠點史低。
+   漲很多倍的用對數刻度，早年才看得出起伏 */
 function mkSpark(sp, w = 120, h = 34) {
   const v = Array.isArray(sp) ? sp : sp?.v;
   if (!v || v.filter(x => x != null).length < 2) return "";
-  const pos = v.every(x => x == null || x > 0), mx = Math.max(...v.filter(x => x != null)), mn = Math.min(...v.filter(x => x != null));
-  const lg = pos && mx / mn >= 8, tf = x => lg ? Math.log(x) : x;
-  const lo = tf(mn), hi = tf(mx), rg = hi - lo || 1, pad = 3;
+  const vs = v.filter(x => x != null), mx = Math.max(...vs), mn = Math.min(...vs);
+  const lg = vs.every(x => x > 0) && mx / mn >= 8, tf = x => lg ? Math.log(x) : x;
+  const lo = tf(mn), hi = tf(mx), rg = hi - lo || 1, pad = 2.5;
   const X = i => (i / (v.length - 1) * (w - 2 * pad) + pad), Y = x => pad + (1 - (tf(x) - lo) / rg) * (h - 2 * pad);
   const pts = v.map((x, i) => x == null ? null : `${X(i).toFixed(1)},${Y(x).toFixed(1)}`).filter(Boolean);
   const hiI = sp?.hi ?? v.indexOf(mx), loI = sp?.lo ?? v.indexOf(mn);
-  return `<svg class="mkspk" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.join(" ")}"/>
-    <line class="shi" x1="${X(hiI)}" x2="${X(hiI)}" y1="${Y(v[hiI])}" y2="${Y(v[hiI])}"/><line class="slo" x1="${X(loI)}" x2="${X(loI)}" y1="${Y(v[loI])}" y2="${Y(v[loI])}"/></svg>`;
+  const span = sp?.d0 ? (+sp.d1.slice(0, 4)) - (+sp.d0.slice(0, 4)) : 0;
+  const step = span >= 25 ? 10 : span >= 5 ? 5 : 1;
+  const grid = (sp?.y || []).filter(([, y]) => y % step === 0).map(([k]) => `<line x1="${X(k).toFixed(1)}" x2="${X(k).toFixed(1)}" y1="0" y2="${h}"/>`).join("");
+  const by = Y(vs[0]).toFixed(1), dir = vs.at(-1) >= vs[0] ? "up" : "down";
+  const tip = sp?.d0 ? `${sp.d0.slice(0, 4)}～${sp.d1.slice(0, 4)} 全部歷史${lg ? "（對數刻度）" : ""}｜直線：每 ${step} 年｜虛線：期初價位｜紅點史高、綠點史低` : "";
+  return `<span class="mkbox" title="${esc(tip)}"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <g class="grid">${grid}<line class="base" x1="0" x2="${w}" y1="${by}" y2="${by}"/></g><polyline class="${dir}" points="${pts.join(" ")}"/>
+    <line class="shi" x1="${X(hiI)}" x2="${X(hiI)}" y1="${Y(v[hiI])}" y2="${Y(v[hiI])}"/><line class="slo" x1="${X(loI)}" x2="${X(loI)}" y1="${Y(v[loI])}" y2="${Y(v[loI])}"/></svg></span>`;
 }
 const mkChg = it => { const now = mkNow(it); return it.prev ? (now / it.prev - 1) * 100 : it.chg; };
 function mkCard(id, it) {
@@ -1554,12 +1562,12 @@ P.mkt = async (id) => {
       {k: "now", t: "現價", n: 1, f: r => mkPx(r.now, r)},
       {k: "chgx", t: "漲跌", n: 1, f: r => pc(r.chgx)},
       {k: "", t: "歷史走勢", sortable: false, cls: "mksp", f: r => mkSpark(r.spark_all || r.spark, 110, 28)},
+      {k: "first", t: "起始", f: r => `<span class="small muted">${esc((r.first || "").slice(0, 4))}</span>`},
       {k: "pos", t: `水位<br><span class="small muted">${LV_W[MK.win]}</span>`, n: 1, f: r => lvChip(r.v)},
       {k: "pr", t: "百分位", n: 1, f: r => r.pr == null ? "—" : `${fx(r.pr, 0)}%`},
       {k: "offhi", t: "距史高", n: 1, f: r => pc(r.offhi, 1)},
       {k: "w1", t: "1週", n: 1, f: r => pc(r.w1, 1)}, {k: "m1", t: "1月", n: 1, f: r => pc(r.m1, 1)},
       {k: "ytd", t: "今年", n: 1, f: r => pc(r.ytd, 1)}, {k: "y1", t: "1年", n: 1, f: r => pc(r.y1, 1)}, {k: "y5", t: "5年", n: 1, f: r => pc(r.y5, 1)},
-      {k: "first", t: "起始", f: r => `<span class="small muted">${esc((r.first || "").slice(0, 4))}</span>`},
     ], rows, {sort: ["ord", 1], rowClick: r => { location.hash = "#/mkt/" + r.id; }});
   };
   const pick = () => { mkSave(); draw(); };
