@@ -69,7 +69,7 @@ class OtherSourcesTest(unittest.TestCase):
         txt = '﻿"Historical Data"\n"From 2000-01-01 to 2026-10-27"\nNO0007035327\nDate;Open;High;Low;Last;Close;"Number of Shares"\n26/10/2026;2098.36;2125.60;2096.17;2125.05;2125.05;0\n23/10/2026;2085.67;2106.09;2082.98;2101.12;2101.12;0\n'
         sess = mock.Mock(get=mock.Mock(return_value=mock.Mock(text=txt)))
         with mock.patch.object(markets, "_session", return_value=sess):
-            rows, _ = markets.fetch_euronext("NO0007035327-XOSL")
+            rows, _ = markets.fetch_euronext("NO0007035327-XOSL", since="2026-10-01")
         self.assertEqual(rows["2026-10-26"][3], 2125.05)
         self.assertEqual(sorted(rows), ["2026-10-23", "2026-10-26"])
 

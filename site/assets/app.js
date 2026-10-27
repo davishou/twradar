@@ -1487,15 +1487,21 @@ function lvBar(v, big) {
   if (!v) return "";
   return `<span class="lvbar${big ? " big" : ""}" aria-label="水位 ${Math.round(v.pos * 100)}%">${LV_C.map(c => `<i style="background:${c}"></i>`).join("")}<em style="left:${(v.pos * 100).toFixed(1)}%"></em></span>`;
 }
-const ym = d => d ? `${d.slice(2, 4)}/${d.slice(5, 7)}` : "";
+const ym = d => d ? `${d.slice(0, 4)}/${d.slice(5, 7)}` : "";
 const lvLegend = () => `<div class="lvleg">${LV_C.map((c, i) => `<span style="background:${c};color:${LV_T[i]}">${i * 10}</span>`).join("")}<b>${tipBtn(LV_TIP)}</b>
   <small><span>← 史低區</span><span>低檔</span><span>中段</span><span>高檔</span><span>史高區 →</span></small></div>`;
-function mkSpark(vals, w = 120, h = 34) {
-  const v = (vals || []).filter(x => x != null);
-  if (v.length < 2) return "";
-  const lo = Math.min(...v), hi = Math.max(...v), sp = hi - lo || 1;
-  const pts = v.map((x, i) => `${(i / (v.length - 1) * w).toFixed(1)},${(2 + (1 - (x - lo) / sp) * (h - 4)).toFixed(1)}`);
-  return `<svg class="mkspk ${v.at(-1) >= v[0] ? "up" : "down"}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.join(" ")}"/></svg>`;
+/* 小走勢圖：全部歷史（spark_all），標出歷史最高（紅點）、最低（綠點）；漲很多倍的用對數刻度，早年才看得出起伏 */
+function mkSpark(sp, w = 120, h = 34) {
+  const v = Array.isArray(sp) ? sp : sp?.v;
+  if (!v || v.filter(x => x != null).length < 2) return "";
+  const pos = v.every(x => x == null || x > 0), mx = Math.max(...v.filter(x => x != null)), mn = Math.min(...v.filter(x => x != null));
+  const lg = pos && mx / mn >= 8, tf = x => lg ? Math.log(x) : x;
+  const lo = tf(mn), hi = tf(mx), rg = hi - lo || 1, pad = 3;
+  const X = i => (i / (v.length - 1) * (w - 2 * pad) + pad), Y = x => pad + (1 - (tf(x) - lo) / rg) * (h - 2 * pad);
+  const pts = v.map((x, i) => x == null ? null : `${X(i).toFixed(1)},${Y(x).toFixed(1)}`).filter(Boolean);
+  const hiI = sp?.hi ?? v.indexOf(mx), loI = sp?.lo ?? v.indexOf(mn);
+  return `<svg class="mkspk" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.join(" ")}"/>
+    <line class="shi" x1="${X(hiI)}" x2="${X(hiI)}" y1="${Y(v[hiI])}" y2="${Y(v[hiI])}"/><line class="slo" x1="${X(loI)}" x2="${X(loI)}" y1="${Y(v[loI])}" y2="${Y(v[loI])}"/></svg>`;
 }
 const mkChg = it => { const now = mkNow(it); return it.prev ? (now / it.prev - 1) * 100 : it.chg; };
 function mkCard(id, it) {
@@ -1504,7 +1510,7 @@ function mkCard(id, it) {
   return `<a class="mkcard" href="#/mkt/${id}">
     <span class="mkname">${esc(it.name)}<small>${esc(it.unit)}</small> ${mkStale(it)}</span>
     <span class="mkpx">${mkPx(mkNow(it), it)}</span><span class="mkchg">${pc(mkChg(it))}</span>
-    ${mkSpark(it.spark)}
+    ${mkSpark(it.spark_all || it.spark)}
     <span class="mklv">${lvBar(v)}${lvChip(v)}</span>${v ? `<span class="mkends"><i title="${esc(LV_W[MK.win])}最低（${esc(v.lo_d)}）">低 ${mkPx(v.lo, it)} <s>${esc(ym(v.lo_d))}</s></i><i title="${esc(LV_W[MK.win])}最高（${esc(v.hi_d)}）">高 ${mkPx(v.hi, it)} <s>${esc(ym(v.hi_d))}</s></i></span>` : ""}
     <span class="mkret"><i>1月 ${pc(it.m1, 1)}</i><i>今年 ${pc(it.ytd, 1)}</i><i>1年 ${pc(it.y1, 1)}</i></span></a>`;
 }
@@ -1546,6 +1552,7 @@ P.mkt = async (id) => {
       {k: "nm", t: "名稱", cls: "mkc2", s: r => r.name, f: r => `<a href="#/mkt/${r.id}" title="${esc(r.name)}（${esc(r.unit)}）">${esc(r.name)}</a>${mkStale(r) ? '<span class="tag warn">停更</span>' : ""}`},
       {k: "now", t: "現價", n: 1, f: r => mkPx(r.now, r)},
       {k: "chgx", t: "漲跌", n: 1, f: r => pc(r.chgx)},
+      {k: "", t: "歷史走勢", sortable: false, cls: "mksp", f: r => mkSpark(r.spark_all || r.spark, 110, 28)},
       {k: "pos", t: `水位<br><span class="small muted">${LV_W[MK.win]}</span>`, n: 1, f: r => lvChip(r.v)},
       {k: "pr", t: "百分位", n: 1, f: r => r.pr == null ? "—" : `${fx(r.pr, 0)}%`},
       {k: "offhi", t: "距史高", n: 1, f: r => pc(r.offhi, 1)},

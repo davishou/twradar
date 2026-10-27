@@ -520,8 +520,8 @@ h3.sgt{font-size:15px;margin:12px 0 6px}
 .mkpx{font-size:21px;font-weight:700;font-family:var(--sans);letter-spacing:.01em}
 .mkchg{font-size:13.5px;font-weight:600}
 .mkspk{grid-column:1/-1;width:100%;height:34px;margin:2px 0}
-.mkspk polyline{fill:none;stroke-width:1.5;vector-effect:non-scaling-stroke}
-.mkspk.up polyline{stroke:var(--up)} .mkspk.down polyline{stroke:var(--down)}
+.mkspk polyline{fill:none;stroke-width:1.4;vector-effect:non-scaling-stroke;stroke:var(--gold)}
+.mkspk line{stroke-width:5.5;stroke-linecap:round;vector-effect:non-scaling-stroke} .mkspk .shi{stroke:var(--up)} .mkspk .slo{stroke:var(--down)}
 .mkret{grid-column:1/-1;display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--ink-3);overflow:hidden}
 .mkret i{font-style:normal;white-space:nowrap}
 .mkhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin:6px 0 12px}
@@ -598,3 +598,4 @@ h3.sgt{font-size:15px;margin:12px 0 6px}
 .mkends{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--ink-3);margin:-2px 0 3px}
 .mkends i{font-style:normal;white-space:nowrap} .mkends i:first-child{color:var(--down)} .mkends i:last-child{color:var(--up)}
 .mkends s{text-decoration:none;color:var(--ink-3);font-size:10.5px}
+#mktb td.mksp{width:120px;padding-top:3px;padding-bottom:3px} #mktb td.mksp svg{width:110px;height:28px;display:block}

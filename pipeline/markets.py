@@ -392,16 +392,35 @@ def fetch_vn(sym: str) -> tuple[dict, dict] | None:
 
 
 def fetch_euronext(code: str, since: str | None = None) -> tuple[dict, dict] | None:
-    """Euronext 官方歷史檔（CSV，分號分隔，日期 dd/mm/yyyy）"""
+    """Euronext 官方歷史檔：每次最多約 2 年，從今天往前一段一段抓，直到連續兩段沒資料或早於 since。"""
+    rows: dict[str, list] = {}
+    end = date.today()
+    empty = 0
+    while end.year >= 1995 and empty < 2:
+        start = max(end - timedelta(days=700), date.fromisoformat(since) if since else date(1995, 1, 1))
+        got = _euronext_chunk(code, start.isoformat(), end.isoformat())
+        if got:
+            rows.update(got)
+            empty = 0
+        else:
+            empty += 1
+        if since and start.isoformat() <= since:
+            break
+        end = start - timedelta(days=1)
+        time.sleep(0.5)
+    return (rows, {"source": "euronext"}) if rows else None
+
+
+def _euronext_chunk(code: str, start: str, end: str) -> dict:
     try:
         r = _session().get(f"https://live.euronext.com/en/ajax/AwlHistoricalPrice/getFullDownloadAjax/{code}",
                            params={"format": "csv", "decimal_separator": ".", "date_form": "d/m/Y", "op": "", "adjusted": "Y", "base100": "",
-                                   "startdate": since or "1990-01-01", "enddate": date.today().isoformat()},
+                                   "startdate": start, "enddate": end},
                            headers={"User-Agent": UA}, timeout=60)
         lines = r.text.lstrip("\ufeff").splitlines()
     except Exception as e:  # noqa: BLE001
         log.warning("Euronext %s 失敗：%s", code, e)
-        return None
+        return {}
     rows = {}
     for ln in lines:
         f = ln.split(";")
@@ -411,7 +430,7 @@ def fetch_euronext(code: str, since: str | None = None) -> tuple[dict, dict] | N
         c = _num(f[5])
         if c is not None:
             rows[f"{yy}-{mm}-{dd}"] = [_num(f[1]), _num(f[2]), _num(f[3]), c, None]
-    return (rows, {"source": "euronext"}) if rows else None
+    return rows
 
 
 def _check(sid: str, rows: dict[str, list]) -> list[str]:
@@ -570,6 +589,16 @@ def _ret(ds: list[str], cs: list[float], days: int | None = None, since: str | N
     return round((last / base - 1) * 100, 2)
 
 
+def _spark_all(cs: list[float], n: int = 160) -> dict:
+    """全部歷史的小走勢圖：平均取 n 點，但一定保留最高、最低、最後一點；回傳值與最高最低點的位置"""
+    if len(cs) <= n:
+        idx = list(range(len(cs)))
+    else:
+        idx = sorted({round(i * (len(cs) - 1) / (n - 1)) for i in range(n)} | {cs.index(max(cs)), cs.index(min(cs)), len(cs) - 1})
+    v = [_num(cs[i], 4) for i in idx]
+    return {"v": v, "hi": idx.index(cs.index(max(cs))), "lo": idx.index(cs.index(min(cs)))}
+
+
 def _coarse_groups() -> list[dict]:
     out: dict[str, dict] = {}
     for g, its in GROUPS:
@@ -619,6 +648,7 @@ def build_site() -> int:
             "ath": cs[ath_i], "ath_date": ds[ath_i], "first": ds[0], "n": len(ds),
             "live": lv.get("price"), "live_time": lv.get("time"),
             "spark": [_num(x, 4) for x in wk],
+            "spark_all": _spark_all(cs),
             "suspect": (info.get(sid) or {}).get("suspect") or [],
         }
         # 歷史水位：全部歷史、近 10 年的最高最低（前端用現價算位置），以及有幾 % 的交易日收盤低於現在
