@@ -479,3 +479,5 @@ table.mini th,table.mini td{padding:5px 8px;font-size:13px}
 .sgc h4{margin:12px 0 6px;font-size:14px}
 h3.sgt{font-size:15px;margin:12px 0 6px}
 @media (max-width:640px){.sgnum b{font-size:17px}.sgnum div{padding:6px 8px}.stags{max-width:170px}}
+.snote{margin:10px 0 4px;padding:9px 12px;background:var(--bg);border:1px solid var(--line-2);border-left:3px solid var(--brand-2);border-radius:4px;font-size:13px;line-height:1.65;color:var(--ink-2)}
+.snote b{display:block;font-size:12px;color:var(--brand-2);margin-bottom:2px}

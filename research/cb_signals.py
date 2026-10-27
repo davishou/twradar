@@ -26,7 +26,7 @@ from pipeline import cbsig
 
 ARCH = bt.ARCHIVE
 SPLIT = "2022-07-01"
-H = (20, 60)
+H = (1, 5, 10, 20, 60)     # 持有天數（判定只看 60 日，其他給網站看短線）
 
 
 def _read(kind, cols):
@@ -119,7 +119,7 @@ def events(q: pd.DataFrame) -> pd.DataFrame:
         for k in cbsig.detect(f):
             rows.append((i, k))
     ev = pd.DataFrame(rows, columns=["i", "sig"])
-    ev = ev.join(q[["code", "name", "date", "scode", "ex20", "ex60", "cb20", "cb60", "cbbase20", "cbbase60", "big", "loss", "bigbase", "lossbase"]], on="i")
+    ev = ev.join(q[["code", "name", "date", "scode", *[f"{p}{n}" for n in H for p in ("ex", "cb", "cbbase")], "big", "loss", "bigbase", "lossbase"]], on="i")
     # 同一檔同一訊號 20 個交易日內只算一次
     q_rank = q.groupby("code").cumcount()
     ev["k"] = q_rank.reindex(ev["i"]).to_numpy()
@@ -138,7 +138,11 @@ def stat(e: pd.DataFrame) -> dict:
     f = lambda x: None if x is None or pd.isna(x) else round(float(x), 4)  # noqa: E731
     v = e.dropna(subset=["ex60"])
     w = e.dropna(subset=["ex20"])
-    return {"n": int(len(e)), "n60": int(len(v)),
+    hz = {}
+    for n in H:   # 各持有天數：股票超額平均、勝率、CB 超額平均
+        x, c = e[f"ex{n}"].dropna(), (e[f"cb{n}"] - e[f"cbbase{n}"]).dropna()
+        hz[str(n)] = [f(x.mean()) if len(x) >= 10 else None, f((x > 0).mean()) if len(x) >= 10 else None, f(c.mean()) if len(c) >= 10 else None]
+    return {"n": int(len(e)), "n60": int(len(v)), "hz": hz,
             "win20": f((w["ex20"] > 0).mean()) if len(w) else None, "mean20": f(w["ex20"].mean()), "med20": f(w["ex20"].median()),
             "win60": f((v["ex60"] > 0).mean()) if len(v) else None, "mean60": f(v["ex60"].mean()), "med60": f(v["ex60"].median()),
             "cb20": f(e["cb20"].mean()), "cb60": f(e["cb60"].mean()), "cbbase60": f(e["cbbase60"].mean()),

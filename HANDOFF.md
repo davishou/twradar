@@ -64,6 +64,14 @@
 - 理論權利金用固定 3% 折現到下次賣回日（沒有賣回用到期面額 100），和投資少數派／券商 CBAS 報價不同。cyclesinvest.com 對我們的瀏覽器回 403，還沒看到內容。
 - probe workflow 可帶 `cmd` 輸入跑任意指令，結果寫 probe/ 推到 probe 分支（不受 update-data 排隊影響）。
 
+## 鄭詩翰（鄭大）可轉債研究（2026-10-26~27）
+- 使用者指定只認三個來源：個人頁 facebook.com/zheng.shi.han.14954、粉專「鄭大的投資日記」facebook.com/trender888（userID 100063717079492）、私人社團「年輕人的投資夢」facebook.com/groups/warrent.trender。**網路上有冒名詐騙頁（例如 profile.php?id=100085827672531、「鄭詩翰的投資日記」），不要抓**。FB 由使用者自己登入內建瀏覽器，不輸入密碼。社團內容是私人的：只放私人 Artifact 與 scratchpad 筆記，不進公開 repo／網站。
+- CB 溫度計（pipeline/cbtemp.py、可轉債頁卡片）：全市場平均轉換價值換算成他的「CB 委買均價」= 0.655×conv+49.3（他 8 個公布值擬合，r=0.97）。區間 <105 極端恐慌、105–110 恐慌、110–113 低迷、113–121 正常、≥121 偏熱；回測在 research/cb_market.py。
+- CB 訊號（pipeline/cbsig.py：SIGNALS、detect、NOTES 分組回測補充；每日在 job_cb 標記 → site/data/cb_sig.json）；回測 research/cb_signals.py（判定看 60 日 CB 超額＋大賺／大賠機率，2022/7 前後兩段都成立才通過；另算 1/5/10/20/60 天）；條件分組探索 research/cb_signals_horizon.py。頁面：可轉債頁名稱下標籤＋「鄭大訊號」篩選列；#/cbsig「CB 策略」頁。
+- 結論（2026-10）：只有「站上轉換價」通過；使用者對週期的假設（CB 過高股未過高＝短線、爆量要低檔、股崩 CB 撐＝會反彈）回測都不支持，細節在 NOTES。
+- history 工作每週六（台北）少補一輪，裝 requirements-backtest.txt 重跑 research.cb_market 與 research.cb_signals，結果自動上網站。
+- 部署時 index.html 的 app.js／style.css 會加 ?v=版本號，避免瀏覽器用舊檔。
+
 ## 小走勢圖（pipeline/spark.py、app.js 的 spk*）
 - 每檔 160 日還原收盤，64 階一字元編碼；漲停日紅點；外框＝圖中最大波動：最大漲幅 ×2/×5/×10 淡黃/黃/紅框，最大跌幅 −30/−60/−80% 淺綠/深綠/墨綠，漲跌都有取對數幅度大的一邊，框內小字標倍數或跌幅。
 - 表格有「名稱」欄就自動在右邊加「走勢」欄（table → withSpark），所有圖對齊，可依最大漲幅排序；每日漲停檔、隔日檔內嵌 `spark`（只畫到那一天），其他頁用 spark.json（最新）。滑鼠移上或手機點一下浮出大圖；個股頁直接顯示大圖。

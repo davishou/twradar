@@ -1189,6 +1189,11 @@ P.cbsig = async (key) => {
       <div class="tw"><table class="mini"><thead><tr><th>期間</th><th class="num">次數</th><th class="num">CB 60 日超額</th><th class="num">大賺機率</th><th class="num">大賠機率</th><th class="num">股票 60 日超額</th></tr></thead><tbody>
         ${per.map(([l, x]) => `<tr><th>${l}</th><td class="num">${fi(x.n)}</td><td class="num">${xs(x.cbx60)}</td><td class="num">${vs(x.big, x.bigbase, false)}</td><td class="num">${vs(x.loss, x.lossbase, true)}</td><td class="num">${xs(x.mean60)}</td></tr>`).join("")}
       </tbody></table></div>
+      ${a.hz ? `<h4>持有幾天比較好？</h4><div class="tw"><table class="mini hz"><thead><tr><th></th>${Object.keys(a.hz).map(n => `<th class="num">${n} 天</th>`).join("")}</tr></thead><tbody>
+        <tr><th>股票比大盤</th>${Object.values(a.hz).map(v => `<td class="num">${xs(v[0])}${v[1] == null ? "" : `<br><span class="small muted">勝率 ${p0(v[1])}</span>`}</td>`).join("")}</tr>
+        <tr><th>CB 比全部 CB</th>${Object.values(a.hz).map(v => `<td class="num">${xs(v[2])}</td>`).join("")}</tr></tbody></table></div>
+        <p class="small muted">隔天收盤進場。參考：所有發 CB 的股票本身就常落後大盤（60 天平均約 −0.7%、勝率約 37~44%）。</p>` : ""}
+      ${s.note ? `<div class="snote"><b>分組回測補充</b>${esc(s.note)}</div>` : ""}
       ${yrs.length ? `<div class="yrs" title="每年觸發後 60 日 CB 比全部 CB 多（紅）或少（綠）">${yrs.map(([y, v]) => {
         const x = v.cbx60, al = Math.min(1, Math.abs(x || 0) / 0.08);
         return `<div style="--a:${al.toFixed(2)}" class="${x > 0 ? "p" : "n"}"><span>${y.slice(2)}</span><b>${p1(x)}</b><small>${v.n} 次</small></div>`; }).join("")}</div>` : ""}

@@ -151,6 +151,12 @@ jobs:
           python -m pipeline.spark || echo "小走勢圖產生失敗，網站照常部署"
           python -m pipeline.cb hist || echo "可轉債走勢檔產生失敗"
 
+      - name: 前端檔加版本號（避免瀏覽器用到舊的 app.js／style.css）
+        run: |
+          v=$(git log -1 --format=%h -- site/assets site/index.html)
+          sed -i "s|assets/style.css\"|assets/style.css?v=$v\"|; s|assets/app.js\"|assets/app.js?v=$v\"|" site/index.html
+          grep -n "?v=" site/index.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
