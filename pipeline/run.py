@@ -467,7 +467,8 @@ def main(argv: list[str]) -> int:
             f()
     elif cmd == "markets":
         from . import markets
-        markets.update(full=len(argv) > 1 and argv[1] == "full")
+        ids = [a for a in argv[1:] if a in markets.SERIES]     # markets full set psei：只重抓指定代號的全部歷史
+        markets.update(full="full" in argv[1:], only=ids or None)
         brief.touch_meta("markets")
     elif cmd == "retheme":
         job_retheme()

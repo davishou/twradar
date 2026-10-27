@@ -308,12 +308,19 @@ def fetch_cnyes(sym: str, since: str | None = None, max_pages: int = 15) -> tupl
     rows: dict[str, list] = {}
     frm = int(time.time()) + 86400
     for _ in range(max_pages):
-        try:
-            r = s.get(CNYES, params={"resolution": "D", "symbol": sym, "from": frm, "to": 0},
-                      headers={"User-Agent": UA, "Referer": "https://www.cnyes.com/"}, timeout=40)
-            d = (r.json().get("data") or {}) if r.status_code == 200 else {}
-        except Exception as e:  # noqa: BLE001
-            log.warning("鉅亨 %s 失敗：%s", sym, e)
+        d = None
+        for attempt in range(3):            # 中途某頁失敗就重試，避免歷史只抓到一半
+            try:
+                r = s.get(CNYES, params={"resolution": "D", "symbol": sym, "from": frm, "to": 0},
+                          headers={"User-Agent": UA, "Referer": "https://www.cnyes.com/"}, timeout=40)
+                if r.status_code == 200:
+                    d = r.json().get("data") or {}
+                    break
+                log.warning("鉅亨 %s：HTTP %s", sym, r.status_code)
+            except Exception as e:  # noqa: BLE001
+                log.warning("鉅亨 %s 失敗：%s", sym, e)
+            time.sleep(3 * (attempt + 1))
+        if d is None:
             break
         t = d.get("t") or []
         if not t:
@@ -346,13 +353,15 @@ def _check(sid: str, rows: dict[str, list]) -> list[str]:
     return bad[-20:]
 
 
-def update(full: bool = False, quick: bool = False) -> dict:
+def update(full: bool = False, quick: bool = False, only: list[str] | None = None) -> dict:
     """quick=True：只抓最近 5 天（盤中更新現價用）。缺歷史的代號一律抓全部。"""
     st = store.state("markets", {}) or {}
     live = st.setdefault("live", {})
     info = st.setdefault("info", {})
     ok = fail = 0
     for sid, s in SERIES.items():
+        if only and sid not in only:
+            continue
         rows = load(sid)
         if s["sym"].startswith("cnyes:"):
             got = fetch_cnyes(s["sym"][6:], since=None if (full or not rows) else (date.fromisoformat(max(rows)) - timedelta(days=14)).isoformat(),
@@ -583,7 +592,8 @@ def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cmd = argv[0] if argv else "update"
     if cmd == "update":
-        update(full="full" in argv, quick="quick" in argv)
+        ids = [a for a in argv[1:] if a in SERIES]          # 例：update full set psei（只重抓這幾個）
+        update(full="full" in argv, quick="quick" in argv, only=ids or None)
     elif cmd == "site":
         print("國際行情網站檔：", build_site(), "個")
     elif cmd == "mock":
