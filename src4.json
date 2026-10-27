@@ -1,0 +1,65 @@
+{
+"moex_imoex": {
+"code": 200,
+"len": 2673,
+"body": "{\n\"history\": {\n\t\"columns\": [\"TRADEDATE\", \"CLOSE\"], \n\t\"data\": [\n\t\t[\"1997-09-22\", 100],\n\t\t[\"1997-09-23\", 100.67],\n\t\t[\"1997-09-24\", 99.94],\n\t\t[\"1997-09-25\", 99.46],\n\t\t[\"1997-09-26\", 98.87],\n\t\t[\"1997-09-29\", 99.14],\n\t\t[\"1997-09-30\", 100.16],\n\t\t[\"1997-10-01\", 101.21],\n\t\t[\"1997-10-02\", 105.8],\n\t\t[\"1997-10-03\", 110.73],\n\t\t[\"1997-10-06\", 115.03],\n\t\t[\"1997-10-07\", 112.67],\n\t\t[\"1997-10-08\", 112.22],\n\t\t[\"1997-10-09\", 107.89],\n\t\t[\"1997-10-10\", 106.56],\n\t\t[\"1997-10-13\", 108.54],\n\t\t[\"1997-10-14\", 111.44],\n\t\t["
+},
+"moex_rtsi": {
+"code": 200,
+"len": 2761,
+"body": "{\n\"history\": {\n\t\"columns\": [\"TRADEDATE\", \"CLOSE\"], \n\t\"data\": [\n\t\t[\"1995-09-01\", 100],\n\t\t[\"1995-09-04\", 99.799],\n\t\t[\"1995-09-05\", 100.417],\n\t\t[\"1995-09-06\", 99.741],\n\t\t[\"1995-09-07\", 101.301],\n\t\t[\"1995-09-08\", 101.3],\n\t\t[\"1995-09-11\", 100.84],\n\t\t[\"1995-09-12\", 100.24],\n\t\t[\"1995-09-13\", 99.159],\n\t\t[\"1995-09-14\", 98.795],\n\t\t[\"1995-09-15\", 99.301],\n\t\t[\"1995-09-18\", 99.84],\n\t\t[\"1995-09-19\", 99.536],\n\t\t[\"1995-09-20\", 99.188],\n\t\t[\"1995-09-21\", 96.273],\n\t\t[\"1995-09-22\", 94.025],\n\t\t[\"1995-09-25\", 91.162]"
+},
+"moex_imoex_last": {
+"code": 200,
+"len": 650,
+"body": "{\n\"history\": {\n\t\"columns\": [\"TRADEDATE\", \"CLOSE\"], \n\t\"data\": [\n\t\t[\"2026-10-01\", 2278.53],\n\t\t[\"2026-10-02\", 2279.75],\n\t\t[\"2026-10-05\", 2321.57],\n\t\t[\"2026-10-06\", 2325.31],\n\t\t[\"2026-10-07\", 2338.21],\n\t\t[\"2026-10-08\", 2310.65],\n\t\t[\"2026-10-09\", 2401.8],\n\t\t[\"2026-10-12\", 2389.04],\n\t\t[\"2026-10-13\", 2426.53],\n\t\t[\"2026-10-14\", 2413.68],\n\t\t[\"2026-10-15\", 2391.72],\n\t\t[\"2026-10-16\", 2431.07],\n\t\t[\"2026-10-19\", 2455.22],\n\t\t[\"2026-10-20\", 2472.26],\n\t\t[\"2026-10-21\", 2447.83],\n\t\t[\"2026-10-22\", 2431.66],\n\t\t[\"20"
+},
+"vn_entrade": {
+"code": 200,
+"len": 288291,
+"body": "{\"t\":[964749600,965008800,965181600,965354400,965613600,965786400,965959200,966218400,966391200,966564000,966823200,966996000,967168800,967428000,967600800,967773600,968205600,968378400,968637600,968810400,968983200,969242400,969415200,969588000,969847200,970020000,970192800,970452000,970624800,970797600,971056800,971229600,971402400,971661600,971834400,972007200,972266400,972439200,972612000,972871200,973044000,973216800,973476000,973648800,973821600,974080800,974253600,974426400,974685600,9748"
+},
+"vn_vndirect": {
+"code": 200,
+"len": 131519,
+"body": "{\"t\":[1503532800, 1503619200, 1503878400, 1503964800, 1504051200, 1504137600, 1504224000, 1504569600, 1504656000, 1504742400, 1504828800, 1505088000, 1505174400, 1505260800, 1505347200, 1505433600, 1505692800, 1505779200, 1505865600, 1505952000, 1506038400, 1506297600, 1506384000, 1506470400, 1506556800, 1506643200, 1506902400, 1506988800, 1507075200, 1507161600, 1507248000, 1507507200, 1507593600, 1507680000, 1507766400, 1507852800, 1508112000, 1508198400, 1508284800, 1508371200, 1508457600, 15"
+},
+"vn_ssi": {
+"code": 200,
+"len": 237839,
+"body": "{\"code\":\"SUCCESS\",\"message\":\"Get chart history data success\",\"data\":{\"t\":[964742400,965001600,965174400,965347200,965606400,965779200,965952000,966211200,966384000,966556800,966816000,966988800,967161600,967420800,967593600,967766400,968198400,968371200,968630400,968803200,968976000,969235200,969408000,969580800,969840000,970012800,970185600,970444800,970617600,970790400,971049600,971222400,971395200,971654400,971827200,972000000,972259200,972432000,972604800,972864000,973036800,973209600,973468"
+},
+"vn_vps": {
+"err": "HTTPSConnectionPool(host='histdatafeed.vps.com.vn', port=443): Max retries exceeded with url: /tradingview/history?symbol=VNINDEX&resolution=D&from=946684800&to=1793081810 (Caused by ConnectTimeoutErr"
+},
+"nor_euronext_max": {
+"code": 200,
+"len": 575297,
+"body": "{\"ct\":\"DKDKsfYanYG2wYzgRuo1fe4HDfoaLuN7s9SpjQ4KSLrDOMxrNBFDwRK8SKMflFcbbH08m3t3H+OZV3Wfavi7HuX7BwRwd2ddrMUBs7396i4svrL55ExPaEArdrUWy5LT7QLK8wvpGuH7C8O5+rVMGWXuqARPLvxZpXJi81Z8TQ33QUHw7wjr2DMDb2kQfCrNwuCkURfH59VwceLz7FC8lATIWwKwBspGSlivYn2RSVCkI8zSUBTKbnXZyYBo1BXOg7QZeJTqNC5pOMM4QR8tC8ytbr8fN0wrRe0pvXvToColGQaebsH41ykeUjDc+WnZuzAQXnOKnUoosE7Q7VGJ9TFA\\/asnW0KPak5U\\/Q+h7h1xRdKgtKopR\\/0ahd+hEJYNsJnGfsu\\/tGdnGF6jKeSPBuxbTlERdrqHB2+iuO7lwQRldmb5O0veq2zPyxbC47Q0HZ1M8m39BgM75CVod4HXIpLohCeuybUHGc7QTOZut"
+},
+"nor_euronext_hist": {
+"code": 200,
+"len": 29651,
+"body": "﻿\"Historical Data\"\n\"From 2000-01-01 to 2026-10-27\"\nNO0007035327\nDate;Open;High;Low;Last;Close;\"Number of Shares\";\"Number of Trades\";Turnover\n26/10/2026;2098.36;2125.60;2096.17;2125.05;2125.05;0;0;0;\n23/10/2026;2085.67;2106.09;2082.98;2101.12;2101.12;0;0;0;\n22/10/2026;2111.06;2115.89;2084.96;2085.66;2085.66;0;0;0;\n21/10/2026;2089.91;2111.60;2089.66;2111.56;2111.56;0;0;0;\n20/10/2026;2098.59;2100.79;2085.70;2089.89;2089.89;0;0;0;\n19/10/2026;2101.64;2112.94;2095.72;2098.81;2098.81;0;0;0;\n16/10/2026;"
+},
+"ksa_yahoo_TASI": {
+"code": 404,
+"len": 108,
+"body": "{\"chart\":{\"result\":null,\"error\":{\"code\":\"Not Found\",\"description\":\"No data found, symbol may be delisted\"}}}"
+},
+"ksa_tadawul": {
+"code": 403,
+"len": 432,
+"body": "<HTML><HEAD>\n<TITLE>Access Denied</TITLE>\n</HEAD><BODY>\n<H1>Access Denied</H1>\n \nYou don't have permission to access \"http&#58;&#47;&#47;www&#46;saudiexchange&#46;sa&#47;tadawul&#46;eportal&#46;theme&#46;helper&#47;TickerServlet\" on this server.<P>\nReference&#32;&#35;18&#46;3bf92917&#46;1793081861&#46;1182cb16\n<P>https&#58;&#47;&#47;errors&#46;edgesuite&#46;net&#47;18&#46;3bf92917&#46;1793081861&#46;1182cb16</P>\n</BODY>\n</HTML>\n"
+},
+"ksa_argaam": {
+"code": 404,
+"len": 499402,
+"body": "\r\n\r\n<!DOCTYPE html>\r\n<html lang=\"ar\">\r\n    <head>\r\n\r\n        <meta charset=\"utf-8\" />\r\n        <meta name=\"alexaVerifyID\" content=\"1Y4l9XJ6UOmHVstoU9PYknRkyQI\" />\r\n        <meta name=\"google-site-verification\" content=\"1cZ-V4BdTDXvQJsOE3LOnO8iw9q264OY8gA9jn5zlYw\" />\r\n\r\n        \r\n\r\n        \r\n\r\n            <meta name=\"keywords\" content=\"أرقام موقع متخصص في متابعة اعمق لسوق الأسهم السعودي تداول مع تغطيه معمقة لشركات وأسعار البتروكيماويات , تقارير مالية , مؤشرات مالية, قطاع الأسمنت , البنوك\" />\r\n   "
+},
+"ksa_etf_yahoo": {
+"code": 200,
+"len": 1742,
+"body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"KSA\",\"exchangeName\":\"PCX\",\"fullExchangeName\":\"NYSEArca\",\"instrumentType\":\"ETF\",\"firstTradeDate\":1442496600,\"regularMarketTime\":1793044800,\"hasPrePostMarketData\":true,\"gmtoffset\":-14400,\"timezone\":\"EDT\",\"exchangeTimezoneName\":\"America/New_York\",\"regularMarketPrice\":34.0,\"regularMarketChangePercent\":0.92,\"fulldayPrice\":34.0,\"fulldayChange\":0.305,\"fulldayChangePercent\":0.905,\"fiftyTwoWeekHigh\":41.175,\"fiftyTwoWeekLow\":33.6,\"regularMarketDayHig"
+}
+}
