@@ -997,10 +997,11 @@ function bNow(t) { return (t.buckets || []).find(b => (b.lo == null || t.value >
 
 P.cb = async () => {
   setTitle("可轉債");
-  const [js, ipo, temp] = await Promise.all([load("cb.json"), load("cbipo.json"), load("cb_temp.json")]);
+  const [js, ipo, temp, sg] = await Promise.all([load("cb.json"), load("cbipo.json"), load("cb_temp.json"), load("cb_sig.json")]);
+  const SG = sigMap(sg);
   if (!js) { app.innerHTML = `<h1>可轉債</h1>${emptyBox("可轉債資料還沒產生（每個交易日收盤後更新）")}`; return; }
   const today = js.date;
-  const rows = js.rows.map(r => ({...r, spark: SPARK[r.stock]}));
+  const rows = js.rows.map(r => ({...r, spark: SPARK[r.stock], sig: sigTags(sg, r.code).filter(([k]) => SG[k])}));
   const nIpo = (ipo?.items || []).filter(x => x.status !== "已掛牌" && x.status !== "取消").length;
   const card = (n, t, href) => `<a class="kcard" ${href ? `href="${href}"` : ""}><b>${fi(n)}</b><span>${t}</span></a>`;
   app.innerHTML = `<h1>可轉債</h1>
@@ -1010,6 +1011,7 @@ P.cb = async () => {
       ${card(rows.filter(r => r.lots > 0).length, "今日有成交")}${card(nIpo, "即將發行（IPO）", "#/cbipo")}</div>
     ${cbTempCard(temp)}
     <div class="toolbar"><span class="chips" id="cf"></span></div>
+    ${sg ? `<div class="sigbar"><span class="lbl"><a href="#/cbsig">鄭大訊號</a> <span class="small muted">近 ${(sg.days || []).length} 個交易日</span></span><span class="chips" id="sf"></span></div>` : ""}
     <details class="adv"><summary>進階篩選（區間）</summary><div class="advgrid" id="adv"></div>
       <p class="small muted">留空＝不限制。條件可以組合，例如溢價率 −3～3（股債緊密連動）＋剩餘比率 ≥ 80＋有擔保。</p></details>
     <div class="toolbar"><input type="search" id="cq" placeholder="代號、名稱或股票" aria-label="搜尋可轉債"><span class="small muted" id="cn"></span></div>
@@ -1040,12 +1042,13 @@ P.cb = async () => {
     + dates.map(([k, t]) => `<label><span>${t}</span><span class="rng"><input type="date" data-k="${k}" data-b="lo">～<input type="date" data-k="${k}" data-b="hi"></span></label>`).join("")
     + `<label><span>擔保</span><select id="cg"><option value="">不拘</option><option value="1">有擔保</option><option value="0">無擔保</option></select></label>`
     + `<label><span>&nbsp;</span><button type="button" class="btn" id="cclr">清除全部條件</button></label>`;
-  let flt = "", q = "", per = {};
+  let flt = "", q = "", per = {}, sflt = "";
   const H = {};   // 已載入的個別走勢 cbh/代號.json
   const adv = {};
   const t = table(document.getElementById("ct"), [
     {k: "code", t: "代號", f: r => `<span class="code">${esc(r.code)}</span>`},
-    {k: "name", t: "名稱", f: r => `<b>${esc(r.name)}</b><br><span class="small muted">${stockLink(r.stock, r.stock_name || r.stock)} ${esc(r.stock)}</span>`},
+    {k: "name", t: "名稱", f: r => `<b>${esc(r.name)}</b><br><span class="small muted">${stockLink(r.stock, r.stock_name || r.stock)} ${esc(r.stock)}</span>`
+      + (r.sig.length ? `<div class="stags">${r.sig.sort((a, b) => (SIG_ORD[SG[a[0]].verdict] - SIG_ORD[SG[b[0]].verdict])).map(([k, d]) => sigTag(SG[k], d, sg.date)).join("")}</div>` : "")},
     {k: "price", t: "CB 價", n: 1, f: r => r.close != null ? `${fp(r.close)}<br>${pc(r.chg_pct, 1)}` : `<span class="muted" title="今日無成交，顯示參考價">${fp(r.price)}</span>`},
     {k: "lots", t: "張數", n: 1, f: r => r.lots ? fi(r.lots) : '<span class="muted">—</span>'},
     {k: "conv_value", t: `轉換價值 ${tipBtn(CB_TIP.cv)}`, n: 1, f: r => fx(r.conv_value, 2)},
@@ -1104,12 +1107,19 @@ P.cb = async () => {
       const v = r[k]; if (lo === "" && hi === "") return true; if (v == null || v === "") return false;
       return (lo === "" || v >= (typeof v === "number" ? +lo : lo)) && (hi === "" || v <= (typeof v === "number" ? +hi : hi));
     });
-    const out = rows.filter(r => f(r) && ok(r) && (g === "" || !!r.guaranteed === (g === "1"))
+    const sf = sflt === "" ? () => true : sflt === "*" ? r => r.sig.length > 0 : sflt === "pass" ? r => r.sig.some(([k]) => SG[k].verdict === "通過") : r => r.sig.some(([k]) => k === sflt);
+    const out = rows.filter(r => f(r) && sf(r) && ok(r) && (g === "" || !!r.guaranteed === (g === "1"))
       && (!q || r.code.includes(q) || (r.name || "").includes(q) || (r.stock || "").includes(q) || (r.stock_name || "").includes(q)));
     document.getElementById("cn").textContent = `共 ${out.length} 檔`;
     t.set(out);
   }
   chips(document.getElementById("cf"), quick.map(f => [f[0], `${f[1]} ${rows.filter(f[2]).length}`]), "", v => { flt = v; apply(); });
+  if (sg) {
+    const cnt = k => rows.filter(r => r.sig.some(([x]) => x === k)).length;
+    const sl = [...sg.signals].sort((a, b) => SIG_ORD[a.verdict] - SIG_ORD[b.verdict] || (a.kind === "警") - (b.kind === "警")).filter(s => cnt(s.key));
+    chips(document.getElementById("sf"), [["", "不限"], ["pass", `★ 回測通過 ${rows.filter(r => r.sig.some(([k]) => SG[k].verdict === "通過")).length}`],
+      ["*", `有任何訊號 ${rows.filter(r => r.sig.length).length}`], ...sl.map(s => [s.key, `${s.kind === "警" ? "⚠" : ""}${s.name} ${cnt(s.key)}`])], "", v => { sflt = v; apply(); });
+  }
   document.getElementById("cq").oninput = e => { q = e.target.value.trim(); apply(); };
   document.getElementById("adv").oninput = e => {
     const el = e.target; if (!el.dataset.k) { apply(); return; }
@@ -1121,6 +1131,92 @@ P.cb = async () => {
     e.stopPropagation(); per[b.closest("[data-per]").dataset.per] = +b.dataset.n; apply();
   }, true);
   apply();
+};
+
+// ---- CB 訊號（鄭詩翰的規則寫成程式＋歷史回測）----
+const SIG_ORD = {"通過": 0, "只有一段有效": 1, "樣本不足": 2, "未通過": 3};
+const SIG_VC = {"通過": "ok", "只有一段有效": "mid", "樣本不足": "na", "未通過": "no"};
+const p1 = x => x == null ? "—" : `${x > 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
+const p0 = x => x == null ? "—" : `${Math.round(x * 100)}%`;
+const sigMap = sg => Object.fromEntries((sg?.signals || []).map(s => [s.key, s]));
+function sigTags(sg, code) {   // 一檔 CB 近幾日的訊號（同訊號只留最近一天）
+  const m = {};
+  for (const [k, d] of sg?.tags?.[code] || []) if (!m[k] || d > m[k]) m[k] = d;
+  return Object.entries(m).map(([k, d]) => [k, d]);
+}
+function sigTag(s, d, today) {
+  if (!s) return "";
+  const good = s.verdict === "通過", warn = s.kind === "警";
+  const a = s.all || {};
+  const tip = `${s.name}（${warn ? "警訊" : "做多"}，回測${s.verdict}）\n規則：${s.rule}\n觸發日 ${d}` +
+    (a.cbx60 != null ? `\n歷史 ${a.n} 次：之後 60 日 CB 平均 ${p1(a.cb60)}（全部 CB ${p1(a.cbbase60)}）` +
+      `\n${warn ? `大賠（≤−10%）機率 ${p0(a.loss)}（全部 CB ${p0(a.lossbase)}）` : `大賺（≥+20%）機率 ${p0(a.big)}（全部 CB ${p0(a.bigbase)}）`}` : "");
+  return `<a class="stag ${warn ? "w" : good ? "g" : "b"}" href="#/cbsig/${esc(s.key)}" title="${esc(tip)}">${warn ? "⚠" : good ? "★" : ""}${esc(s.name)}${d !== today ? `<small>${esc(d.slice(5).replace("-", "/"))}</small>` : ""}</a>`;
+}
+
+P.cbsig = async (key) => {
+  setTitle("CB 策略");
+  const [sg, js] = await Promise.all([load("cb_sig.json"), load("cb.json")]);
+  if (!sg) { app.innerHTML = `<h1>CB 策略</h1>${emptyBox("訊號資料還沒產生（每個交易日可轉債更新後產生）")}`; return; }
+  const CBR = Object.fromEntries((js?.rows || []).map(r => [r.code, r]));
+  const hits = {};
+  for (const code of Object.keys(sg.tags)) for (const [k, d] of sigTags(sg, code)) (hits[k] ||= []).push([code, d]);
+  for (const k in hits) hits[k].sort((a, b) => b[1].localeCompare(a[1]) || a[0].localeCompare(b[0]));
+  const list = [...sg.signals].sort((a, b) => (SIG_ORD[a.verdict] ?? 9) - (SIG_ORD[b.verdict] ?? 9) || (a.kind === "警") - (b.kind === "警"));
+  const rng = sg.stats_range || [], days = sg.days || [];
+  const vd = s => `<span class="vd ${SIG_VC[s.verdict] || "na"}">${s.verdict === "通過" ? "✓ 回測通過" : s.verdict === "未通過" ? "✗ 回測未通過" : esc(s.verdict)}</span>`;
+  const kd = s => s.kind === "警" ? '<span class="tag warn">警訊</span>' : '<span class="tag up">做多</span>';
+  const vs = (x, b, warn) => x == null ? "—" : `<b class="${x > b * 1.2 ? (warn ? "down" : "up") : x < b ? "muted" : ""}">${p0(x)}</b> <span class="small muted">／全部 ${p0(b)}</span>`;
+  const xs = x => x == null ? "—" : `<b class="${x > 0.005 ? "up" : x < -0.005 ? "down" : "muted"}">${p1(x)}</b>`;
+  const hitRow = ([code, d]) => { const r = CBR[code] || {};
+    return `<tr><td>${esc(d.slice(5).replace("-", "/"))}</td><td><span class="code">${esc(code)}</span> <b>${esc(r.name || "")}</b></td>
+      <td class="small">${r.stock ? stockLink(r.stock, r.stock_name || r.stock) : "—"}</td><td class="num">${fp(r.price)}</td><td class="num">${fx(r.conv_value, 1)}</td>
+      <td class="num">${r.premium == null ? "—" : fx(r.premium, 1) + "%"}</td><td class="num">${r.remain == null ? "—" : fx(r.remain, 0) + "%"}</td></tr>`; };
+  const hitTable = l => `<div class="tw"><table><thead><tr><th>觸發</th><th>可轉債</th><th>股票</th><th class="num">CB 價</th><th class="num">轉換價值</th><th class="num">溢價率</th><th class="num">剩餘</th></tr></thead><tbody>${l.map(hitRow).join("")}</tbody></table></div>`;
+  const card = s => {
+    const warn = s.kind === "警", a = s.all || {}, h = hits[s.key] || [];
+    const per = [["全部", a], [`前段（~${(sg.split || "").slice(0, 7)}）`, s.early || {}], ["後段", s.late || {}]];
+    const yrs = Object.entries(s.yearly || {});
+    return `<section class="sgc ${SIG_VC[s.verdict] || "na"}" id="sg-${esc(s.key)}">
+      <div class="sgh"><h2>${esc(s.name)}</h2>${kd(s)}${vd(s)}<span class="small muted">近 ${days.length} 個交易日觸發 <b>${h.length}</b> 檔</span></div>
+      <p class="rule"><b>規則</b>　${esc(s.rule)}</p>
+      <p class="src"><b>他的說法</b>　${esc(s.source)}</p>
+      <div class="sgnum">
+        <div><span>之後 60 日 CB 平均</span><b class="${(a.cbx60 || 0) > 0.005 ? "up" : (a.cbx60 || 0) < -0.005 ? "down" : ""}">${p1(a.cb60)}</b><small>全部 CB 同期 ${p1(a.cbbase60)}</small></div>
+        <div><span>${warn ? "大賠（≤−10%）機率" : "大賺（≥+20%）機率"}</span><b>${p0(warn ? a.loss : a.big)}</b><small>全部 CB ${p0(warn ? a.lossbase : a.bigbase)}</small></div>
+        <div><span>歷史次數</span><b>${fi(a.n)}</b><small>${esc((rng[0] || "").slice(0, 4))}~${esc((rng[1] || "").slice(0, 4))}</small></div>
+      </div>
+      <div class="tw"><table class="mini"><thead><tr><th>期間</th><th class="num">次數</th><th class="num">CB 60 日超額</th><th class="num">大賺機率</th><th class="num">大賠機率</th><th class="num">股票 60 日超額</th></tr></thead><tbody>
+        ${per.map(([l, x]) => `<tr><th>${l}</th><td class="num">${fi(x.n)}</td><td class="num">${xs(x.cbx60)}</td><td class="num">${vs(x.big, x.bigbase, false)}</td><td class="num">${vs(x.loss, x.lossbase, true)}</td><td class="num">${xs(x.mean60)}</td></tr>`).join("")}
+      </tbody></table></div>
+      ${yrs.length ? `<div class="yrs" title="每年觸發後 60 日 CB 比全部 CB 多（紅）或少（綠）">${yrs.map(([y, v]) => {
+        const x = v.cbx60, al = Math.min(1, Math.abs(x || 0) / 0.08);
+        return `<div style="--a:${al.toFixed(2)}" class="${x > 0 ? "p" : "n"}"><span>${y.slice(2)}</span><b>${p1(x)}</b><small>${v.n} 次</small></div>`; }).join("")}</div>` : ""}
+      ${h.length ? `<h4>近 ${days.length} 個交易日符合</h4>${hitTable(h)}` : `<p class="small muted">近 ${days.length} 個交易日沒有可轉債符合。</p>`}
+      ${(s.examples || []).length ? `<details class="adv"><summary>歷史最近 ${s.examples.length} 次</summary><div class="tw"><table class="mini"><thead><tr><th>日期</th><th>可轉債</th><th class="num">CB 60 日</th><th class="num">超額</th></tr></thead><tbody>
+        ${s.examples.slice().reverse().map(e => `<tr><td>${esc(e.date)}</td><td><span class="code">${esc(e.code)}</span> ${esc(e.name || "")}</td><td class="num">${e.cb60 == null ? '<span class="muted">未滿 60 日</span>' : pc(e.cb60 * 100, 1)}</td><td class="num">${e.cbx60 == null ? "—" : xs(e.cbx60)}</td></tr>`).join("")}</tbody></table></div></details>` : ""}
+    </section>`;
+  };
+  const pass = list.filter(s => s.verdict === "通過");
+  app.innerHTML = `<h1>CB 策略</h1>
+    <p class="sub">把鄭詩翰在 FB 分享過的 ${list.length} 個可轉債規則寫成程式，每天收盤後標出符合的 CB（可轉債頁名稱下方的小標籤），
+      並用 ${esc(rng[0] || "")} ~ ${esc(rng[1] || "")} 的歷史資料回測「訊號出現後 60 個交易日，這檔 CB 有沒有比全部 CB 平均漲得多」。資料日 ${esc(sg.date)}。</p>
+    <div class="notice"><b>怎麼看</b>：他買的是 CB／CBAS，所以主要看 CB 本身。CB 報酬很偏（少數大賺拉高平均），不看勝率，看兩件事：
+      ① 60 日平均有沒有比全部 CB 高（超額 &gt; 0）；② 大賺（60 日 ≥ +20%）的機率是不是全部 CB 的 1.2 倍以上。
+      2022/7 前後兩段<b>都</b>成立、且各有 30 次以上才算「通過」；警訊反過來看大賠（≤ −10%）。
+      ★ 紅標＝回測通過的做多訊號，灰標＝他有講但回測沒驗證到優勢，⚠ 黃標＝警訊。回測每週六用最新的長期資料庫自動重算${sg.stats_updated ? `（上次 ${esc(sg.stats_updated)}）` : ""}。</div>
+    <div class="tw"><table class="sgsum"><thead><tr><th>訊號</th><th>類型</th><th>回測</th><th class="num">次數</th><th class="num">CB 60 日超額<br><span class="small muted">前段／後段</span></th><th class="num">大賺機率<br><span class="small muted">訊號／全部 CB</span></th><th class="num">近 ${days.length} 日</th></tr></thead><tbody>
+      ${list.map(s => { const a = s.all || {}; return `<tr data-k="${esc(s.key)}"><td><a href="#/cbsig/${esc(s.key)}"><b>${esc(s.name)}</b></a></td><td>${kd(s)}</td><td>${vd(s)}</td><td class="num">${fi(a.n)}</td>
+        <td class="num">${xs(s.early?.cbx60)}／${xs(s.late?.cbx60)}</td><td class="num">${p0(a.big)}／${p0(a.bigbase)}</td><td class="num">${(hits[s.key] || []).length ? `<b>${hits[s.key].length}</b>` : '<span class="muted">0</span>'}</td></tr>`; }).join("")}
+    </tbody></table></div>
+    ${pass.length ? `<h2>今天可以留意</h2><p class="small muted">回測通過的訊號，近 ${days.length} 個交易日符合的 CB。這只代表「歷史上平均比較好」，不是買進建議；仍要看公司基本面與 CB 條件。</p>
+      ${pass.map(s => (hits[s.key] || []).length ? `<h3 class="sgt">${esc(s.name)}</h3>${hitTable(hits[s.key])}` : `<p class="small muted">${esc(s.name)}：近 ${days.length} 日沒有符合。</p>`).join("")}` : ""}
+    <h2>每個訊號的回測</h2>
+    <div class="sgcs">${list.map(card).join("")}</div>
+    <p class="small muted">進場用訊號隔天收盤價；超額＝這檔 CB 之後 60 個交易日漲跌 − 同一天全部 CB 平均漲跌。同一檔同一訊號 20 個交易日內只算一次。
+      股票超額＝標的股還原報酬 − 全市場等權報酬（股票資料目前 2018/7 起，長期資料庫補齊後會自動拉長）。訊號規則由他公開貼文整理，可能與他實際操作不同。所有數字僅供參考。</p>`;
+  app.querySelectorAll(".sgsum tbody tr").forEach(tr => tr.onclick = e => { if (e.target.closest("a")) return; location.hash = `#/cbsig/${tr.dataset.k}`; });
+  if (key) { const el = document.getElementById(`sg-${key}`); if (el) { el.classList.add("hl"); setTimeout(() => el.scrollIntoView({block: "start"}), 30); } }
 };
 
 // ---- 可轉債 IPO ----
@@ -1362,7 +1458,7 @@ P.stock = async (code) => {
 
 // ---------------- router ----------------
 const routes = {"": P.home, daily: P.daily, nextday: P.nextday, stats: P.stats, commentary: P.commentary,
-  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbipo: P.cbipo, private: P.private, disposal: P.disposal, etf: P.etf, stock: P.stock};
+  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbsig: P.cbsig, cbipo: P.cbipo, private: P.private, disposal: P.disposal, etf: P.etf, stock: P.stock};
 async function route() {
   const [path] = location.hash.replace(/^#\/?/, "").split("?");
   const [name, arg] = path.split("/");

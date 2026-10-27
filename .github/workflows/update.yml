@@ -96,7 +96,9 @@ jobs:
             git config user.name "data-bot"
             git config user.email "data-bot@users.noreply.github.com"
             # 每 45 分鐘存一次，萬一中途被中斷也不會白跑
-            for i in 1 2 3 4 5; do
+            # 每週六凌晨那一輪：少補一輪，留時間用最新的長期資料庫重跑 CB 回測（溫度計區間＋鄭大訊號）
+            ROUNDS="1 2 3 4 5"; [ "$(TZ=Asia/Taipei date +%u)" = "6" ] && ROUNDS="1 2 3 4"
+            for i in $ROUNDS; do
               # 平日 06:15 以後不再開新一輪，避免回補拖到盤後工作（排程延遲時也一樣）
               now=$(TZ=Asia/Taipei date +%H%M); dow=$(TZ=Asia/Taipei date +%u)
               if [ "$dow" -le 5 ] && [ "$now" -ge 0615 ] && [ "$now" -lt 2300 ]; then echo "平日白天，下次再續"; break; fi
@@ -109,6 +111,11 @@ jobs:
               # 時間到、或 10 年剛補完要接著往前補，就繼續下一輪
               python -c "import json,sys; p=json.load(open('data/archive/progress.json')); sys.exit(0 if p.get('stopped')=='時間到' or (p.get('stopped')=='完成' and not p.get('complete')) else 1)" || break
             done
+            if [ "$(TZ=Asia/Taipei date +%u)" = "6" ]; then
+              pip install -q -r requirements-backtest.txt
+              timeout 40m python -m research.cb_market > /dev/null || echo "CB 溫度計回測失敗"
+              timeout 50m python -m research.cb_signals | tail -40 || echo "CB 訊號回測失敗"
+            fi
           elif [ "${{ steps.pick.outputs.job }}" = "backfill" ]; then
             python -m pipeline.run backfill 120 && python -m pipeline.run all
           else

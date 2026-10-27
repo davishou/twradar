@@ -441,3 +441,41 @@ tr.hascb>td{background:color-mix(in srgb,var(--warn-bg) 55%,transparent)}
 .tcard h4{margin:14px 0 6px;font-size:14px}
 .tcard .tbl-wrap{overflow-x:auto}
 .tcard tr.sel td{background:var(--warn-bg)}
+
+/* ---- CB 訊號（鄭大規則） ---- */
+.stags{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;white-space:normal;max-width:220px}
+.stag{display:inline-flex;align-items:baseline;gap:2px;font-size:11.5px;line-height:1.5;padding:0 6px;border-radius:3px;border:1px solid var(--line);color:var(--ink-2);text-decoration:none}
+.stag small{font-size:10px;color:var(--ink-3);margin-left:3px}
+.stag.g{background:var(--up-bg);border-color:var(--up);color:var(--up);font-weight:600}
+.stag.w{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+.stag.b{border-style:dashed;color:var(--ink-3)}
+.stag:hover{text-decoration:none;filter:brightness(.95)}
+.sigbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:4px 0 10px}
+.sigbar .lbl{font-size:13px;font-weight:600;white-space:nowrap}
+.vd{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--ink-3);white-space:nowrap}
+.vd.ok{border-color:var(--up);background:var(--up-bg);color:var(--up)}
+.vd.mid{border-color:var(--warn);background:var(--warn-bg);color:var(--warn)}
+.vd.no{color:var(--ink-3);background:var(--line-2)}
+.sgsum tbody tr{cursor:pointer}
+.sgcs{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.sgc{min-width:0}
+.sgc{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--line);border-radius:6px;padding:14px 16px 12px;scroll-margin-top:12px}
+.sgc.ok{border-top-color:var(--up)} .sgc.mid{border-top-color:var(--warn)}
+.sgc.hl{box-shadow:0 0 0 2px var(--brand-2)}
+.sgh{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.sgh h2{margin:0;font-size:18px}
+.sgc .rule{margin:10px 0 4px;font-size:14px}
+.sgc .src{margin:0 0 10px;font-size:13px;color:var(--ink-2)}
+.sgc .rule b,.sgc .src b{color:var(--ink-3);font-weight:600;font-size:12px}
+.sgnum{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line-2);border:1px solid var(--line-2);border-radius:6px;overflow:hidden;margin-bottom:10px}
+.sgnum div{background:var(--paper);padding:8px 10px;display:flex;flex-direction:column;gap:1px}
+.sgnum span{font-size:12px;color:var(--ink-3)} .sgnum b{font-size:20px;font-variant-numeric:tabular-nums} .sgnum small{font-size:11.5px;color:var(--ink-3)}
+table.mini th,table.mini td{padding:5px 8px;font-size:13px}
+.yrs{display:flex;gap:3px;margin:10px 0 4px;overflow-x:auto}
+.yrs div{flex:1 0 54px;text-align:center;padding:4px 2px;border-radius:4px;font-size:11px;color:var(--ink-2);background:var(--line-2)}
+.yrs div.p{background:color-mix(in srgb,var(--up) calc(var(--a)*45%),var(--paper))}
+.yrs div.n{background:color-mix(in srgb,var(--down) calc(var(--a)*45%),var(--paper))}
+.yrs span{display:block;color:var(--ink-3)} .yrs b{display:block;font-size:12px;font-variant-numeric:tabular-nums} .yrs small{display:block;font-size:10px;color:var(--ink-3)}
+.sgc h4{margin:12px 0 6px;font-size:14px}
+h3.sgt{font-size:15px;margin:12px 0 6px}
+@media (max-width:640px){.sgnum b{font-size:17px}.sgnum div{padding:6px 8px}.stags{max-width:170px}}
