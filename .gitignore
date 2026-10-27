@@ -9,3 +9,6 @@ site/repo_size.json
 site/data/cb_hist.json
 site/data/cbh/
 research/out/
+
+/site/data/mkt/
+/site/data/mkt.json

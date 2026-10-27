@@ -10,6 +10,7 @@
   python -m pipeline.run all            以上全部
   python -m pipeline.run retheme        族群重分類（用 AI；主要經營業務補齊後執行一次）
   python -m pipeline.run cb             可轉債（最近交易日）
+  python -m pipeline.run markets        國際行情：商品、各國指數、匯率（缺的代號自動補全部歷史）
   python -m pipeline.run treasury 20    庫藏股歷史回補約 6 個月（每次跑 20 分鐘，續跑）
   python -m pipeline.run history 40     長期資料庫：回補歷史（先 10 年再到 2004）（每次跑 40 分鐘，續跑）
   python -m pipeline.run backfill 120   補抓最近 120 個交易日歷史行情（第一次部署必跑）
@@ -267,6 +268,12 @@ def job_announce(src) -> None:
     brief.touch_meta("announce")
     brief.line_copy()
     log.info("公告：自結 %d、季報 %d、營收 %d、庫藏 %d、事件 %d、其他 %d", *(len(res[k]) for k in ("att", "fin", "rev", "treasury", "events", "others")))
+    if src is sources:
+        try:   # 國際行情現價：每 30 分鐘更新一次（Yahoo，延遲約 10~20 分）
+            from . import markets
+            markets.maybe_quick(30)
+        except Exception as e:  # noqa: BLE001
+            log.exception("國際行情更新失敗：%s", e)
     try:   # 私募案（從重大訊息整理，不呼叫 AI）
         from . import private
         log.info("私募：%d 案", private.run())
@@ -327,6 +334,11 @@ def backfill(n: int) -> None:
 
 def job_history(minutes: float = 40) -> None:
     """長期資料庫：分批回補行情／法人／融資融券（先 10 年、再到 2004）、上市注意處置股、同步漲停族群、重算還原因子"""
+    try:   # 國際行情：每晚補最近幾天收盤（週末也跑，接得到美股週五收盤）
+        from . import markets
+        markets.update()
+    except Exception as e:  # noqa: BLE001
+        log.exception("國際行情更新失敗：%s", e)
     st = archive.backfill(sources, minutes=minutes * 0.5)    # 先 10 年，補完自動延伸到 2004
     archive.backfill_notices(sources)
     try:
@@ -453,6 +465,10 @@ def main(argv: list[str]) -> int:
     elif cmd == "all":
         for f in jobs.values():
             f()
+    elif cmd == "markets":
+        from . import markets
+        markets.update(full=len(argv) > 1 and argv[1] == "full")
+        brief.touch_meta("markets")
     elif cmd == "retheme":
         job_retheme()
     elif cmd == "cbhist":                # 可轉債歷史集中回補（白天手動跑，約 25 分鐘一輪）

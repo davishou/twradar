@@ -73,6 +73,18 @@
 - history 工作每週六（台北）少補一輪，裝 requirements-backtest.txt 重跑 research.cb_market 與 research.cb_signals，結果自動上網站。
 - 部署時 index.html 的 app.js／style.css 會加 ?v=版本號，避免瀏覽器用舊檔。
 
+## 國際行情（pipeline/markets.py、頁面 #/mkt，2026-10-27）
+- 商品（金銀白金鈀、WTI／布蘭特／天然氣、銅／鐵礦／鋁、玉米小麥黃豆咖啡）、美亞歐指數、美元指數／匯率／美債 10 年／比特幣，共 36 個，清單在 markets.GROUPS（加代號只改這裡）。
+- 來源：Yahoo 圖表介面 `query1/2.finance.yahoo.com/v8/finance/chart/<代號>`，GitHub runner 直接用 requests 可抓（不需 yfinance、不需金鑰）。第一次抓某代號自動抓全部歷史（period1=1900），之後只補最近 14 天。商品是期貨連續近月、延遲 10~20 分。
+- 存放 `data/archive/mkt/<id>/<年>.csv`（純文字、每年一檔，只有今年的檔變動）；沒有被稀疏 checkout 排除。部署時 `python -m pipeline.markets site` 產生 `site/data/mkt.json`、`site/data/mkt/<id>.json`（不進 git）。
+- 排程：announce 每 30 分鐘一次快速更新現價（range=5d）；history（每晚 00:30，週末也跑）補收盤並做 FRED 核對；手動 job `markets`（`markets full` 重抓全部歷史）。
+- 選用 GitHub Secret `FRED_API_KEY`：有設就和 FRED 官方資料核對原油、美債、美股指數、匯率（容許誤差在 markets.FRED），結果在 `data/state/markets.json` 的 fred，頁面顯示「已核對」。
+- 單日大跳又彈回的可疑報價只標示不刪（避免刪掉 2020/4 油價負值這種真實行情）。
+- 本機預覽：`python -m pipeline.markets mock`（模擬資料，**預覽完要刪 data/archive/mkt 與 data/state/markets.json，不要提交**）。
+
+## 外觀（2026-10-27）
+- 使用者選：淺色模式標題欄＝黑金（深底＋金屬漸層金字＋金線），深色模式＝香檳銀（銀白緞面底＋深金字）；選中頁籤金色按鈕；h1 下方短金線；國際行情頁卡片金框、圖線金色。漲跌仍是紅綠。變數在 style.css 開頭 top bar 區（--gold*、--top-*）。
+
 ## 小走勢圖（pipeline/spark.py、app.js 的 spk*）
 - 每檔 160 日還原收盤，64 階一字元編碼；漲停日紅點；外框＝圖中最大波動：最大漲幅 ×2/×5/×10 淡黃/黃/紅框，最大跌幅 −30/−60/−80% 淺綠/深綠/墨綠，漲跌都有取對數幅度大的一邊，框內小字標倍數或跌幅。
 - 表格有「名稱」欄就自動在右邊加「走勢」欄（table → withSpark），所有圖對齊，可依最大漲幅排序；每日漲停檔、隔日檔內嵌 `spark`（只畫到那一天），其他頁用 spark.json（最新）。滑鼠移上或手機點一下浮出大圖；個股頁直接顯示大圖。

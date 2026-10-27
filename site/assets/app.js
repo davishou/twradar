@@ -1461,9 +1461,129 @@ P.stock = async (code) => {
   ], mine, {empty: "近期沒有公告"});
 };
 
+// ---- 國際行情（商品、各國指數、匯率）----
+const MK_R = [["1m", "1月", 31], ["3m", "3月", 92], ["6m", "6月", 183], ["1y", "1年", 366], ["3y", "3年", 1096], ["5y", "5年", 1827], ["10y", "10年", 3653], ["all", "全部", 0]];
+const mkPx = (v, it) => v == null ? "—" : it?.unit === "%" ? fx(v, 3) : Math.abs(v) < 10 ? fx(v, 4) : Math.abs(v) < 1000 ? fx(v, 2) : fx(v, Math.abs(v) < 1e5 ? 2 : 0);
+const mkNow = it => it.live != null && it.live_time && it.live_time.slice(0, 10) >= it.date ? it.live : it.close;
+function mkSpark(vals, w = 120, h = 34) {
+  const v = (vals || []).filter(x => x != null);
+  if (v.length < 2) return "";
+  const lo = Math.min(...v), hi = Math.max(...v), sp = hi - lo || 1;
+  const pts = v.map((x, i) => `${(i / (v.length - 1) * w).toFixed(1)},${(2 + (1 - (x - lo) / sp) * (h - 4)).toFixed(1)}`);
+  const cls = v.at(-1) >= v[0] ? "up" : "down";
+  return `<svg class="mkspk ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.join(" ")}"/></svg>`;
+}
+function mkCard(id, it) {
+  if (!it || it.empty) return `<a class="mkcard empty" href="#/mkt/${id}"><span class="mkname">${esc(it?.name || id)}</span><span class="muted small">暫無資料</span></a>`;
+  const now = mkNow(it), chg = it.prev ? (now / it.prev - 1) * 100 : it.chg;
+  return `<a class="mkcard" href="#/mkt/${id}">
+    <span class="mkname">${esc(it.name)}<small>${esc(it.unit)}</small></span>
+    <span class="mkpx">${mkPx(now, it)}</span><span class="mkchg">${pc(chg)}</span>
+    ${mkSpark(it.spark)}
+    <span class="mkret"><i>1月 ${pc(it.m1, 1)}</i><i>今年 ${pc(it.ytd, 1)}</i><i>1年 ${pc(it.y1, 1)}</i></span></a>`;
+}
+const MK_TIP = "資料來源：Yahoo Finance。商品是期貨「連續近月」價格（換月時會小跳一下），報價延遲約 10~20 分鐘；盤中每 30 分鐘更新一次現價，每晚補齊收盤。\n各代號歷史從 Yahoo 最早有資料的那天開始（例如黃金 2000 年、S&P 500 1927 年、台灣加權 1997 年）。\n有設 FRED 金鑰時，原油、美債、美股指數、匯率會和美國聯準會（FRED）官方資料核對。";
+P.mkt = async (id) => {
+  const js = await load("mkt.json");
+  if (!js) { setTitle("國際行情"); app.innerHTML = `<h1>國際行情</h1>${emptyBox("還沒有資料：下一次排程更新後就會出現。")}`; return; }
+  if (id && js.items[id]) return mkDetail(js, id);
+  setTitle("國際行情");
+  app.innerHTML = `<h1>國際行情 ${tipBtn(MK_TIP)}</h1>
+    <p class="sub">金、銀、油、銅、鐵礦、農產品、各國股市指數與匯率利率的現價和全部歷史。點卡片看長期走勢。<span class="small muted">更新：${esc(js.updated || "—")}</span></p>
+    ${js.groups.map(g => `<section class="mkgrp"><h2>${esc(g.name)}</h2><div class="mkgrid">${g.ids.map(i => mkCard(i, js.items[i])).join("")}</div></section>`).join("")}`;
+};
+function mkChart(d, c, it, logScale) {
+  const W = Math.round(Math.min(1000, Math.max(330, (app.clientWidth || 760)))), H = W < 560 ? 230 : 300, L = 8, R = 62, T = 10, B = 24;
+  let idx = d.map((_, i) => i);
+  const step = Math.ceil(idx.length / 900);
+  if (step > 1) idx = idx.filter((i, k) => k % step === 0 || i === d.length - 1);
+  const vals = idx.map(i => c[i]);
+  const useLog = logScale && Math.min(...vals) > 0;
+  const tf = v => useLog ? Math.log(v) : v;
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const a = tf(lo), b = tf(hi), pad = (b - a) * 0.06;
+  const X = k => L + (W - L - R) * k / Math.max(1, idx.length - 1), Y = v => T + (H - T - B) * (1 - (tf(v) - a + pad) / (b - a + 2 * pad));
+  let g = "";
+  const ticks = [];
+  if (useLog) { for (let k = 0; k <= 4; k++) ticks.push(Math.exp(a + (b - a) * k / 4)); }
+  else { const raw = (hi - lo) / 4, mag = 10 ** Math.floor(Math.log10(raw)), st = [1, 2, 2.5, 5, 10].map(x => x * mag).find(x => x >= raw) || raw;
+    for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) ticks.push(v); }
+  const yLast = Y(c.at(-1));
+  ticks.forEach(v => { g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/>${Math.abs(Y(v) - yLast) < 14 ? "" : `<text class="ax" x="${W - R + 6}" y="${Y(v) + 4}">${mkPx(v, it)}</text>`}`; });
+  const span = (new Date(d.at(-1)) - new Date(d[idx[0]])) / 864e5;
+  let last = "", lastX = -99;
+  idx.forEach((i, k) => {
+    const key = span > 1500 ? d[i].slice(0, 4) : span > 200 ? d[i].slice(0, 7) : d[i].slice(0, 7);
+    if (key !== last) { last = key; const x = X(k);
+      if (x - lastX > (span > 1500 ? 46 : 40) && k > 0) { g += `<line class="vgrid" x1="${x}" x2="${x}" y1="${T}" y2="${H - B}"/><text class="ax" x="${x + 3}" y="${H - 7}">${span > 1500 ? key : (+key.slice(5)) === 1 ? key.slice(0, 4) : (+key.slice(5)) + "月"}</text>`; lastX = x; } }
+  });
+  const line = idx.map((i, k) => `${k ? "L" : "M"}${X(k).toFixed(1)},${Y(c[i]).toFixed(1)}`).join("");
+  const area = `${line}L${X(idx.length - 1).toFixed(1)},${H - B}L${L},${H - B}Z`;
+  const up = c.at(-1) >= c[idx[0]];
+  return {html: `<svg class="mkchart ${up ? "up" : "down"}" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(it.name)}走勢">
+    <defs><linearGradient id="mkA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="a0"/><stop offset="1" class="a1"/></linearGradient></defs>
+    ${g}<path class="area" d="${area}"/><path class="ln" d="${line}"/>
+    <line class="xh" id="mkx" y1="${T}" y2="${H - B}" hidden/><circle class="dot" id="mkd" r="4" hidden/>
+    <text class="last" x="${W - R + 6}" y="${Y(c.at(-1)) + 4}">${mkPx(c.at(-1), it)}</text></svg>`, idx, X, Y, W};
+}
+async function mkDetail(js, id) {
+  const it = js.items[id];
+  setTitle(it.name);
+  const h = await load(`mkt/${id}.json`);
+  const grp = js.groups.find(g => g.ids.includes(id));
+  const now = mkNow(it), chg = it.prev ? (now / it.prev - 1) * 100 : it.chg;
+  const fr = it.fred;
+  const fredTxt = !fr ? "" : fr.ok ? `<span class="tag ok">已和 FRED ${esc(fr.fred)} 核對</span>` : fr.n ? `<span class="tag warn">和 FRED ${esc(fr.fred)} 差 ${fx(fr.median * (id === "us10y" ? 1 : 100), 2)}${id === "us10y" ? "" : "%"}</span>` : "";
+  const R = [["1 週", it.w1], ["1 個月", it.m1], ["3 個月", it.m3], ["今年", it.ytd], ["1 年", it.y1], ["5 年", it.y5], ["10 年", it.y10]];
+  app.innerHTML = `<p class="small"><a href="#/mkt">← 國際行情</a>${grp ? `　${grp.ids.filter(x => x !== id).map(x => `<a class="mklink" href="#/mkt/${x}">${esc(js.items[x]?.name || x)}</a>`).join("")}` : ""}</p>
+    <h1>${esc(it.name)} <span class="small muted">${esc(it.sym)}｜${esc(it.unit)}</span></h1>
+    <div class="mkhead"><b class="mkbig">${mkPx(now, it)}</b><span class="mkchg">${pc(chg)}</span>
+      <span class="small muted">${it.live_time && it.live === now ? `現價 ${esc(it.live_time)}（延遲約 10~20 分）` : `收盤 ${esc(it.date)}`}</span> ${fredTxt}</div>
+    <div class="mkrets">${R.map(([t, v]) => `<div><span>${t}</span>${pc(v, 1)}</div>`).join("")}</div>
+    <div class="mkbar"><div class="chips" id="mkr"></div><label class="small"><input type="checkbox" id="mklog"> 對數刻度</label></div>
+    <div class="mkwrap"><div id="mkc"></div><div class="mktip" id="mkt" hidden></div></div>
+    <div class="mkstats">
+      <div><span>52 週最高</span><b>${mkPx(it.hi52, it)}</b></div><div><span>52 週最低</span><b>${mkPx(it.lo52, it)}</b></div>
+      <div><span>歷史最高</span><b>${mkPx(it.ath, it)}</b><small>${esc(it.ath_date)}</small></div>
+      <div><span>資料起始</span><b>${esc(it.first)}</b><small>${fi(it.n)} 個交易日</small></div></div>
+    ${it.suspect?.length ? `<p class="small muted">這幾天的價格單日大跳又立刻彈回，可能是報價錯誤（保留原值）：${it.suspect.map(esc).join("、")}</p>` : ""}
+    <p class="small muted">${esc(MK_TIP.split("\n")[0])}</p>`;
+  if (!h?.d?.length) { document.getElementById("mkc").innerHTML = '<p class="muted">走勢資料載入失敗。</p>'; return; }
+  let range = "1y", logScale = false;
+  const draw = () => {
+    const days = MK_R.find(r => r[0] === range)[2];
+    const from = days ? addDays(h.d.at(-1), -days) : "";
+    const s = days ? Math.max(0, h.d.findIndex(x => x >= from)) : 0;
+    const d = h.d.slice(s), c = h.c.slice(s);
+    const box = document.getElementById("mkc"), tip = document.getElementById("mkt");
+    if (d.length < 2) { box.innerHTML = '<p class="muted">資料不足。</p>'; return; }
+    const ch = mkChart(d, c, it, logScale);
+    box.innerHTML = ch.html;
+    const svg = box.querySelector("svg"), xh = svg.querySelector("#mkx"), dot = svg.querySelector("#mkd");
+    const move = e => {
+      const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * ch.W;
+      let k = 0, best = 1e9;
+      ch.idx.forEach((_, j) => { const dx = Math.abs(ch.X(j) - x); if (dx < best) { best = dx; k = j; } });
+      const i = ch.idx[k], px = ch.X(k), py = ch.Y(c[i]);
+      xh.setAttribute("x1", px); xh.setAttribute("x2", px); xh.hidden = dot.hidden = false; tip.hidden = false;
+      dot.setAttribute("cx", px); dot.setAttribute("cy", py);
+      const ret = c[0] ? (c[i] / c[0] - 1) * 100 : null;
+      tip.innerHTML = `${esc(d[i])}<b>${mkPx(c[i], it)}</b><span class="small">區間 ${pc(ret, 1)}</span>`;
+      const left = px / ch.W * r.width;
+      tip.style.left = Math.min(Math.max(0, left - 60), r.width - 130) + "px";
+    };
+    svg.onpointermove = move; svg.onpointerdown = move;
+    svg.onpointerleave = () => { xh.hidden = dot.hidden = true; tip.hidden = true; };
+  };
+  chips(document.getElementById("mkr"), MK_R.map(r => [r[0], r[1]]), range, v => { range = v; draw(); });
+  document.getElementById("mklog").onchange = e => { logScale = e.target.checked; draw(); };
+  draw();
+}
+
 // ---------------- router ----------------
 const routes = {"": P.home, daily: P.daily, nextday: P.nextday, stats: P.stats, commentary: P.commentary,
-  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbsig: P.cbsig, cbipo: P.cbipo, private: P.private, disposal: P.disposal, etf: P.etf, stock: P.stock};
+  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbsig: P.cbsig, cbipo: P.cbipo, private: P.private, disposal: P.disposal, etf: P.etf, stock: P.stock, mkt: P.mkt};
 async function route() {
   const [path] = location.hash.replace(/^#\/?/, "").split("?");
   const [name, arg] = path.split("/");
@@ -1536,7 +1656,7 @@ async function gate() {
     }
   } catch {}
   const j = META.jobs || {};
-  document.getElementById("updated").textContent = Object.keys(j).length ? "最近更新：" + Object.entries(j).filter(([k]) => k !== "mock").map(([k, v]) => `${({daily: "漲停", cb: "可轉債", disposal: "處置", announce: "公告", borrow: "券差", etf: "主動ETF", backfill: "補資料"})[k] || k} ${v}`).join("，") : "";
+  document.getElementById("updated").textContent = Object.keys(j).length ? "最近更新：" + Object.entries(j).filter(([k]) => k !== "mock").map(([k, v]) => `${({daily: "漲停", cb: "可轉債", disposal: "處置", announce: "公告", borrow: "券差", etf: "主動ETF", backfill: "補資料", markets: "國際行情"})[k] || k} ${v}`).join("，") : "";
   window.addEventListener("hashchange", route);
   route();
 })();

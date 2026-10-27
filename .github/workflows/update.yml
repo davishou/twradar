@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / cb / cbhist / treasury / retheme / all / backfill / history；重跑某天：daily 2026-10-16）"
+        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / cb / markets / cbhist / treasury / retheme / all / backfill / history；重跑某天：daily 2026-10-16）"
         default: "all"
 
 permissions:
@@ -38,6 +38,7 @@ jobs:
       AI_MODEL: ${{ vars.AI_MODEL || 'claude-haiku-5-5' }}
       SITE_NAME: ${{ vars.SITE_NAME || '盤後雷達' }}
       SITE_URL: ${{ vars.SITE_URL }}
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}   # 選用：國際行情用官方資料核對
     steps:
       # 長期資料庫的行情／法人／融資券（數百 MB）只有 history 工作需要讀；其他工作只寫入當天的新檔，
       # 所以不下載它們（稀疏 checkout），每 5 分鐘的公告工作才不會每次下載整個資料庫
@@ -150,6 +151,7 @@ jobs:
         run: |
           python -m pipeline.spark || echo "小走勢圖產生失敗，網站照常部署"
           python -m pipeline.cb hist || echo "可轉債走勢檔產生失敗"
+          python -m pipeline.markets site || echo "國際行情網站檔產生失敗"
 
       - name: 前端檔加版本號（避免瀏覽器用到舊的 app.js／style.css）
         run: |
