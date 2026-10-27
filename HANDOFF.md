@@ -79,6 +79,7 @@
 - 來源：Yahoo 圖表介面 `query1/2.finance.yahoo.com/v8/finance/chart/<代號>`，GitHub runner 直接用 requests 可抓（不需 yfinance、不需金鑰）。第一次抓某代號自動抓全部歷史（period1=1900），之後只補最近 14 天。商品是期貨連續近月、延遲 10~20 分。
 - 存放 `data/archive/mkt/<id>/<年>.csv`（純文字、每年一檔，只有今年的檔變動）；沒有被稀疏 checkout 排除。部署時 `python -m pipeline.markets site` 產生 `site/data/mkt.json`、`site/data/mkt/<id>.json`（不進 git）。
 - 排程：announce 每 30 分鐘一次快速更新現價（range=5d）；history（每晚 00:30，週末也跑）補收盤並做 FRED 核對；手動 job `markets`（`markets full` 重抓全部歷史）。
+- FRED_API_KEY 已設（2026-10-27）。首次核對：美股指數、美債、VIX、匯率共 15 項全部通過；WTI 差 5.7%、布蘭特差 13.5%（FRED 是現貨、Yahoo 是近月期貨，供給緊張時差很多），頁面顯示黃色「差 x%」。手動重抓指定代號全部歷史：dispatch job `markets full <id> <id>`。
 - 選用 GitHub Secret `FRED_API_KEY`：有設就和 FRED 官方資料核對原油、美債、美股指數、匯率（容許誤差在 markets.FRED），結果在 `data/state/markets.json` 的 fred，頁面顯示「已核對」。
 - 單日大跳又彈回的可疑報價只標示不刪（避免刪掉 2020/4 油價負值這種真實行情）。
 - 本機預覽：`python -m pipeline.markets mock`（模擬資料，**預覽完要刪 data/archive/mkt 與 data/state/markets.json，不要提交**）。
