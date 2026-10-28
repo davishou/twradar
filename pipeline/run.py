@@ -339,7 +339,7 @@ def job_history(minutes: float = 40) -> None:
         markets.update()
     except Exception as e:  # noqa: BLE001
         log.exception("國際行情更新失敗：%s", e)
-    st = archive.backfill(sources, minutes=minutes * 0.5)    # 先 10 年，補完自動延伸到 2004
+    st = archive.backfill(sources, minutes=minutes * 0.8)    # 先 10 年，補完自動延伸到 2004（基本面、CB、業務已補齊，時間多給行情）
     archive.backfill_notices(sources)
     try:
         archive.backfill_fundamentals(sources, minutes=minutes * 0.25)   # 月營收、季報歷史（2013 起）

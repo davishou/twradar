@@ -11,6 +11,7 @@ on:
     - cron: "30 14 * * 1-5"      # 22:30 主動 ETF
     - cron: "*/5 0-15 * * 1-5"   # 08:00~23:55 每 5 分鐘公告偵測
     - cron: "30 16 * * *"        # 00:30 長期資料庫回補歷史（先 10 年、再到 2004；補完後幾秒就結束）
+    - cron: "0 0,5,10 * * 0,6"   # 週六日 08:00／13:00／18:00 加跑回補（週末沒有盤後工作，可以補整天）
   workflow_dispatch:
     inputs:
       job:
@@ -29,7 +30,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event.schedule == '30 16 * * *' || github.event.inputs.job == 'history') && 300 || (github.event.inputs.job == 'retheme' && 150 || 30) }}
+    timeout-minutes: ${{ (github.event.schedule == '30 16 * * *' || github.event.schedule == '0 0,5,10 * * 0,6' || github.event.inputs.job == 'history') && 300 || (github.event.inputs.job == 'retheme' && 150 || 30) }}
     environment:
       name: github-pages
     env:
@@ -43,7 +44,7 @@ jobs:
       # 長期資料庫的行情／法人／融資券（數百 MB）只有 history 工作需要讀；其他工作只寫入當天的新檔，
       # 所以不下載它們（稀疏 checkout），每 5 分鐘的公告工作才不會每次下載整個資料庫
       - uses: actions/checkout@v4
-        if: github.event.schedule == '30 16 * * *' || github.event.inputs.job == 'history'
+        if: (github.event.schedule == '30 16 * * *' || github.event.schedule == '0 0,5,10 * * 0,6') || github.event.inputs.job == 'history'
         with:
           ref: main   # 排隊等很久的工作也要從最新資料開始，避免存回時衝突
       - uses: actions/checkout@v4      # 可轉債歷史回補：要讀 cbq／cbb 才知道哪些天已補
@@ -58,7 +59,7 @@ jobs:
             !/data/archive/margin/
             !/data/archive/val/
       - uses: actions/checkout@v4
-        if: github.event.schedule != '30 16 * * *' && github.event.inputs.job != 'history' && github.event.inputs.job != 'cbhist'
+        if: github.event.schedule != '30 16 * * *' && github.event.schedule != '0 0,5,10 * * 0,6' && github.event.inputs.job != 'history' && github.event.inputs.job != 'cbhist'
         with:
           ref: main
           sparse-checkout-cone-mode: false
@@ -87,6 +88,7 @@ jobs:
             "30 14 * * 1-5")    JOB=etf ;;
             "*/5 0-15 * * 1-5") JOB=announce ;;
             "30 16 * * *")      JOB=history ;;
+            "0 0,5,10 * * 0,6") JOB=history ;;
             *)                  JOB="${{ github.event.inputs.job || 'all' }}" ;;
           esac
           echo "job=$JOB" >> "$GITHUB_OUTPUT"
@@ -98,7 +100,8 @@ jobs:
             git config user.email "data-bot@users.noreply.github.com"
             # 每 45 分鐘存一次，萬一中途被中斷也不會白跑
             # 每週六凌晨那一輪：少補一輪，留時間用最新的長期資料庫重跑 CB 回測（溫度計區間＋鄭大訊號）
-            ROUNDS="1 2 3 4 5"; [ "$(TZ=Asia/Taipei date +%u)" = "6" ] && ROUNDS="1 2 3 4"
+            BT=0; [ "$(TZ=Asia/Taipei date +%u)" = "6" ] && [ "$(TZ=Asia/Taipei date +%H)" -lt 7 ] && BT=1   # 只有週六凌晨那一輪重跑回測
+            ROUNDS="1 2 3 4 5"; [ "$BT" = "1" ] && ROUNDS="1 2 3 4"
             for i in $ROUNDS; do
               # 平日 06:15 以後不再開新一輪，避免回補拖到盤後工作（排程延遲時也一樣）
               now=$(TZ=Asia/Taipei date +%H%M); dow=$(TZ=Asia/Taipei date +%u)
@@ -112,7 +115,7 @@ jobs:
               # 時間到、或 10 年剛補完要接著往前補，就繼續下一輪
               python -c "import json,sys; p=json.load(open('data/archive/progress.json')); sys.exit(0 if p.get('stopped')=='時間到' or (p.get('stopped')=='完成' and not p.get('complete')) else 1)" || break
             done
-            if [ "$(TZ=Asia/Taipei date +%u)" = "6" ]; then
+            if [ "$BT" = "1" ]; then
               pip install -q -r requirements-backtest.txt
               timeout 40m python -m research.cb_market > /dev/null || echo "CB 溫度計回測失敗"
               timeout 50m python -m research.cb_signals | tail -40 || echo "CB 訊號回測失敗"

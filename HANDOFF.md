@@ -21,6 +21,7 @@
 | 22:30 | etf | 主動 ETF（目前無資料） |
 | 每 5 分 08:00–23:55 | announce | 自結／季報／營收／庫藏／事件 |
 | 00:30（GitHub cron） | history | 長期資料庫回補：先補到 10 年（stage1），補完自動延伸到 2004-02（EARLIEST）；每晚最多 5×45 分鐘；也會續補庫藏股 |
+| 週六日 08:00／13:00／18:00（GitHub cron） | history | 週末加跑回補（每次最多 5×45 分；行情分到 80% 時間） |
 | 手動 | treasury | 庫藏股歷史回補約 6 個月（每次 20 分鐘、可續跑） |
 - workflow checkout 用 `ref: main`（排隊的工作也拿最新資料，避免存回衝突）。concurrency group `update-data`。
 - **稀疏 checkout**：history 以外的工作不下載 `data/archive/{quotes,inst,margin}`（只寫當天新檔，`git add --sparse`）。要讀這些舊檔的程式只能放在 history 工作。
