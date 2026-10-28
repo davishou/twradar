@@ -75,6 +75,15 @@ def ask_json(prompt: str, tag: str = "", **kw):
     try:
         return json.loads(m.group(1)) if m else None
     except json.JSONDecodeError:
+        # 輸出被長度上限截斷：保留最後一個完整的 "key": {...} 之前的部分
+        cut = txt.rfind("},")
+        if txt.lstrip().startswith("{") and cut > 0:
+            try:
+                part = json.loads(txt[txt.find("{"):cut + 1] + "}")
+                log.warning("AI 回傳被截斷，保留 %d 筆", len(part))
+                return part
+            except json.JSONDecodeError:
+                pass
         log.warning("AI 回傳非 JSON：%s", txt[:200])
         _status(ok=False, error="回傳不是 JSON", sample=txt[:300])
         return None

@@ -128,7 +128,7 @@ def _ai_prompt(lines: str, known: str, why: str) -> str:
             f"{lines}\n\n格式：{{\"代號\": {{\"theme\": \"族群\", \"emoji\": \"只有新族群才填\", \"reason\": \"20 字內理由\"}}}}")
 
 
-def reclassify_weak(names: dict[str, str], industries: dict[str, str], batch: int = 50, limit: int = 1500) -> dict:
+def reclassify_weak(names: dict[str, str], industries: dict[str, str], batch: int = 20, limit: int = 1500) -> dict:
     """把 themes.json 裡『AI 給了官方產業別』的股票，用已抓到的主要業務重新分類（需要 AI）。
     回傳 {"done": 重分類檔數, "changed": 換族群檔數, "left": 還缺業務資料的檔數}"""
     if not ai.enabled():
@@ -145,7 +145,7 @@ def reclassify_weak(names: dict[str, str], industries: dict[str, str], batch: in
         lines = "\n".join(f"{c} {names.get(c) or added[c].get('name', '')}（產業：{industries.get(c, '')}）；主要業務：{biz[c]['text'][:180]}"
                           for c in chunk)
         res = ai.ask_json(_ai_prompt(lines, "、".join(t for t in themes if t not in OFFICIAL), "近期曾漲停"),
-                          tag="reclassify", max_tokens=6000)
+                          tag="reclassify", max_tokens=8000)
         if not isinstance(res, dict):
             continue
         today = date.today().isoformat()

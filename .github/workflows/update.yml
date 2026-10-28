@@ -29,7 +29,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event.schedule == '30 16 * * *' || github.event.inputs.job == 'history') && 300 || 30 }}
+    timeout-minutes: ${{ (github.event.schedule == '30 16 * * *' || github.event.inputs.job == 'history') && 300 || (github.event.inputs.job == 'retheme' && 150 || 30) }}
     environment:
       name: github-pages
     env:
