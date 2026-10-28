@@ -52,7 +52,7 @@
 ## 基本面與族群資料（2026-10-25 起回補）
 - `data/archive/val/`（每日本益比/淨值比/殖利率，上市 2005 起）、`revenue/YYYY-MM`（月營收，2013 起，觀測站 nas/t21 靜態頁 cp950）、`fin/YYYYQn`（季報累計數，2013 起，ajax_t163sb04）。進度在 progress.json `fund`、`fund_run`。
 - 三大法人 2012-05-02 前查無（archive.INST_START 前不查）。櫃買舊行情端點對太早日期會回最新一天 → `_resp_date` 核對日期。
-- 族群：themes.json 有約 1,069 檔 AI 只給官方產業別（當初缺業務資料）。夜間 history 補抓全部公司『主要經營業務』（business.json）；補齊後手動跑一次 job `retheme`（會用 AI，約 20 次 haiku 呼叫）重分類並重建歷史漲停/隔日/統計。
+- 族群：themes.json 有約 1,069 檔 AI 只給官方產業別（當初缺業務資料）。夜間 history 補抓全部公司『主要經營業務』（business.json）；2026-10-28 已跑 job `retheme`（每批 20 檔，約 60 次 haiku）：1,059 檔改分到細族群（CCL→PCB基板、MLCC→被動元件），官方產業別族群已清空；歷史漲停/隔日/統計已重建。
 - 探測資料源：workflow `probe.yml`（結果推到 `probe` 分支，`git fetch origin +probe:refs/remotes/origin/probe`）。artifact 下載被這個環境擋。
 
 ## 可轉債（pipeline/cb.py、頁面 #/cb）
