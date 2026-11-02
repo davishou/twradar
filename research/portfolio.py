@@ -19,7 +19,8 @@ import pandas as pd
 
 from pipeline import backtest as bt
 
-BUY, SELL = 0.001425, 0.001425 + 0.003
+BUY0, SELL0 = 0.001425, 0.001425 + 0.003
+BUY, SELL = BUY0, SELL0
 _PX = None
 
 
@@ -39,9 +40,16 @@ def prices():
     return _PX
 
 
-def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, end=None, seed: int = 0) -> dict:
-    """ev 需要欄位 code、date（進場日＝這天收盤買）。slots=None 代表每個訊號都買、資金平均分（一定滿手）"""
+def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, end=None, seed: int = 0,
+             slip: float = 0.0, mats=None) -> dict:
+    """ev 需要欄位 code、date（進場日＝這天收盤買）；可選 hold（每筆各自持有天數，覆蓋參數 hold）。slots=None 代表每個訊號都買、資金平均分（一定滿手）
+    slip：每邊滑價（例如 0.003＝買貴 0.3%、賣便宜 0.3%），加在手續費稅之外。
+    mats：自訂 (價格矩陣, 每日報酬矩陣)，例如可轉債；預設用股票還原價。"""
     px, r, tx, ew = prices()
+    if mats is not None:
+        px, r = mats
+        px, r = px.reindex(tx.index), r.reindex(tx.index)
+    BUY, SELL = BUY0 + slip, SELL0 + slip
     days = px.index
     if start is not None:
         days = days[days >= pd.Timestamp(start)]
@@ -62,7 +70,8 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
     cost = np.zeros(n + 1)
     busy: list[int] = []
     trades = []
-    for d, c in zip(e["date"], e["code"]):
+    holds = e["hold"].to_numpy() if "hold" in e else np.full(len(e), hold)
+    for d, c, h in zip(e["date"], e["code"], holds):
         i, j = di[d], col[c]
         if not np.isfinite(arr[i, j]):
             continue
@@ -70,7 +79,7 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
             heapq.heappop(busy)
         if slots is not None and len(busy) >= slots:
             continue
-        k = min(i + hold, n - 1)
+        k = min(i + int(h), n - 1)
         seg = arr[i:k + 1, j]
         ok = np.where(np.isfinite(seg))[0]
         k_exit = i + ok[-1]                     # 下市／停牌：用最後有價格那天出場
