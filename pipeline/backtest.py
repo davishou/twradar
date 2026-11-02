@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 from . import config
-from .util import limit_up
+from .util import LIMIT_10_FROM, limit_up
 
 ARCHIVE = config.DATA_DIR / "archive"
 CACHE = config.DATA_DIR / ".cache"          # 已列入 .gitignore
@@ -83,7 +83,8 @@ def load_quotes():
         q = q.dropna(subset=["close"])
         refs = q["ref"].dropna().unique()
         lu = {r: limit_up(float(r)) for r in refs if r > 0}
-        q["lu"] = q["ref"].map(lu)
+        lu7 = {r: limit_up(float(r), 0.07) for r in refs if r > 0}
+        q["lu"] = q["ref"].map(lu).where(q["date"] >= LIMIT_10_FROM, q["ref"].map(lu7))   # 2015/6 以前漲停 7%
         q["is_lu"] = (q["close"] >= q["lu"] - 1e-9) & q["lu"].notna()
         adj = pd.read_csv(ARCHIVE / "adjust.csv.gz", dtype={"code": str}, parse_dates=["date"])
         q = q.merge(adj[["date", "code", "factor"]], on=["date", "code"], how="left")
@@ -178,7 +179,7 @@ def limitup_events(q=None, with_inst: bool = True, with_margin: bool = True, wit
     ev["value_e"] = ev["value"] / 1e8
     ev["price"] = ev["close"]
     ev["next_is_lu"] = ev["n_is_lu"].astype(bool)
-    ev["next_lu_price"] = ev["close"].map(lambda c: limit_up(float(c)))
+    ev["next_lu_price"] = [limit_up(float(c), 0.1 if str(d.date()) >= LIMIT_10_FROM else 0.07) for c, d in zip(ev["close"], ev["date"])]
     ev["next_open_lu"] = ev["n_open"] >= ev["next_lu_price"] - 1e-9
     ev["gap_next"] = (ev["n_open"] / ev["close"] - 1) * 100
     ev["next_ret"] = (ev["n_close"] / ev["close"] - 1) * 100

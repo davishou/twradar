@@ -16,7 +16,7 @@ import itertools
 
 from pipeline import backtest as bt
 
-SPLIT = "2024-07-01"
+SPLIT = "2016-01-01"     # 2004~2015 找、2016~2026 驗證（資料庫補到 2004 後改）
 # (欄位, 說明, 是否需要隔日資料)
 NUMERIC = [
     ("A", "均量比", False), ("run20", "前20日漲幅", False), ("run60", "前60日漲幅", False),

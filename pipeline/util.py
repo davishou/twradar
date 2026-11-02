@@ -56,9 +56,12 @@ def _round_to_tick(x: Decimal, mode) -> Decimal:
     return q
 
 
-def limit_up(prev_close: float) -> float:
-    """漲停價：前收 ×1.1 後向下取到合法跳動單位"""
-    return float(_round_to_tick(Decimal(str(prev_close)) * Decimal("1.1"), ROUND_FLOOR))
+LIMIT_10_FROM = "2015-06-01"     # 台股漲跌幅 2015/6/1 起由 7% 放寬為 10%
+
+
+def limit_up(prev_close: float, rate: float = 0.1) -> float:
+    """漲停價：前收 ×(1+rate) 後向下取到合法跳動單位（2015/6 以前 rate=0.07）"""
+    return float(_round_to_tick(Decimal(str(prev_close)) * (1 + Decimal(str(rate))), ROUND_FLOOR))
 
 
 def limit_down(prev_close: float) -> float:

@@ -224,6 +224,59 @@ def backfill_fundamentals(src, minutes: float = 20, delay: float = 4.0) -> dict:
     return st["fund_run"]
 
 
+# ------------------------------------------------------------------ 舊資料修正
+
+def repair_tpex_sign() -> dict:
+    """櫃買 2007/7~2017 的舊端點『漲跌』沒有正負號（跌也記成正數），所以 ref（＝收盤−漲跌）在下跌日是錯的，
+    會連帶算錯還原因子與漲停價。用前一個有成交日的收盤判斷正負：收盤−漲跌≈前收 → 漲；收盤＋漲跌≈前收 → 跌；
+    都不符（除權息、減資等）時取比較接近前收的那一個。另外把收盤＝0（當天沒成交）的列改成空白。
+    只修『當天櫃買列沒有任何負數漲跌』的檔案。回傳修正統計。"""
+    prev: dict[str, float] = {}
+    st = {"files": 0, "flip": 0, "zero": 0, "ambiguous": 0}
+    for d in days("quotes"):
+        rows = read("quotes", d)
+        tp = [r for r in rows if r.get("market") == "TPEX"]
+        unsigned = bool(tp) and not any(str(r.get("change", "")).startswith("-") for r in tp)
+        changed = False
+        for r in rows:
+            try:
+                c = float(r["close"]) if r.get("close") not in ("", None) else None
+            except ValueError:
+                c = None
+            if c is not None and c <= 0:
+                for k in ("open", "high", "low", "close", "ref", "change"):
+                    r[k] = ""
+                st["zero"] += 1
+                changed = True
+                continue
+            if unsigned and r.get("market") == "TPEX" and c is not None:
+                try:
+                    chg = abs(float(r.get("change") or 0))
+                except ValueError:
+                    chg = 0.0
+                p = prev.get(r["code"])
+                if chg > 0 and p:
+                    up, dn = c - chg, c + chg
+                    if abs(up - p) <= 0.006:
+                        sign = 1
+                    elif abs(dn - p) <= 0.006:
+                        sign = -1
+                    else:
+                        sign = 1 if abs(up - p) <= abs(dn - p) else -1
+                        st["ambiguous"] += 1
+                    if sign < 0:
+                        st["flip"] += 1
+                    r["change"] = round(sign * chg, 4)
+                    r["ref"] = round(c - sign * chg, 4)
+                    changed = True
+            if c is not None and c > 0:
+                prev[r["code"]] = c
+        if changed:
+            write("quotes", d, rows)
+            st["files"] += 1
+    return st
+
+
 # ------------------------------------------------------------------ 還原因子
 
 def build_adjust() -> int:
@@ -232,7 +285,7 @@ def build_adjust() -> int:
     prev: dict[str, float] = {}
     rows = []
     for d in days("quotes"):
-        cur = {}
+        cur, day_rows = {}, []
         for r in read("quotes", d):
             try:
                 c, ref = float(r["close"]), float(r["ref"]) if r["ref"] else None
@@ -240,9 +293,12 @@ def build_adjust() -> int:
                 continue
             p = prev.get(r["code"])
             if p and ref and abs(ref / p - 1) > 0.0005:
-                rows.append({"date": d, "code": r["code"], "name": r["name"], "prev_close": p, "ref": ref,
-                             "factor": round(ref / p, 6)})
+                day_rows.append({"date": d, "code": r["code"], "name": r["name"], "prev_close": p, "ref": ref,
+                                 "factor": round(ref / p, 6)})
             cur[r["code"]] = c
+        # 一天有兩成以上股票『參考價≠前收』＝中間少了一個交易日（例如以前的週六補行交易沒抓到），不是除權息
+        if not (len(cur) > 100 and len(day_rows) > 0.2 * len(cur)):
+            rows.extend(day_rows)
         prev = cur  # 只和『前一個交易日』比；前一天沒成交的股票不判斷，避免誤判
     buf = io.StringIO()
     w = csv.DictWriter(buf, ["date", "code", "name", "prev_close", "ref", "factor"], lineterminator="\n")

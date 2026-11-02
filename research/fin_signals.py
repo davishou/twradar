@@ -30,7 +30,7 @@ import pandas as pd
 from pipeline import backtest as bt
 
 ARCH = bt.ARCHIVE
-SPLIT = pd.Timestamp("2022-07-01")
+SPLIT = pd.Timestamp("2020-01-01")     # 2013~2019 找、2020~2026 驗證
 HZ = (20, 60, 120)
 OUT = Path(__file__).parent / "out" / "fin_signals.json"
 
@@ -107,10 +107,9 @@ def fin():
 
 
 def prices():
-    q = bt.load_quotes()[["date", "code", "adj"]]
-    mk = bt.market_index(bt.load_quotes())
-    px = q.pivot(index="date", columns="code", values="adj").sort_index()
-    return px, mk.reindex(px.index)
+    from research import portfolio as pf
+    px, _, _, ew = pf.prices()        # 截過異常跳動的還原價、全市場等權指數
+    return px, ew
 
 
 def returns(ev, px, mk):
@@ -129,7 +128,8 @@ def returns(ev, px, mk):
         p0 = arr[ev["i0"].to_numpy(), ci]
         p1 = np.where(okj, arr[np.minimum(j, len(days) - 1), ci], np.nan)
         m0, m1 = m[ev["i0"].to_numpy()], np.where(okj, m[np.minimum(j, len(days) - 1)], np.nan)
-        ev[f"ex{n}"] = (p1 / p0 - 1) - (m1 / m0 - 1)
+        ev[f"r{n}"] = p1 / p0 - 1                       # 絕對報酬（未扣成本）
+        ev[f"ex{n}"] = ev[f"r{n}"] - (m1 / m0 - 1)
     return ev
 
 
@@ -142,6 +142,10 @@ def summary(e):
         out[f"med{n}"] = None if len(x) < 10 else round(float(x.median()), 4)
         out[f"win{n}"] = None if len(x) < 10 else round(float((x > 0).mean()), 4)
         out[f"big{n}"] = None if len(x) < 10 else round(float((x > 0.3).mean()), 4)
+        a = e[f"r{n}"].dropna()
+        out[f"abs{n}"] = None if len(a) < 10 else round(float(a.mean()), 4)
+        out[f"absmed{n}"] = None if len(a) < 10 else round(float(a.median()), 4)
+        out[f"abswin{n}"] = None if len(a) < 10 else round(float((a > 0).mean()), 4)
     return out
 
 
@@ -156,8 +160,10 @@ def main():
     r, rs = revenue()
     f, fs = fin()
     res, rows = {}, []
-    evs = {k: r.loc[m.fillna(False), ["code", "deadline"]] for k, m in rs.items()}
-    evs.update({k: f.loc[m.fillna(False), ["code", "deadline"]] for k, m in fs.items()})
+    r["score"] = r["yoy"]                       # 同一天訊號太多時優先買：營收年增最高的
+    f["score"] = f["gm"] - f["gm_4"]            # 毛利率比去年同季增加最多的
+    evs = {k: r.loc[m.fillna(False), ["code", "deadline", "score"]] for k, m in rs.items()}
+    evs.update({k: f.loc[m.fillna(False), ["code", "deadline", "score"]] for k, m in fs.items()})
     evs["base_m"] = r.loc[r["yoy"].notna(), ["code", "deadline"]]
     evs["base_q"] = f.loc[f["gm"].notna(), ["code", "deadline"]]
     for k, e in evs.items():
@@ -168,8 +174,30 @@ def main():
             fm = lambda x: "—" if x is None else f"{x:+.1%}"  # noqa: E731
             fw = lambda x: "—" if x is None else f"{x:.0%}"  # noqa: E731
             rows.append({"訊號": NAMES[k], "期間": lab, "次數": s["n"],
-                         **{f"{n}日": f"{fm(s[f'mean{n}'])} 中位{fm(s[f'med{n}'])} 勝{fw(s[f'win{n}'])}" for n in HZ},
+                         **{f"{n}日超額": f"{fm(s[f'mean{n}'])} 勝{fw(s[f'win{n}'])}" for n in HZ},
+                         **{f"{n}日絕對": f"{fm(s[f'abs{n}'])} 中位{fm(s[f'absmed{n}'])} 賺{fw(s[f'abswin{n}'])}" for n in (60, 120)},
                          "120日大漲(>30%)": fw(s["big120"])})
+    # 絕對報酬：資金分 10 份，照訊號買、持有 60／120 日，扣交易成本
+    from research import portfolio as pf
+    port = {}
+    print("\n== 照訊號買的資金曲線（扣成本；A＝每個訊號都買、資金平均分；B＝資金 10 份、同天太多時挑分數最高的） ==")
+    for k, e in evs.items():
+        ee = pf.events_at_next_close(e[e["deadline"] >= start])
+        if k.startswith("base"):
+            ee = ee.drop(columns=["score"], errors="ignore")
+        for hold in (60, 120):
+            for lab, sl in (("A", None), ("B", 10)):
+                if k.startswith("base") and sl:
+                    continue
+                rr = pf.simulate(ee, hold, sl, start="2013-02-01")
+                port[f"{k}_{hold}_{lab}"] = rr
+                print(pf.fmt(rr, f"{lab} {NAMES[k]}"))
+        if not k.startswith("base"):
+            y = port[f"{k}_120_A"]["yearly"]
+            print("     A 持有120日 每年：" + "  ".join(f"{a[2:]} {v:+.0%}" for a, v in y.items()))
+    yt = port["base_m_60_A"]["yearly_taiex"]
+    print("     加權指數每年：" + "  ".join(f"{a[2:]} {v:+.0%}" for a, v in yt.items()))
+    res["_portfolio"] = port
     pd.set_option("display.width", 250)
     print(f"股價期間 {px.index[0].date()} ~ {px.index[-1].date()}；前後段切在 {SPLIT.date()}；數字＝超額報酬（減全市場等權）")
     print(pd.DataFrame(rows).to_string(index=False))
