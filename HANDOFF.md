@@ -96,6 +96,8 @@
 ## 長期資料庫修正與絕對報酬回測（2026-11-02）
 - 行情回補到 2004-02 完成（上櫃 2007/7 起、本益比 2005/9 起、法人 2012/5 起）。
 - 修正：`archive.repair_tpex_sign()`（櫃買舊資料漲跌沒正負號，已修檔）、`build_adjust` 略過缺漏交易日造成的假除權息、`util.LIMIT_10_FROM`（2015/6 前漲停 7%）。週六補行交易日仍沒抓（影響小）。
+- **回測接手順序**：先讀 research/README.md 最後兩節 → research/portfolio.py（simulate／fmt／events_at_next_close）→ research/combo_check.py（最佳組合的檢查方式）。
+- 回測下一步（使用者 2026-11-02 想專門做回測）：① 排除營建、金融再測最佳組合；② 加滑價（例如每邊 0.3%）與流動性限制；③ 每月 10 號後的選股清單做成網站頁；④ 其他候選：投信買超＋大盤下跌的漲停股、CB 快到期條件與站上轉換價的實際 CB 資金曲線。本機跑：`pip install -r requirements-backtest.txt`，第一次讀資料庫約 1~2 分鐘（data/.cache 快取）。
 - `research/portfolio.py`：資金曲線回測（K 份、持有 N 日、扣成本）；結論見 research/README 2026-11-02。最佳候選：營收年增加速＋最接近一年高點（年化約 +35%、回落 −34%），尚未做成網站每日標記。
 
 ## 小走勢圖（pipeline/spark.py、app.js 的 spk*）
