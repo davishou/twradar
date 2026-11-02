@@ -632,3 +632,5 @@ h3.sgt{font-size:15px;margin:12px 0 6px}
 .mknote{background:var(--warn-bg);color:var(--ink);border-left:3px solid var(--warn);border-radius:0;padding:8px 12px;font-size:13.5px;margin:6px 0 12px;max-width:90ch}
 .mknote b{color:var(--warn)}
 #mktb td.mkc2{max-width:11em}
+/* 選股清單：模擬買進的列 */
+tr.hl td{background:var(--warn-bg)}

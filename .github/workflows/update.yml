@@ -155,6 +155,7 @@ jobs:
           python -m pipeline.spark || echo "小走勢圖產生失敗，網站照常部署"
           python -m pipeline.cb hist || echo "可轉債走勢檔產生失敗"
           python -m pipeline.markets site || echo "國際行情網站檔產生失敗"
+          python -m pipeline.picks || echo "選股清單產生失敗"
 
       - name: 前端檔加版本號（避免瀏覽器用到舊的 app.js／style.css）
         run: |

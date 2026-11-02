@@ -1224,6 +1224,80 @@ P.cbsig = async (key) => {
   if (key) { const el = document.getElementById(`sg-${key}`); if (el) { el.classList.add("hl"); setTimeout(() => el.scrollIntoView({block: "start"}), 30); } }
 };
 
+// ---------------- 選股清單（營收年增加速＋最接近一年高點；pipeline/picks.py） ----------------
+P.picks = async () => {
+  setTitle("選股清單");
+  const js = await load("picks.json");
+  if (!js || !js.months) { app.innerHTML = `<h1>選股清單</h1>${emptyBox("清單還沒產生（每次部署時從營收與行情資料產生）")}`; return; }
+  const R = js.rule || {};
+  const nh = x => x == null ? '<span class="muted">—</span>' : `<b class="${x >= 0.95 ? "up" : ""}">${(x * 100).toFixed(1)}%</b>`;
+  const yy = x => x == null ? "—" : pc(x, 1);
+  const rr = x => x == null ? '<span class="muted">—</span>' : pc(x * 100, 1);
+  const months = js.months;
+  const cur = months.find(m => m.status !== "已進場") || null;
+  const last = months.find(m => m.status === "已進場");
+  const sumH = js.holdings.length ? js.holdings.reduce((a, h) => a + (h.ret || 0), 0) / js.holdings.length : null;
+  const status = m => m.status === "已進場" ? `${esc(m.entry)} 收盤進場` : m.status === "公布中"
+    ? `營收公布中（已公布 ${fi(m.reported)} / 上月 ${fi(m.reported_prev)} 家），期限 ${esc(m.deadline)}，清單還會變` : `等待進場（期限 ${esc(m.deadline)} 後第一個交易日收盤）`;
+  app.innerHTML = `<h1>選股清單</h1>
+    <p class="sub">回測最好的組合：<b>營收年增加速</b>（單月營收年增 ≥ ${R.min_yoy}%，且連 3 個月年增一個比一個高）＋<b>挑股價最接近一年高點</b>。
+      資料日 ${esc(js.date)}；最新營收月份 ${esc(js.latest_rev || "—")}。</p>
+    <div class="notice"><b>怎麼用</b>　資金分 ${R.slots} 份。每月營收公布期限（次月 10 日）之後的第一個交易日收盤，用<b>空出來的份數</b>從名單第 1 名往下買（已持有的跳過），
+      每檔持有 ${R.hold} 個交易日（約 3 個月）後收盤賣。只看 20 日均成交 ≥ 1 億的普通股，排除營建、金融。
+      回測 2013~2026（扣手續費、稅與每邊滑價 0.3%）：年化約 <b>+33%</b>、最大回落約 <b>−37%</b>；只有 2018、2022 小賠。
+      這是歷史統計、而且是從多種挑法裡選出來的，不構成投資建議。<a href="#/bt">看全部回測結果 →</a></div>
+    <h2>目前持股（模擬）</h2>
+    <p class="small muted">從 ${esc(js.sim_start || "—")} 開始照規則買的結果：持有 ${js.holdings.length} 檔、空 ${js.free} 份；平均報酬 ${rr(sumH)}（未扣成本）。
+      因為每檔都持有 60 個交易日，同一批常一起進出，所以大約每 3 個月換一批。</p>
+    <div id="ph"></div>
+    ${months.map((m, i) => `<h2>${esc(m.ym)} 營收　<span class="small muted">${status(m)}｜符合 ${fi(m.n_signal)} 家，過濾後 ${m.rows.length} 家${m.bought.length ? `，模擬買進 ${m.bought.length} 檔（★）` : ""}</span></h2>
+      <div id="pm${i}"></div>`).join("")}
+    <h2>近一年已賣出（模擬）</h2><div id="pc"></div>
+    <p class="small muted">「距一年高點」＝進場前一天收盤 ÷ 近 250 個交易日最高（還原權息）；100% 代表正在創一年新高，並列時順序不分先後。報酬＝進場收盤到最新收盤（還原權息、未扣成本）。
+      還沒到進場日的月份，排序用最新一天收盤。規則與回測：research/robust_check.py、pipeline/picks.py。</p>`;
+  table(document.getElementById("ph"), [
+    {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)}, {k: "ym", t: "營收月"},
+    {k: "entry", t: "進場日"}, {k: "held_days", t: "已持有", n: 1, f: r => `${r.held_days} 日`}, {k: "left_days", t: "剩餘", n: 1, f: r => `${r.left_days} 日`},
+    {k: "ret", t: "報酬", n: 1, f: r => rr(r.ret)}], js.holdings, {sort: ["entry", -1], empty: "目前沒有持股"});
+  months.forEach((m, i) => table(document.getElementById(`pm${i}`), [
+    {k: "rank", t: "名次", n: 1, f: r => `${r.bought ? "★ " : ""}${r.rank}`}, {k: "code", t: "代號"},
+    {k: "name", t: "名稱", f: r => `${mk(r.market)} ${stockLink(r.code, r.name)}`}, {k: "ind", t: "產業", f: r => `<span class="small">${esc(r.ind || "—")}</span>`},
+    {k: "near", t: "距一年高點", n: 1, f: r => nh(r.near)},
+    {k: "yoy", t: "年增", n: 1, f: r => yy(r.yoy)}, {k: "yoy1", t: "上月年增", n: 1, f: r => yy(r.yoy1)}, {k: "yoy2", t: "上上月", n: 1, f: r => yy(r.yoy2)},
+    {k: "liq", t: "20日均成交", n: 1, f: r => yi(r.liq)},
+    ...(m.status === "已進場" ? [{k: "ret", t: "進場至今", n: 1, f: r => rr(r.ret)}] : [])],
+    m.rows, {sort: ["rank", 1], rowClass: r => r.bought ? "hl" : "", empty: m.status === "公布中" ? "營收還在公布中，目前沒有符合的公司" : "沒有符合的公司"}));
+  table(document.getElementById("pc"), [
+    {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)}, {k: "ym", t: "營收月"},
+    {k: "entry", t: "進場"}, {k: "exit", t: "賣出"}, {k: "ret", t: "報酬", n: 1, f: r => rr(r.ret)}], js.closed, {sort: ["exit", -1], empty: "還沒有賣出的紀錄"});
+};
+
+// ---------------- 回測總表（research/catalog.py → bt_results.json） ----------------
+P.bt = async () => {
+  setTitle("回測總表");
+  const js = await load("bt_results.json");
+  if (!js) { app.innerHTML = `<h1>回測總表</h1>${emptyBox("還沒有資料")}`; return; }
+  const V = {"成立": "up", "部分": "warn", "不成立": "down"};
+  const pct = x => x == null ? '<span class="muted">—</span>' : pc(x, 1);
+  const cats = ["全部", ...new Set(js.rows.map(r => r.cat))];
+  app.innerHTML = `<h1>回測總表</h1>
+    <p class="sub">測過的所有策略，同一張表比較。更新 ${esc(js.updated)}。</p>
+    <div class="notice"><b>怎麼看</b>　${esc(js.note)}</div>
+    <div class="sigbar"><span class="lbl">分類</span><span class="chips" id="btc"></span></div>
+    <div id="btt"></div>
+    <h2>共同限制</h2><ul class="small">${js.caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>`;
+  const cols = [
+    {k: "verdict", t: "結論", f: r => `<span class="tag ${V[r.verdict] || ""}">${esc(r.verdict)}</span>`, s: r => ({"成立": 0, "部分": 1, "不成立": 2})[r.verdict]},
+    {k: "cat", t: "分類", f: r => `<span class="small">${esc(r.cat)}</span>`},
+    {k: "nm", t: "策略", w: 1, f: r => `<b>${esc(r.nm)}</b><br><span class="small muted">${esc(r.rule)}</span>`},
+    {k: "cagr", t: "年化", n: 1, f: r => pct(r.cagr)}, {k: "mdd", t: "最大回落", n: 1, f: r => pct(r.mdd)},
+    {k: "early", t: "前段", n: 1, f: r => pct(r.early)}, {k: "late", t: "後段", n: 1, f: r => pct(r.late)},
+    {k: "period", t: "期間", f: r => `<span class="small">${esc(r.period)}</span>`},
+    {k: "memo", t: "說明", w: 1, f: r => `<span class="small">${esc(r.memo)}</span>`}];
+  const t = table(document.getElementById("btt"), cols, js.rows, {sort: ["cagr", -1]});
+  chips(document.getElementById("btc"), cats.map(c => [c, c]), "全部", v => t.set(v === "全部" ? js.rows : js.rows.filter(r => r.cat === v)));
+};
+
 // ---- 可轉債 IPO ----
 const IPO_ORDER = {"詢圈中": 0, "競拍中": 1, "待開標": 2, "待詢圈": 3, "待競拍": 3, "待掛牌": 4, "已申報": 5, "已掛牌": 6, "取消": 7};
 const IPO_ST = {"詢圈中": "up", "競拍中": "up", "待開標": "warn", "待詢圈": "warn", "待競拍": "warn", "待掛牌": "ok", "已申報": "", "已掛牌": "pur", "取消": ""};
@@ -1685,13 +1759,13 @@ async function mkDetail(js, id) {
 
 // ---------------- router ----------------
 const routes = {"": P.home, daily: P.daily, nextday: P.nextday, stats: P.stats, commentary: P.commentary,
-  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbsig: P.cbsig, cbipo: P.cbipo, private: P.private, disposal: P.disposal, etf: P.etf, stock: P.stock, mkt: P.mkt};
+  att: P.att, fin: P.fin, rev: P.rev, treasury: P.treasury, events: P.events, borrow: P.borrow, cb: P.cb, cbsig: P.cbsig, cbipo: P.cbipo, private: P.private, disposal: P.disposal, etf: P.etf, stock: P.stock, mkt: P.mkt, picks: P.picks, bt: P.bt};
 async function route() {
   const [path] = location.hash.replace(/^#\/?/, "").split("?");
   const [name, arg] = path.split("/");
   const fn = routes[name] || P.home;
   document.querySelectorAll("nav.main a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#/" + name));
-  document.body.classList.toggle("wide", ["cb", "cbsig", "cbipo", "mkt"].includes(name));
+  document.body.classList.toggle("wide", ["cb", "cbsig", "cbipo", "mkt", "bt"].includes(name));
   app.innerHTML = '<p class="muted">載入中…</p>';
   SPK.length = 0; spkHide();
   try { await fn(arg ? decodeURIComponent(arg) : undefined); }
