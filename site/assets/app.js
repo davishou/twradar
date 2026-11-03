@@ -1277,7 +1277,7 @@ P.bt = async () => {
   setTitle("回測總表");
   const js = await load("bt_results.json");
   if (!js) { app.innerHTML = `<h1>回測總表</h1>${emptyBox("還沒有資料")}`; return; }
-  const V = {"成立": "up", "部分": "warn", "不成立": "down"};
+  const V = {"成立": "up", "部分": "warn", "不成立": "down", "待測": ""};
   const pct = x => x == null ? '<span class="muted">—</span>' : pc(x, 1);
   const cats = ["全部", ...new Set(js.rows.map(r => r.cat))];
   app.innerHTML = `<h1>回測總表</h1>
@@ -1287,7 +1287,7 @@ P.bt = async () => {
     <div id="btt"></div>
     <h2>共同限制</h2><ul class="small">${js.caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>`;
   const cols = [
-    {k: "verdict", t: "結論", f: r => `<span class="tag ${V[r.verdict] || ""}">${esc(r.verdict)}</span>`, s: r => ({"成立": 0, "部分": 1, "不成立": 2})[r.verdict]},
+    {k: "verdict", t: "結論", f: r => `<span class="tag ${V[r.verdict] || ""}">${esc(r.verdict)}</span>`, s: r => ({"成立": 0, "部分": 1, "不成立": 2, "待測": 3})[r.verdict]},
     {k: "cat", t: "分類", f: r => `<span class="small">${esc(r.cat)}</span>`},
     {k: "nm", t: "策略", w: 1, f: r => `<b>${esc(r.nm)}</b><br><span class="small muted">${esc(r.rule)}</span>`},
     {k: "cagr", t: "年化", n: 1, f: r => pct(r.cagr)}, {k: "mdd", t: "最大回落", n: 1, f: r => pct(r.mdd)},
