@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "tpex_punish / twse_full / lend / material [分鐘]"
+        description: "tpex_punish / twse_full / lend / material 起年 迄年"
         default: "tpex_punish"
 permissions:
   contents: write
@@ -35,7 +35,7 @@ jobs:
           git config user.name data-bot && git config user.email data-bot@users.noreply.github.com
           git add -A && git commit -qm "backfill ${{ github.event.inputs.task }} $(date -u +%FT%TZ)" || exit 0
           for i in 1 2 3; do
-            git pull -q --rebase "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" btdata 2>/dev/null || true
+            git pull -q --rebase -X theirs "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" btdata 2>/dev/null || git rebase --abort 2>/dev/null || true
             git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:btdata && break
             sleep 5
           done

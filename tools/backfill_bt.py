@@ -3,7 +3,7 @@
 python tools/backfill_bt.py tpex_punish        上櫃處置 2004 起（櫃買 bulletin/disposal，每季一查）
 python tools/backfill_bt.py twse_full          上市全額交割（變更交易）名單：每週一張快照，名單有變再逐日補，得到打入／恢復日
 python tools/backfill_bt.py lend               標借：證交所 borrow/BFIB8U（2005 起）、櫃買 margin/lend（每月一查）
-python tools/backfill_bt.py material [分鐘]     觀測站重大訊息逐日掃描（2005 起），只留公開收購／變更交易／恢復交易等關鍵字；可續跑
+python tools/backfill_bt.py material 起年 迄年   觀測站重大訊息逐日掃描（2005 起），只留公開收購／變更交易／恢復交易等關鍵字；可續跑
 """
 from __future__ import annotations
 
@@ -194,11 +194,11 @@ def lend():
 KW = re.compile(r"公開收購|變更交易方法|全額交割|普通交割|恢復.{0,6}交易方法|分盤集合競價|停止買賣|終止上市|終止櫃檯買賣")
 
 
-def material(minutes: float = 330):
-    prog_p = OUT / "material_progress.json"
-    prog = json.loads(prog_p.read_text()) if prog_p.exists() else {"next": "2005-01-03", "fail": []}
+def material(y0: int = 2005, y1: int = 2026, minutes: float = 330):
+    prog_p = OUT / f"material_progress_{y0}_{y1}.json"
+    prog = json.loads(prog_p.read_text()) if prog_p.exists() else {"next": f"{y0}-01-01", "fail": []}
     d = date.fromisoformat(prog["next"])
-    today = date.today()
+    today = min(date.today(), date(y1, 12, 31))
     t0 = time.time()
     buf: dict[int, list] = {}
     while d <= today and time.time() - t0 < minutes * 60:
@@ -232,9 +232,10 @@ if __name__ == "__main__":
     task = sys.argv[1]
     try:
         if task == "material":
-            material(float(sys.argv[2]) if len(sys.argv) > 2 else 330)
+            a = [int(x) for x in sys.argv[2:4]] if len(sys.argv) > 3 else [2005, 2026]
+            material(a[0], a[1])
         else:
             {"tpex_punish": tpex_punish, "twse_full": twse_full, "lend": lend}[task]()
     finally:
-        with open(OUT / "log.txt", "a", encoding="utf-8") as f:
+        with open(OUT / f"log_{'_'.join(sys.argv[1:])}.txt", "a", encoding="utf-8") as f:
             f.write(f"\n==== {task} {time.strftime('%F %T')}\n" + "\n".join(LOG[-400:]))
