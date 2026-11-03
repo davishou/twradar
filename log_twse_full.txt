@@ -1,0 +1,4 @@
+
+==== twse_full 2026-11-03 05:14:35
+err https://www.twse.com.tw/rwd/zh/fullDelivery/TWT85U {'date': '20071219', 'response': 'json'} HTTPSConnectionPool(host='www.twse.com.tw', port=443): Max retries exceeded with url: /rwd/zh/fullDelivery/TWT85U?date=20071219&response=json (Caused by ReadTimeoutError("HTTPSConnectionPool(host='www.twse.com.tw', port=443): Read timed out. (read timeout=60)"))
+twse_full snaps 2969 events 4547 fields ['證券代號', '證券名稱']
