@@ -1,0 +1,41 @@
+# 回測用歷史資料回補（手動觸發）。結果推到 btdata 分支（不動 main，不和每日更新衝突）
+name: backfill_bt
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "tpex_punish / twse_full / lend / material [分鐘]"
+        default: "tpex_punish"
+permissions:
+  contents: write
+concurrency:
+  group: backfill-bt-${{ github.event.inputs.task }}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            pipeline
+            tools
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 取回之前的結果（btdata 分支）
+        run: |
+          git fetch origin btdata:btdata 2>/dev/null && git worktree add out btdata || (mkdir -p out && cd out && git init -q -b btdata)
+      - run: python tools/backfill_bt.py ${{ github.event.inputs.task }}
+      - name: 推到 btdata 分支
+        if: always()
+        run: |
+          cd out
+          git config user.name data-bot && git config user.email data-bot@users.noreply.github.com
+          git add -A && git commit -qm "backfill ${{ github.event.inputs.task }} $(date -u +%FT%TZ)" || exit 0
+          for i in 1 2 3; do
+            git pull -q --rebase "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" btdata 2>/dev/null || true
+            git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:btdata && break
+            sleep 5
+          done
