@@ -5,8 +5,9 @@
   進場   營收法定公布期限（次月 10 日）之後的第一個交易日收盤買
   過濾   20 日均成交金額 ≥ 1 億、排除營建（建材營造）與金融（金融保險）、只看普通股（4 碼）
   排序   股價 ÷ 近一年（250 日）最高價，越接近 1 越前面（用進場前一天收盤）
-  資金   20 份；每月進場日用「空出來的份數」從名單第一名往下買（已持有的跳過），持有 60 個交易日賣
-另外模擬「從一年前開始照規則買」，得到目前應有的持股（回測 2013~2026 年化約 +33%，已扣成本與滑價 0.3%）。
+  資金   20 份；每月進場日用「空出來的份數」從名單第一名往下買（已持有的跳過）
+  出場   收盤比買價跌 20% 以上就在下一個交易日收盤賣（停損）；沒停損就持有 60 個交易日賣。停損空出的份數等下個月，不追買
+另外模擬「從一年前開始照規則買」，得到目前應有的持股（回測 2013~2026 年化約 +30%、最大回落約 −30%，已扣成本與滑價 0.3%）。
 
 只讀 data/history（約 260 個交易日）、data/archive/revenue、data/state/companies.json；不抓網路、不呼叫 AI。
 python -m pipeline.picks      產生 site/data/picks.json（部署時產生，不進 git）
@@ -24,7 +25,7 @@ from .util import read_json, write_json
 
 log = logging.getLogger(__name__)
 OUT = config.OUT_DIR / "picks.json"
-SLOTS, HOLD, MIN_LIQ, MIN_YOY = 20, 60, 1e8, 30.0
+SLOTS, HOLD, MIN_LIQ, MIN_YOY, STOP = 20, 60, 1e8, 30.0, 0.20
 EXCL_IND = {"建材營造", "金融保險"}
 NEAR_N, NEAR_MIN = 250, 120          # 一年高點；資料不足 120 日不排序（排最後）
 
@@ -182,7 +183,14 @@ def build(today: date | None = None) -> dict:
                     break
                 if r["code"] in held or r.get("entry_px") is None:
                     continue
-                h = {"code": r["code"], "name": r["name"], "ym": f"{yy}-{mm:02d}", "entry_i": ei, "exit_i": ei + HOLD}
+                a = adj[r["code"]]
+                p0 = a[ei]
+                exit_i, why = ei + HOLD, "到期"
+                for j in range(ei + 1, min(ei + HOLD, last) + 1):
+                    if a[j] is not None and a[j] <= p0 * (1 - STOP):
+                        exit_i, why = j + 1, "停損"
+                        break
+                h = {"code": r["code"], "name": r["name"], "ym": f"{yy}-{mm:02d}", "entry_i": ei, "exit_i": exit_i, "why": why}
                 holds.append(h)
                 trades.append(h)
                 held.add(r["code"])
@@ -207,6 +215,8 @@ def build(today: date | None = None) -> dict:
         p1 = next((a[j] for j in range(last, h["entry_i"] - 1, -1) if a[j] is not None), None)
         cur.append({"code": h["code"], "name": h["name"], "ym": h["ym"], "entry": days[h["entry_i"]].isoformat(),
                     "held_days": last - h["entry_i"], "left_days": h["exit_i"] - last,
+                    "stop_px": None if not p0 else round(p0 * (1 - STOP), 2), "close": None if not p1 else round(p1, 2),
+                    "sell_next": h["why"] == "停損",          # 今天收盤觸發停損，下個交易日收盤賣
                     "ret": None if not p0 or not p1 else round(p1 / p0 - 1, 4)})
     cur.sort(key=lambda r: (r["entry"], r["code"]))
     # 已賣出（模擬，最近一年）
@@ -219,9 +229,9 @@ def build(today: date | None = None) -> dict:
         if p1 is None:
             p1 = next((a[j] for j in range(h["exit_i"], h["entry_i"], -1) if a[j] is not None), None)
         done.append({"code": h["code"], "name": h["name"], "ym": h["ym"], "entry": days[h["entry_i"]].isoformat(),
-                     "exit": days[h["exit_i"]].isoformat(), "ret": None if not p0 or not p1 else round(p1 / p0 - 1, 4)})
+                     "exit": days[h["exit_i"]].isoformat(), "why": h["why"], "ret": None if not p0 or not p1 else round(p1 / p0 - 1, 4)})
     return {"date": days[-1].isoformat(), "latest_rev": f"{latest[0]}-{latest[1]:02d}" if latest else None,
-            "rule": {"slots": SLOTS, "hold": HOLD, "min_liq": MIN_LIQ, "min_yoy": MIN_YOY, "excl": sorted(EXCL_IND)},
+            "rule": {"slots": SLOTS, "hold": HOLD, "stop": STOP, "min_liq": MIN_LIQ, "min_yoy": MIN_YOY, "excl": sorted(EXCL_IND)},
             "months": out_months[::-1], "holdings": cur, "free": SLOTS - len(cur), "closed": done[::-1],
             "sim_start": out_months[0]["entry"] if out_months else None}
 

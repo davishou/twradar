@@ -1243,8 +1243,9 @@ P.picks = async () => {
     <p class="sub">回測最好的組合：<b>營收年增加速</b>（單月營收年增 ≥ ${R.min_yoy}%，且連 3 個月年增一個比一個高）＋<b>挑股價最接近一年高點</b>。
       資料日 ${esc(js.date)}；最新營收月份 ${esc(js.latest_rev || "—")}。</p>
     <div class="notice"><b>怎麼用</b>　資金分 ${R.slots} 份。每月營收公布期限（次月 10 日）之後的第一個交易日收盤，用<b>空出來的份數</b>從名單第 1 名往下買（已持有的跳過），
-      每檔持有 ${R.hold} 個交易日（約 3 個月）後收盤賣。只看 20 日均成交 ≥ 1 億的普通股，排除營建、金融。
-      回測 2013~2026（扣手續費、稅與每邊滑價 0.3%）：年化約 <b>+33%</b>、最大回落約 <b>−37%</b>；只有 2018、2022 小賠。
+      收盤比買價跌 ${Math.round((R.stop || 0.2) * 100)}% 以上就在<b>下一個交易日收盤停損</b>；沒停損就持有 ${R.hold} 個交易日（約 3 個月）後收盤賣。
+      停損空出的份數<b>等下個月</b>，不追買名單後面的（回測顯示追買會變差）。只看 20 日均成交 ≥ 1 億的普通股，排除營建、金融。
+      回測 2013~2026（扣手續費、稅與每邊滑價 0.3%）：年化約 <b>+30%</b>、最大回落約 <b>−30%</b>；只有 2018、2022 小賠。
       這是歷史統計、而且是從多種挑法裡選出來的，不構成投資建議。<a href="#/bt">看全部回測結果 →</a></div>
     <h2>目前持股（模擬）</h2>
     <p class="small muted">從 ${esc(js.sim_start || "—")} 開始照規則買的結果：持有 ${js.holdings.length} 檔、空 ${js.free} 份；平均報酬 ${rr(sumH)}（未扣成本）。
@@ -1253,11 +1254,13 @@ P.picks = async () => {
     ${months.map((m, i) => `<h2>${esc(m.ym)} 營收　<span class="small muted">${status(m)}｜符合 ${fi(m.n_signal)} 家，過濾後 ${m.rows.length} 家${m.bought.length ? `，模擬買進 ${m.bought.length} 檔（★）` : ""}</span></h2>
       <div id="pm${i}"></div>`).join("")}
     <h2>近一年已賣出（模擬）</h2><div id="pc"></div>
-    <p class="small muted">「距一年高點」＝進場前一天收盤 ÷ 近 250 個交易日最高（還原權息）；100% 代表正在創一年新高，並列時順序不分先後。報酬＝進場收盤到最新收盤（還原權息、未扣成本）。
+    <p class="small muted">「停損價」換算成現在的股價（已還原除權息），收盤 ≤ 停損價就隔天收盤賣。「距一年高點」＝進場前一天收盤 ÷ 近 250 個交易日最高（還原權息）；100% 代表正在創一年新高，並列時順序不分先後。報酬＝進場收盤到最新收盤（還原權息、未扣成本）。
       還沒到進場日的月份，排序用最新一天收盤。規則與回測：research/robust_check.py、pipeline/picks.py。</p>`;
   table(document.getElementById("ph"), [
     {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)}, {k: "ym", t: "營收月"},
-    {k: "entry", t: "進場日"}, {k: "held_days", t: "已持有", n: 1, f: r => `${r.held_days} 日`}, {k: "left_days", t: "剩餘", n: 1, f: r => `${r.left_days} 日`},
+    {k: "entry", t: "進場日"}, {k: "held_days", t: "已持有", n: 1, f: r => `${r.held_days} 日`},
+    {k: "left_days", t: "剩餘", n: 1, f: r => r.sell_next ? '<b class="down">停損：下個交易日收盤賣</b>' : `${r.left_days} 日`},
+    {k: "close", t: "收盤", n: 1, f: r => fp(r.close)}, {k: "stop_px", t: "停損價", n: 1, f: r => r.stop_px == null ? "—" : `<span class="small">${fp(r.stop_px)}</span>`},
     {k: "ret", t: "報酬", n: 1, f: r => rr(r.ret)}], js.holdings, {sort: ["entry", -1], empty: "目前沒有持股"});
   months.forEach((m, i) => table(document.getElementById(`pm${i}`), [
     {k: "rank", t: "名次", n: 1, f: r => `${r.bought ? "★ " : ""}${r.rank}`}, {k: "code", t: "代號"},
@@ -1269,7 +1272,8 @@ P.picks = async () => {
     m.rows, {sort: ["rank", 1], rowClass: r => r.bought ? "hl" : "", empty: m.status === "公布中" ? "營收還在公布中，目前沒有符合的公司" : "沒有符合的公司"}));
   table(document.getElementById("pc"), [
     {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)}, {k: "ym", t: "營收月"},
-    {k: "entry", t: "進場"}, {k: "exit", t: "賣出"}, {k: "ret", t: "報酬", n: 1, f: r => rr(r.ret)}], js.closed, {sort: ["exit", -1], empty: "還沒有賣出的紀錄"});
+    {k: "entry", t: "進場"}, {k: "exit", t: "賣出"}, {k: "why", t: "原因", f: r => r.why === "停損" ? '<span class="tag down">停損</span>' : '<span class="small muted">到期</span>'},
+    {k: "ret", t: "報酬", n: 1, f: r => rr(r.ret)}], js.closed, {sort: ["exit", -1], empty: "還沒有賣出的紀錄"});
 };
 
 // ---------------- 回測總表（research/catalog.py → bt_results.json） ----------------

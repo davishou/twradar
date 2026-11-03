@@ -73,6 +73,7 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
     cost = np.zeros(n + 1)
     busy: list[int] = []
     trades = []
+    tlog = []                                  # 每筆交易（進場日, 代號, 扣成本報酬, 持有天數）
     holds = e["hold"].to_numpy() if "hold" in e else np.full(len(e), hold)
     held_until: dict[int, int] = {}
     for d, c, h in zip(e["date"], e["code"], holds):
@@ -98,6 +99,7 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
         heapq.heappush(busy, k_exit)
         held_until[j] = k_exit + cooldown
         trades.append((arr[k_exit, j] / arr[i, j]) * (1 - BUY) * (1 - SELL) - 1)
+        tlog.append((days[i], c, trades[-1], k_exit - i))
     pos = np.cumsum(cnt[:n], axis=0)
     rr = np.nan_to_num(sub_r.to_numpy())
     held = pos.sum(axis=1)
@@ -124,6 +126,7 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
     return {
         "_eq": eq,                                 # 每日資金曲線（給組合用，不要存成 JSON）
         "_inv": pd.Series(invest, index=days),     # 每日持股比例
+        "_trades": pd.DataFrame(tlog, columns=["date", "code", "ret", "days"]),
         "range": [str(days[0].date()), str(days[-1].date())], "hold": hold, "slots": slots,
         "n_signals": int(len(e)), "n_trades": int(len(tr)),
         "trade": {"mean": round(float(tr.mean()), 4) if len(tr) else None, "med": round(float(np.median(tr)), 4) if len(tr) else None,
