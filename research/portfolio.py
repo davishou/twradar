@@ -43,10 +43,11 @@ def prices():
 
 
 def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, end=None, seed: int = 0,
-             slip: float = 0.0, mats=None) -> dict:
+             slip: float = 0.0, mats=None, skip_held: bool = False, cooldown: int = 0) -> dict:
     """ev 需要欄位 code、date（進場日＝這天收盤買）；可選 hold（每筆各自持有天數，覆蓋參數 hold）。slots=None 代表每個訊號都買、資金平均分（一定滿手）
     slip：每邊滑價（例如 0.003＝買貴 0.3%、賣便宜 0.3%），加在手續費稅之外。
-    mats：自訂 (價格矩陣, 每日報酬矩陣)，例如可轉債；預設用股票還原價。"""
+    mats：自訂 (價格矩陣, 每日報酬矩陣)，例如可轉債；預設用股票還原價。
+    skip_held：同一檔還在手上時不重複買（出場規則研究用）；cooldown：賣出後幾個交易日內不再買同一檔。"""
     px, r, tx, ew = prices()
     if mats is not None:
         px, r = mats
@@ -73,6 +74,7 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
     busy: list[int] = []
     trades = []
     holds = e["hold"].to_numpy() if "hold" in e else np.full(len(e), hold)
+    held_until: dict[int, int] = {}
     for d, c, h in zip(e["date"], e["code"], holds):
         i, j = di[d], col[c]
         if not np.isfinite(arr[i, j]):
@@ -80,6 +82,8 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
         while busy and busy[0] <= i:
             heapq.heappop(busy)
         if slots is not None and len(busy) >= slots:
+            continue
+        if skip_held and held_until.get(j, -1) > i:
             continue
         k = min(i + int(h), n - 1)
         seg = arr[i:k + 1, j]
@@ -92,6 +96,7 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
         cost[i + 1] += BUY
         cost[k_exit] += SELL
         heapq.heappush(busy, k_exit)
+        held_until[j] = k_exit + cooldown
         trades.append((arr[k_exit, j] / arr[i, j]) * (1 - BUY) * (1 - SELL) - 1)
     pos = np.cumsum(cnt[:n], axis=0)
     rr = np.nan_to_num(sub_r.to_numpy())
