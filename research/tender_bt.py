@@ -76,7 +76,7 @@ def match_codes(tg: pd.DataFrame, names: pd.DataFrame) -> pd.Series:
 
 def main(argv):
     src = Path(argv[0]) if argv else Path("btdata")
-    fs = sorted(glob.glob(str(src / "material" / "*.csv")))
+    fs = sorted(glob.glob(str(src / "material_*.csv")) + glob.glob(str(src / "material" / "*.csv")))
     raw = pd.concat([pd.read_csv(f, dtype=str) for f in fs], ignore_index=True)
     recs = [p for p in (parse(r) for _, r in raw.iterrows()) if p]
     tg = pd.DataFrame(recs)

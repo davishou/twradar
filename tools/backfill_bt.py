@@ -194,7 +194,7 @@ def lend():
 KW = re.compile(r"公開收購|變更交易方法|全額交割|普通交割|恢復.{0,6}交易方法|分盤集合競價|停止買賣|終止上市|終止櫃檯買賣")
 
 
-def material(y0: int = 2005, y1: int = 2026, minutes: float = 330):
+def material(y0: int = 2005, y1: int = 2026, minutes: float = 300):
     prog_p = OUT / f"material_progress_{y0}_{y1}.json"
     prog = json.loads(prog_p.read_text()) if prog_p.exists() else {"next": f"{y0}-01-01", "fail": []}
     d = date.fromisoformat(prog["next"])
@@ -219,7 +219,7 @@ def material(y0: int = 2005, y1: int = 2026, minutes: float = 330):
         if len(LOG) % 50 == 0:
             pass
     for y, rs in buf.items():
-        p = OUT / "material" / f"{y}.csv"
+        p = OUT / f"material_{y}.csv"
         old = list(csv.DictReader(open(p, encoding="utf-8"))) if p.exists() else []
         keyset = {(o["date"], o["time"], o["code"], o["subject"]) for o in old}
         old += [r for r in rs if (r["date"], r["time"], r["code"], r["subject"]) not in keyset]
