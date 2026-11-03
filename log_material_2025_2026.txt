@@ -1,3 +1,5 @@
 
 ==== material 2026-11-03 12:51:58
 material next 2025-11-15 fail 0 {2025: 524}
+==== material 2026-11-03 15:53:37
+material next 2026-11-04 fail 0 {2025: 118, 2026: 770}
