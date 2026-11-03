@@ -31,26 +31,32 @@ def _d(y, m, d):
 
 def parse(row) -> dict | None:
     body = re.sub(r"\s+", "", str(row["body"]))
-    subj = str(row["subject"])
-    if "公開收購" not in subj + body[:300]:
+    subj = re.sub(r"\s+", "", str(row["subject"]))
+    txt = subj + body
+    if "公開收購" not in txt[:600]:
         return None
+    self_target = bool(re.search(r"公開收購本公司|收購本公司|本公司普通股之公開收購|接獲.{0,40}公開收購", subj)) and "本公司公開收購" not in subj
     tgt = re.search(r"被收購(?:有價證券之)?(?:公開發行)?公司(?:之)?名稱[:：]?(.+?)(?:\(|（|股份有限公司|，|。|\d\.)", body)
-    price = re.search(r"(?:收購|對價)[^。]{0,40}?每股(?:普通股)?(?:為)?(?:現金)?新(?:臺|台)幣\s*([\d,]+(?:\.\d+)?)\s*元", body)
-    per = re.search(r"(?:公開)?收購期間[^。]{0,30}?" + ROC + r"[^。]{0,40}?至" + ROC, body)
-    ext = None
-    if "延長" in subj + body[:400]:
-        m = re.findall(r"延長[^。]{0,80}?至" + ROC, body)
-        if m:
-            ext = _d(*m[-1][-3:]) if len(m[-1]) >= 3 else None
-    if not tgt or not (per or ext):
+    if not tgt:
+        tgt = re.search(r"公開收購(.{2,20}?)(?:股份有限公司|\(股\)公司)", subj)
+    code_in = re.search(r"(?:上市|上櫃|股票)代號[:：]?(\d{4})", body)
+    price = re.search(r"每股(?:普通股)?(?:為)?(?:現金)?(?:新(?:臺|台)幣)?\s*([\d,]+(?:\.\d+)?)\s*元", body)
+    ends = []
+    for pat in (r"(?:公開)?收購期間[^。]{0,40}?" + ROC + r"[^。]{0,40}?至" + ROC,
+                r"(?:延長)[^。]{0,80}?至" + ROC):
+        for m in re.finditer(pat, body):
+            ends.append(_d(*m.groups()[-3:]))
+    m = re.search(r"屆滿之日期[:：](\d{2,3})/(\d{1,2})/(\d{1,2})", body) or re.search(r"收購期間已?於" + ROC + r"屆滿", body)
+    if m:
+        ends.append(_d(*m.groups()[-3:]))
+    ends = [e for e in ends if e]
+    if not ends:
         return None
-    start = _d(*per.groups()[:3]) if per else None
-    end = _d(*per.groups()[3:]) if per else None
-    if ext:
-        end = ext
     full = bool(re.search(r"100%|百分之百|全部(?:已發行)?(?:普通)?股|下市|終止上市|終止櫃檯買賣|合併|股份轉換", body))
-    return {"ann": row["date"], "acq_code": row["code"], "target": tgt.group(1).replace("臺", "台"),
-            "price": float(price.group(1).replace(",", "")) if price else np.nan, "start": start, "end": end, "full": full,
+    return {"ann": row["date"], "row_code": row["code"], "self": self_target,
+            "code_in": code_in.group(1) if code_in else None,
+            "target": tgt.group(1).replace("臺", "台") if tgt else "",
+            "price": float(price.group(1).replace(",", "")) if price else np.nan, "end": max(ends), "full": full,
             "subject": subj[:80]}
 
 
@@ -58,7 +64,7 @@ def match_codes(tg: pd.DataFrame, names: pd.DataFrame) -> pd.Series:
     out = []
     for r in tg.itertuples(index=False):
         cand = names[names["date"] == pd.Timestamp(r.ann)] if pd.Timestamp(r.ann) in set(names["date"]) else None
-        if cand is None or cand.empty:
+        if cand is None or cand.empty or not r.target:
             out.append(None)
             continue
         full = r.target
@@ -84,15 +90,18 @@ def main(argv):
     from pipeline import backtest as bt
     q = bt.load_quotes()
     import gzip  # noqa: F401
+    want = set(tg.loc[~tg["self"] & tg["code_in"].isna(), "ann"])
     names = pd.concat([pd.read_csv(f, usecols=["code", "name"], dtype=str).assign(date=pd.Timestamp(Path(f).name[:10]))
                        for f in sorted(glob.glob(str(bt.ARCHIVE / "quotes" / "*" / "*.csv.gz")))
-                       if Path(f).name[:10] in set(tg["ann"])], ignore_index=True)
+                       if Path(f).name[:10] in want], ignore_index=True)
     names = names[names["code"].str.fullmatch(r"\d{4}")]
     tg["code"] = match_codes(tg, names)
-    tg = tg.dropna(subset=["code", "end"])
-    tg = tg.sort_values("ann").groupby(["code"], as_index=False).apply(
-        lambda g: g.assign(grp=(pd.to_datetime(g["ann"]).diff().dt.days.fillna(0) > 150).cumsum())).reset_index(drop=True)
-    ev = tg.groupby(["code", "grp"]).agg(ann=("ann", "min"), target=("target", "first"), price=("price", "first"),
+    tg.loc[tg["self"], "code"] = tg.loc[tg["self"], "row_code"]
+    tg.loc[tg["code_in"].notna(), "code"] = tg.loc[tg["code_in"].notna(), "code_in"]
+    tg = tg.dropna(subset=["code", "end"]).sort_values(["code", "ann"])
+    tg["annd"] = pd.to_datetime(tg["ann"])
+    tg["grp"] = tg.groupby("code")["annd"].transform(lambda x: (x.diff().dt.days.fillna(0) > 150).cumsum())
+    ev = tg.groupby(["code", "grp"]).agg(ann=("ann", "min"), target=("target", "first"), price=("price", lambda x: x.dropna().iloc[0] if x.notna().any() else np.nan),
                                           end=("end", "max"), full=("full", "max")).reset_index()
     M = eb.mats()
     days, C = M["adj"].index, M["close"]
@@ -123,8 +132,7 @@ def main(argv):
             dd = [d1f(i) for i in e1.i]
             t = pd.DataFrame({"code": e1.code.to_numpy(), "d0": [D(i) for i in e1.i], "f0": "close",
                               "d1": [x[0] for x in dd], "f1": [x[1] for x in dd], "side": -1})
-            t = t.groupby("f1", group_keys=False).apply(lambda g: g)
-            r = eb.run(t[t.f1 == t.f1.iloc[0]] if len(t) else t, slots=None, slip=0.003, label=f"{fn} 截止前2日收盤空 → {ex}")
+            r = eb.run(t, slots=None, slip=0.003, label=f"{fn} 截止前2日收盤空 → {ex}")
             out.append(eb.fmt(r))
             print(out[-1])
     (eb.pf.OUT / "tender_bt.txt").write_text("\n".join(out))

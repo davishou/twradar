@@ -113,7 +113,7 @@
 - 結果見 research/README「短線事件策略（日資料）」；工具 research/event_bt.py（開盤／收盤進出、放空、避險）。
 - 回補工作 `.github/workflows/backfill_bt.yml`（tools/backfill_bt.py：tpex_punish、twse_full、lend、material 起年 迄年），結果推到 **btdata 分支**（`git fetch origin +btdata:refs/remotes/origin/btdata`），不動 main。上櫃處置已併入 data/archive/punish。
 - 全額交割（research/fulldel_bt.py）已跑完（用 btdata 的 twse_full_snaps.json 重建事件，名單短暫消失 ≤15 天視為仍在名單）。
-- 公開收購（research/tender_bt.py）等重大訊息掃描：btdata 根目錄 material_YYYY.csv（2026-11-03 08:00 UTC 起分 11 段、每段 2 年重跑；第一次因子資料夾被稀疏下載擋住沒存到）。跑法：把 btdata 的 material_*.csv 放到一個資料夾，`python -m research.tender_bt 那個資料夾`。上櫃全額交割也要從這份重大訊息找。
+- 公開收購（research/tender_bt.py，不成立）、上櫃全額交割（research/fulldel_tpex.py）已用約 7 成的重大訊息跑過；剩餘年份 2026-11-03 13:35 UTC 起 10 段續跑（各段從 material_progress_*.json 接續），補完可重跑。原始紀錄：btdata 根目錄 material_YYYY.csv（2026-11-03 08:00 UTC 起分 11 段、每段 2 年重跑；第一次因子資料夾被稀疏下載擋住沒存到）。跑法：把 btdata 的 material_*.csv 放到一個資料夾，`python -m research.tender_bt 那個資料夾`。上櫃全額交割也要從這份重大訊息找。
 - 處置新制 2026/8/10：處置 5 天（當沖占比高 7 天）、撮合一律約 2 分鐘；舊資料的 5／20 分鐘不再適用。
 
 ## 小走勢圖（pipeline/spark.py、app.js 的 spk*）
