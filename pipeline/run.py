@@ -470,6 +470,8 @@ def main(argv: list[str]) -> int:
         ids = [a for a in argv[1:] if a in markets.SERIES]     # markets full set psei：只重抓指定代號的全部歷史
         markets.update(full="full" in argv[1:], only=ids or None)
         brief.touch_meta("markets")
+    elif cmd == "notifytest":            # 只發測試通知（workflow 的通知步驟負責發送）
+        pass
     elif cmd == "retheme":
         job_retheme()
     elif cmd == "cbhist":                # 可轉債歷史集中回補（白天手動跑，約 25 分鐘一輪）

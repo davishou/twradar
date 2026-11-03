@@ -1225,6 +1225,29 @@ P.cbsig = async (key) => {
 };
 
 // ---------------- 選股清單（營收年增加速＋最接近一年高點；pipeline/picks.py） ----------------
+const nextBox = js => {
+  const n = js.next; if (!n) return "";
+  const L = a => a.map(x => `<b>${esc(x.code)}</b> ${esc(x.name)}${x.why ? `<span class="small muted">（${esc(x.why)}）</span>` : ""}`).join("、");
+  const p = n.pending;
+  return `<div class="notice"><b>下一步</b>　下個交易日 ${esc(n.date)}：
+    ${n.sell.length ? `收盤<b class="down">賣出</b> ${L(n.sell)}；` : ""}${n.buy.length ? `收盤<b class="up">買進</b> ${L(n.buy)}。` : ""}
+    ${!n.sell.length && !n.buy.length ? "沒有要操作的。" : ""}
+    ${p ? `<br>下一批：${esc(p.ym)} 營收（已公布 ${fi(p.reported)}／上月 ${fi(p.reported_prev)} 家），預計 <b>${esc(p.entry_est || "—")}</b> 收盤進場。` : ""}
+    <br><span class="small muted">設定好通知後，進場前一晚、進場日早上、停損觸發時會推播到手機。</span></div>`;
+};
+const trackBox = js => {
+  const t = js.log; if (!t) return "";
+  const c = t.closed || {}, e = t.expect || {};
+  if (!(t.rows || []).length) return `<h2>實際紀錄</h2><p class="small muted">從下一個進場日開始，每月進場日收盤後自動凍結當天的名單與買進價（之後不改），持有到停損或到期再記下報酬，用來和回測比較。</p>`;
+  const rows = t.rows.map(r => `<tr><td>${esc(r.ym)}</td><td>${stockLink(r.code, r.name)}</td><td>${esc(r.entry)}</td><td class="num">${fp(r.entry_close)}</td>
+    <td>${r.status === "持有中" ? '<span class="small">持有中</span>' : r.status === "停損" ? '<span class="tag down">停損</span>' : '<span class="small muted">到期</span>'}${r.exit ? ` <span class="small muted">${esc(r.exit)}</span>` : ""}</td>
+    <td class="num">${r.days ?? "—"}</td><td class="num">${r.ret == null ? "—" : pc(r.ret * 100, 1)}</td></tr>`).join("");
+  return `<h2>實際紀錄（${esc(t.start)} 起）</h2>
+    <p class="small">已出場 <b>${c.n || 0}</b> 筆：每筆平均 ${c.mean == null ? "—" : pc(c.mean * 100, 1)}、賺錢 ${c.win == null ? "—" : p0(c.win)}
+      ｜回測預期：每筆平均 ${pc(e.mean * 100, 1)}、賺錢 ${p0(e.win)}（${esc(e.note || "")}）。筆數少的時候差很多是正常的，至少累積 50 筆以上再比較。</p>
+    <div class="tw"><table><thead><tr><th>營收月</th><th>股票</th><th>進場</th><th class="num">進場收盤</th><th>狀態</th><th class="num">持有日</th><th class="num">報酬</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="small muted">報酬未扣成本，已還原除權息；每月進場日收盤後自動凍結名單，之後不改。</p>`;
+};
 P.picks = async () => {
   setTitle("選股清單");
   const js = await load("picks.json");
@@ -1247,6 +1270,8 @@ P.picks = async () => {
       停損空出的份數<b>等下個月</b>，不追買名單後面的（回測顯示追買會變差）。只看 20 日均成交 ≥ 1 億的普通股，排除營建、金融。
       回測 2013~2026（扣手續費、稅與每邊滑價 0.3%）：年化約 <b>+30%</b>、最大回落約 <b>−30%</b>；只有 2018、2022 小賠。
       這是歷史統計、而且是從多種挑法裡選出來的，不構成投資建議。<a href="#/bt">看全部回測結果 →</a></div>
+    ${nextBox(js)}
+    ${trackBox(js)}
     <h2>目前持股（模擬）</h2>
     <p class="small muted">從 ${esc(js.sim_start || "—")} 開始照規則買的結果：持有 ${js.holdings.length} 檔、空 ${js.free} 份；平均報酬 ${rr(sumH)}（未扣成本）。
       因為每檔都持有 60 個交易日，同一批常一起進出，所以大約每 3 個月換一批。</p>

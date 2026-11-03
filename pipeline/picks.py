@@ -123,7 +123,7 @@ def entry_index(days: list[date], y: int, m: int) -> tuple[date, int | None]:
     return dl, None
 
 
-def build(today: date | None = None) -> dict:
+def build(today: date | None = None, holidays: set[date] | None = None) -> dict:
     comp = (read_json(config.STATE_DIR / "companies.json", {}) or {}).get("data", {})
     days, adj, vals, meta = price_panel()
     if not days:
@@ -230,14 +230,121 @@ def build(today: date | None = None) -> dict:
             p1 = next((a[j] for j in range(h["exit_i"], h["entry_i"], -1) if a[j] is not None), None)
         done.append({"code": h["code"], "name": h["name"], "ym": h["ym"], "entry": days[h["entry_i"]].isoformat(),
                      "exit": days[h["exit_i"]].isoformat(), "why": h["why"], "ret": None if not p0 or not p1 else round(p1 / p0 - 1, 4)})
-    return {"date": days[-1].isoformat(), "latest_rev": f"{latest[0]}-{latest[1]:02d}" if latest else None,
+    # 下一個交易日要做的事（給通知與頁面「下一步」用）
+    nxt = next_trading_day(days[-1], holidays or set())
+    sell = [{"code": h["code"], "name": h["name"], "why": h["why"]} for h in holds if h["exit_i"] == last + 1]
+    buy, pend = [], None
+    for mo in out_months:
+        if mo["entry"] is None:
+            yy, mm = map(int, mo["ym"].split("-"))
+            ny, nm = _ym_add(yy, mm, 1)
+            ent = next_trading_day(date(ny, nm, 10), holidays or set())
+            mo["entry_est"] = ent.isoformat()
+            pend = mo
+            if ent == nxt:
+                keep = {h["code"] for h in holds if h["exit_i"] > last + 1}
+                free = SLOTS - len(keep)
+                for r in mo["rows"]:
+                    if free <= 0:
+                        break
+                    if r["code"] in keep:
+                        continue
+                    buy.append({"code": r["code"], "name": r["name"], "rank": r["rank"], "near": r["near"], "yoy": r["yoy"]})
+                    r["plan"] = True
+                    free -= 1
+    log = read_json(config.STATE_DIR / "picks_log.json", {}) or {}
+    return {"date": days[-1].isoformat(), "today": (today or days[-1]).isoformat(), "next_day": nxt.isoformat(),
+            "next": {"date": nxt.isoformat(), "sell": sell, "buy": buy,
+                     "pending": None if not pend else {"ym": pend["ym"], "entry_est": pend.get("entry_est"), "status": pend["status"],
+                                                       "reported": pend["reported"], "reported_prev": pend["reported_prev"]}},
+            "log": track(log, adj, days),
+            "latest_rev": f"{latest[0]}-{latest[1]:02d}" if latest else None,
             "rule": {"slots": SLOTS, "hold": HOLD, "stop": STOP, "min_liq": MIN_LIQ, "min_yoy": MIN_YOY, "excl": sorted(EXCL_IND)},
             "months": out_months[::-1], "holdings": cur, "free": SLOTS - len(cur), "closed": done[::-1],
             "sim_start": out_months[0]["entry"] if out_months else None}
 
 
+def next_trading_day(d: date, holidays: set[date]) -> date:
+    """d 之後的第一個交易日（週末、證交所休市日跳過）"""
+    from datetime import timedelta
+    x = d + timedelta(days=1)
+    while x.weekday() >= 5 or x in holidays:
+        x += timedelta(days=1)
+    return x
+
+
+def track(log: dict, adj: dict, days: list[date]) -> dict:
+    """實際紀錄：每月進場日凍結的名單（data/state/picks_log.json），算到今天的報酬（已出場的用凍結的出場報酬）"""
+    di = {d.isoformat(): i for i, d in enumerate(days)}
+    rows = []
+    for ym, mo in sorted(log.get("months", {}).items()):
+        for b in mo.get("bought", []):
+            r = {"ym": ym, "code": b["code"], "name": b["name"], "entry": mo["entry"], "entry_close": b.get("close")}
+            if b.get("exit"):
+                r.update(status=b["why"], exit=b["exit"], ret=b["ret"], days=b.get("days"))
+            else:
+                i0, a = di.get(mo["entry"]), adj.get(b["code"]) or []
+                cur = next((a[j] for j in range(len(days) - 1, (i0 or 0) - 1, -1) if a and a[j] is not None), None)
+                r.update(status="持有中", ret=None if i0 is None or not a or a[i0] is None or cur is None else round(cur / a[i0] - 1, 4),
+                         days=None if i0 is None else len(days) - 1 - i0)
+            rows.append(r)
+    done = [r["ret"] for r in rows if r["status"] != "持有中" and r["ret"] is not None]
+    return {"start": min(log.get("months", {}) or [None]), "rows": rows,
+            "closed": {"n": len(done), "mean": round(sum(done) / len(done), 4) if done else None,
+                       "win": round(sum(x > 0 for x in done) / len(done), 3) if done else None},
+            "expect": {"mean": 0.085, "win": 0.54, "note": "回測 2013~2026 每筆（扣成本）平均 +8.5%、賺錢 54%、平均持有約 51 個交易日"}}
+
+
+def update_log(res: dict, adj: dict, days: list[date], vals_close: dict) -> bool:
+    """進場日收盤後凍結當月名單；持有中的到停損／到期就凍結出場。回傳是否有變更"""
+    p = config.STATE_DIR / "picks_log.json"
+    log = read_json(p, {}) or {}
+    log.setdefault("months", {})
+    changed = False
+    di = {d.isoformat(): i for i, d in enumerate(days)}
+    for mo in res.get("months", []):
+        if mo["status"] != "已進場" or mo["ym"] in log["months"] or mo["entry"] != days[-1].isoformat():
+            continue                     # 只在進場日當天收盤後記錄（之後不補、不改）
+        bought = [{"code": r["code"], "name": r["name"], "rank": r["rank"], "near": r["near"], "yoy": r["yoy"],
+                   "close": vals_close.get(r["code"])} for r in mo["rows"] if r.get("bought")]
+        log["months"][mo["ym"]] = {"entry": mo["entry"], "n_signal": mo["n_signal"], "n_rows": len(mo["rows"]), "bought": bought,
+                                   "top": [{"code": r["code"], "name": r["name"], "rank": r["rank"]} for r in mo["rows"][:40]]}
+        changed = True
+    for ym, mo in log["months"].items():
+        i0 = di.get(mo["entry"])
+        if i0 is None:
+            continue
+        for b in mo["bought"]:
+            if b.get("exit"):
+                continue
+            a = adj.get(b["code"]) or []
+            if not a or a[i0] is None:
+                continue
+            p0, last = a[i0], len(days) - 1
+            ex = None
+            for j in range(i0 + 1, min(i0 + HOLD, last) + 1):
+                if a[j] is not None and a[j] <= p0 * (1 - STOP) and j + 1 <= last:
+                    ex = (j + 1, "停損")
+                    break
+            if ex is None and i0 + HOLD <= last:
+                ex = (i0 + HOLD, "到期")
+            if ex and a[ex[0]] is not None:
+                b.update(exit=days[ex[0]].isoformat(), why=ex[1], ret=round(a[ex[0]] / p0 - 1, 4), days=ex[0] - i0)
+                changed = True
+    if changed:
+        write_json(p, log)
+    return changed
+
+
 def run() -> None:
-    res = build()
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    try:
+        from . import sources
+        hol = sources.fetch_holidays()
+    except Exception:  # noqa: BLE001
+        hol = set()
+    res = build(today=datetime.now(ZoneInfo("Asia/Taipei")).date(), holidays=hol)
     write_json(OUT, res)
     log.info("選股清單：%s 個月、目前持股 %s 檔", len(res.get("months", [])), len(res.get("holdings", [])))
 

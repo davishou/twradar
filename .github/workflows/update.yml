@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / cb / markets / cbhist / treasury / retheme / all / backfill / history；重跑某天：daily 2026-10-16）"
+        description: "要執行的工作（daily / brokers / disposal / borrow / etf / announce / cb / markets / cbhist / treasury / retheme / all / backfill / history / notifytest（發測試通知）；重跑某天：daily 2026-10-16）"
         default: "all"
 
 permissions:
@@ -125,6 +125,17 @@ jobs:
           else
             python -m pipeline.run ${{ steps.pick.outputs.job }}
           fi
+
+      - name: 選股通知與實際紀錄（GitHub Secrets：NTFY_TOPIC、TELEGRAM_BOT_TOKEN／TELEGRAM_CHAT_ID、SMTP_USER／SMTP_PASS／NOTIFY_EMAIL，設哪個發哪個）
+        if: steps.pick.outputs.job == 'announce' || steps.pick.outputs.job == 'daily' || steps.pick.outputs.job == 'all' || steps.pick.outputs.job == 'notifytest'
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+        run: timeout 5m python -m pipeline.notify ${{ steps.pick.outputs.job == 'notifytest' && 'test' || '' }} || echo "選股通知失敗（不影響其他工作）"
 
       - name: 存回資料
         run: |
