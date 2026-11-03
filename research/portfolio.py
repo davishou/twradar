@@ -123,6 +123,7 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
     txs, ews = tx.loc[days], ew.loc[days]
     return {
         "_eq": eq,                                 # 每日資金曲線（給組合用，不要存成 JSON）
+        "_inv": pd.Series(invest, index=days),     # 每日持股比例
         "range": [str(days[0].date()), str(days[-1].date())], "hold": hold, "slots": slots,
         "n_signals": int(len(e)), "n_trades": int(len(tr)),
         "trade": {"mean": round(float(tr.mean()), 4) if len(tr) else None, "med": round(float(np.median(tr)), 4) if len(tr) else None,
