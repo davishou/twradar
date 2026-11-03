@@ -1284,6 +1284,7 @@ P.bt = async () => {
     <p class="sub">測過的所有策略，同一張表比較。更新 ${esc(js.updated)}。</p>
     <div class="notice"><b>怎麼看</b>　${esc(js.note)}</div>
     <div class="sigbar"><span class="lbl">分類</span><span class="chips" id="btc"></span></div>
+    <div class="sigbar"><span class="lbl">手續費</span><span class="chips" id="btf"></span><span class="small muted">　證交稅、融券手續費不打折；依各策略每年換手次數換算年化，最大回落與展開的參數格子仍是原價。</span></div>
     <div id="btt"></div>
     <h2>共同限制</h2><ul class="small">${js.caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>`;
   // 財報比率家族：點開看全部參數（兩張格子：年增門檻×連續季數；季增連幾季×年增門檻）
@@ -1330,8 +1331,13 @@ P.bt = async () => {
     {k: "early", t: "前段", n: 1, f: r => pct(r.early)}, {k: "late", t: "後段", n: 1, f: r => pct(r.late)},
     {k: "period", t: "期間", f: r => `<span class="small">${esc(r.period)}</span>`},
     {k: "memo", t: "說明", w: 1, f: r => `<span class="small">${esc(r.memo)}</span>`}];
-  const t = table(document.getElementById("btt"), cols, js.rows, {sort: ["cagr", -1], id: r => r.nm, expand: r => r.grid ? gridHTML(r) : r.hz ? hzHTML(r) : `<p class="small muted">這一項沒有其他參數。研究程式：research/${esc(r.script)}.py</p>`});
-  chips(document.getElementById("btc"), cats.map(c => [c, c]), "全部", v => t.set(v === "全部" ? js.rows : js.rows.filter(r => r.cat === v)));
+  // 手續費折扣：表內數字是原價 0.1425%；新年化 ≈ (1+原)×exp(換手×2×0.1425%×(1−折數))−1
+  let disc = 0.3, cat = "全部";
+  const fadj = (x, T) => x == null || !T ? x : Math.round(((1 + x / 100) * Math.exp(T * 2 * 0.001425 * (1 - disc)) - 1) * 1000) / 10;
+  const view = () => js.rows.filter(r => cat === "全部" || r.cat === cat).map(r => ({...r, cagr: fadj(r.cagr, r.turns), early: fadj(r.early, r.turns), late: fadj(r.late, r.turns)}));
+  const t = table(document.getElementById("btt"), cols, view(), {sort: ["cagr", -1], id: r => r.nm, expand: r => r.grid ? gridHTML(r) : r.hz ? hzHTML(r) : `<p class="small muted">這一項沒有其他參數。研究程式：research/${esc(r.script)}.py</p>`});
+  chips(document.getElementById("btc"), cats.map(c => [c, c]), "全部", v => { cat = v; t.set(view()); });
+  chips(document.getElementById("btf"), [["1", "原價"], ["0.3", "3 折"], ["0.16", "1.6 折"]], "0.3", v => { disc = +v; t.set(view()); });
 };
 
 // ---- 可轉債 IPO ----

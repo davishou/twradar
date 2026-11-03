@@ -14,6 +14,7 @@ UPDATED = "2026-11-03"
 NOTE = ("年化＝資金曲線每年平均報酬，最大回落＝資金從高點最多跌幾成，都已扣手續費、證交稅與每邊滑價（股票 0.3%、CB 0.5%，有註明的除外）。"
         "前段／後段＝分兩段各自算年化，兩段都要好才算可信。對照：加權指數 2013~2026 年化 +13.5%、最大回落 −32%（不含股息，約少算每年 3~4%）。"
         "「成立」＝兩段都明顯贏大盤；「部分」＝有優勢但不穩或只有一段好；「不成立」＝沒有贏大盤、回落太大，或沒有贏過它的對照組；「待測」＝已列入、還沒跑。"
+        "上方可切換手續費折扣（預設 3 折；表內數字原本用原價 0.1425% 計算，切換時用每年換手次數換算，最大回落不換算）。"
         "有「▸」的列點一下，展開看同一類所有參數的結果。")
 
 CAVEATS = [
@@ -167,9 +168,39 @@ def value_rows():
     return out
 
 
+# 每年換手次數（＝每年交易筆數 ÷ 份數，約等於每份資金一年買賣幾輪），網頁切換手續費折扣時用它換算年化：
+# 新年化 ≈ (1+原年化) × exp(換手次數 × 2 × 0.1425% × (1−折數)) − 1（證交稅、融券手續費不打折）。
+# 有實際交易筆數的直接填；沒填的從規則裡的「持有 N 日」估：持股比例約 85% × 250 ÷ N。
+TURNS = {
+    "營收年增加速＋挑最接近一年高點": 3.6, "營收創兩年新高＋年增 30%＋挑最接近一年高點": 3.4, "營收年增加速，持有 20 日": 7.9,
+    "每月純挑最接近一年高點（不看營收）": 3.6,
+    "除權息前一天買、除權息當天開盤賣（扣掉大盤）": 9.1, "除權息前幾天先買、除權息前一天賣": 6.7,
+    "一字漲停的股票，隔天開盤賣": 7.1, "有鎖住的漲停股（盤中才鎖），隔天開盤賣": 78.0,
+    "第二次處置（20 分鐘撮合）生效前一天放空": 6.5, "處置最後一天買進、解除當天賣出": 7.8,
+    "爆量急拉但收不住，隔天起放空": 8.8, "連續跌停後一開就跳高（進貨型），買進": 0.33,
+    "連續跌停後慢慢打開收長紅（出貨型），隔天放空": 0.77,
+}
+
+
+def turns_of(r: dict):
+    import re
+    if r["nm"] in TURNS:
+        return TURNS[r["nm"]]
+    txt = (r.get("rule") or "") + " " + r["nm"]
+    m = re.search(r"持有\s*(\d+)\s*[日天]", txt)
+    if m:
+        return round(0.85 * 250 / int(m.group(1)), 2)
+    m = re.search(r"持有\s*(\d+)\s*(個月|年)", txt)
+    if m:
+        return round(0.95 * (12 / int(m.group(1)) if m.group(2) == "個月" else 1 / int(m.group(1))), 2)
+    return 3.5            # 其餘多為持有 60 日（漲停股、均線、CB），粗估
+
+
 def main():
     keys = ["cat", "verdict", "nm", "rule", "cagr", "mdd", "early", "late", "period", "memo", "script"]
     rows = [dict(zip(keys, r)) for r in ROWS] + family_rows() + value_rows()
+    for r in rows:
+        r["turns"] = turns_of(r)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({"updated": UPDATED, "note": NOTE, "caveats": CAVEATS, "rows": rows}, ensure_ascii=False, indent=1))
     print(f"寫入 {OUT}（{len(rows)} 筆）")

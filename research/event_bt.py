@@ -17,7 +17,8 @@ import pandas as pd
 from pipeline import backtest as bt
 from research import portfolio as pf
 
-FEE, TAX, SHORT_FEE = 0.001425, 0.003, 0.0008
+import os
+FEE, TAX, SHORT_FEE = 0.001425 * float(os.getenv("FEE_DISC", "1")), 0.003, 0.0008   # FEE_DISC＝手續費折數
 _M = None
 
 

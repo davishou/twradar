@@ -101,6 +101,19 @@
 - **2026-11-02 下午已完成 ①②**（research/README 最後一節）：排除營建金融＋每邊滑價 0.3% 後最佳組合年化 +33.4%、回落 −36.7%，仍成立；但成交門檻提高到 3 億就掉到 +24%。均線多頭排列（research/ma_trend.py）不成立；毛利率 6 種（research/gm_check.py）年化 14~19%，遠不如營收；CB 實際資金曲線（research/cb_portfolio.py）站上轉換價年化 +8.8%、回落 −20%。2026-11-03 已完成 ③④：網站「選股」頁 #/picks（pipeline/picks.py，部署時從 data/history＋archive/revenue 產生 picks.json，含模擬持股）、「回測」總表頁 #/bt（research/catalog.py 手動維護數字 → site/data/bt_results.json，重跑研究後要更新）；漲停股加滑價（research/limitup_slip.py，部分成立）；毛利率參數掃描（research/gm_sweep.py，門檻 1~3pt 差不多，越嚴格越差）。財報比率掃描（research/ratio_sweep.py → research/results/，catalog.py 自動讀進回測頁、每家族一列代表、點開看格子）：都沒贏過『季報後不看比率只挑強勢股』對照（+20%），ROE≥15% 稍好（+22%）。價值因子（research/value_factor.py，2006 起，3 個月～5 年持有）：價值綜合 +10~12% 只和大盤差不多；便宜＋強勢 6 個月 +16%、兩段都贏大盤（回測頁「價值因子」分類，列可展開看各持有期）。
 - `research/portfolio.py`：資金曲線回測（K 份、持有 N 日、扣成本）；結論見 research/README 2026-11-02。最佳候選：營收年增加速＋最接近一年高點（年化約 +35%、回落 −34%），尚未做成網站每日標記。
 
+## 手續費折扣（使用者 2026-11-03 指定）
+- 使用者實際手續費約 **3 折**（短線量大時曾到 **1.6 折**）。新的回測一律報 3 折結果，必要時並列原價與 1.6 折。
+- 研究程式設環境變數即可：`FEE_DISC=0.3 python -m research.xxx`（research/portfolio.py、research/event_bt.py 都讀它；證交稅、融券手續費 0.08% 不打折）。不設＝原價 0.1425%。
+- 回測總表頁有「原價／3 折／1.6 折」切換（預設 3 折）：catalog.py 每列記 `turns`（每年換手次數＝每年交易筆數÷份數；沒填就從「持有 N 日」估 0.85×250/N），
+  前端換算 新年化≈(1+原)×exp(turns×2×0.1425%×(1−折數))−1。已用 FEE_DISC=0.3 重跑最佳組合驗證：換算 +34.4%＝精確 +34.4%。最大回落與展開的參數格子不換算。
+  catalog 新增策略時，若有實際交易筆數請在 TURNS 填精確值（短線策略換手很高，折扣影響很大）。
+
+## 短線事件策略與新資料源（2026-11-03 下午）
+- 結果見 research/README「短線事件策略（日資料）」；工具 research/event_bt.py（開盤／收盤進出、放空、避險）。
+- 回補工作 `.github/workflows/backfill_bt.yml`（tools/backfill_bt.py：tpex_punish、twse_full、lend、material 起年 迄年），結果推到 **btdata 分支**（`git fetch origin +btdata:refs/remotes/origin/btdata`），不動 main。上櫃處置已併入 data/archive/punish。
+- 公開收購（research/tender_bt.py）、全額交割（research/fulldel_bt.py）等 btdata 的 material/、twse_full_events.csv 回補完再跑。
+- 處置新制 2026/8/10：處置 5 天（當沖占比高 7 天）、撮合一律約 2 分鐘；舊資料的 5／20 分鐘不再適用。
+
 ## 小走勢圖（pipeline/spark.py、app.js 的 spk*）
 - 每檔 160 日還原收盤，64 階一字元編碼；漲停日紅點；外框＝圖中最大波動：最大漲幅 ×2/×5/×10 淡黃/黃/紅框，最大跌幅 −30/−60/−80% 淺綠/深綠/墨綠，漲跌都有取對數幅度大的一邊，框內小字標倍數或跌幅。
 - 表格有「名稱」欄就自動在右邊加「走勢」欄（table → withSpark），所有圖對齊，可依最大漲幅排序；每日漲停檔、隔日檔內嵌 `spark`（只畫到那一天），其他頁用 spark.json（最新）。滑鼠移上或手機點一下浮出大圖；個股頁直接顯示大圖。

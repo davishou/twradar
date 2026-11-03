@@ -19,7 +19,9 @@ import pandas as pd
 
 from pipeline import backtest as bt
 
-BUY0, SELL0 = 0.001425, 0.001425 + 0.003
+import os
+FEE_DISC = float(os.getenv("FEE_DISC", "1"))      # 手續費折數（例如 0.3＝3 折）；證交稅不打折
+BUY0, SELL0 = 0.001425 * FEE_DISC, 0.001425 * FEE_DISC + 0.003
 BUY, SELL = BUY0, SELL0
 _PX = None
 
