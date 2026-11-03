@@ -127,6 +127,8 @@ def run(tr: pd.DataFrame, slots: int | None = 10, slip: float = 0.003, start=Non
 
 
 def fmt(r: dict) -> str:
+    if not r["trades"]:
+        return f"{r['label']}｜沒有交易"
     f = lambda x: "—" if x is None else f"{x:+.1%}"  # noqa: E731
     yy = "  ".join(f"{str(y)[2:]} {v:+.0%}" for y, v in r["yearly"].items())
     return (f"{r['label']}｜{r['range']} 交易 {r['trades']}/{r['n']}：每筆平均 {f(r['mean'])} 中位 {f(r['med'])} "
