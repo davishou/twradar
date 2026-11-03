@@ -1327,6 +1327,7 @@ P.bt = async () => {
     {k: "verdict", t: "結論", f: r => `<span class="tag ${V[r.verdict] || ""}">${esc(r.verdict)}</span>`, s: r => ({"成立": 0, "部分": 1, "不成立": 2, "對照": 3, "待測": 4})[r.verdict]},
     {k: "cat", t: "分類", f: r => `<span class="small">${esc(r.cat)}</span>`},
     {k: "nm", t: "策略", w: 1, f: r => `${r.grid || r.hz ? '<span class="gx">▸</span> ' : ""}<b>${esc(r.nm)}</b><br><span class="small muted">${esc(r.rule)}</span>${r.grid ? '<br><span class="small gx">點一下看全部參數</span>' : r.hz ? '<br><span class="small gx">點一下看各持有期</span>' : ""}`},
+    {k: "hold", t: "持有", f: r => `<span class="small">${esc(r.hold || "—")}</span>`},
     {k: "cagr", t: "年化", n: 1, f: r => pct(r.cagr)}, {k: "mdd", t: "最大回落", n: 1, f: r => pct(r.mdd)},
     {k: "early", t: "前段", n: 1, f: r => pct(r.early)}, {k: "late", t: "後段", n: 1, f: r => pct(r.late)},
     {k: "period", t: "期間", f: r => `<span class="small">${esc(r.period)}</span>`},

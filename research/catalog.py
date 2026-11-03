@@ -205,11 +205,46 @@ def turns_of(r: dict):
     return 3.5            # 其餘多為持有 60 日（漲停股、均線、CB），粗估
 
 
+# 每筆持有多久（網頁「持有」欄）；規則裡有寫「持有 N 日／個月／年」的自動抓
+HOLD_TXT = {
+    "除權息前一天買、除權息當天開盤賣（扣掉大盤）": "1 晚",
+    "除權息前幾天先買、除權息前一天賣": "10~20 天",
+    "一字漲停的股票，隔天開盤賣": "1 晚",
+    "有鎖住的漲停股（盤中才鎖），隔天開盤賣": "1 晚",
+    "第二次處置（20 分鐘撮合）生效前一天放空": "5 天",
+    "處置最後一天買進、解除當天賣出": "1 天",
+    "爆量急拉但收不住，隔天起放空": "1~10 天",
+    "連續跌停後一開就跳高（進貨型），買進": "20 天",
+    "連續跌停後慢慢打開收長紅（出貨型），隔天放空": "20 天",
+    "全部漲停股": "60 天",
+    "每月隨機買 CB（≤120 元）": "60 天",
+    "營收創兩年新高＋年增 30%＋挑最接近一年高點": "60 天",
+    "資金各一半：營收加速＋強勢 ／ 便宜＋強勢": "60 天／6個月",
+}
+
+
+def hold_of(r: dict) -> str:
+    import re
+    if r["nm"] in HOLD_TXT:
+        return HOLD_TXT[r["nm"]]
+    txt = (r.get("rule") or "") + " " + r["nm"]
+    m = re.search(r"持有\s*(\d+)\s*[日天]", txt)
+    if m:
+        return f"{m.group(1)} 天"
+    m = re.search(r"持有\s*(\d+\s*(?:個月|年))", txt)
+    if m:
+        return m.group(1).replace(" ", "")
+    if r.get("cat", "").startswith("CB") or r.get("cat") in ("均線", "漲停股", "財報比率"):
+        return "60 天"
+    return "—"
+
+
 def main():
     keys = ["cat", "verdict", "nm", "rule", "cagr", "mdd", "early", "late", "period", "memo", "script"]
     rows = [dict(zip(keys, r)) for r in ROWS] + family_rows() + value_rows()
     for r in rows:
         r["turns"] = turns_of(r)
+        r["hold"] = hold_of(r)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({"updated": UPDATED, "note": NOTE, "caveats": CAVEATS, "rows": rows}, ensure_ascii=False, indent=1))
     print(f"寫入 {OUT}（{len(rows)} 筆）")
