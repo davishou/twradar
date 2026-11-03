@@ -1286,15 +1286,46 @@ P.bt = async () => {
     <div class="sigbar"><span class="lbl">分類</span><span class="chips" id="btc"></span></div>
     <div id="btt"></div>
     <h2>共同限制</h2><ul class="small">${js.caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>`;
+  // 財報比率家族：點開看全部參數（兩張格子：年增門檻×連續季數；季增連幾季×年增門檻）
+  const gridHTML = r => {
+    const G = r.grid, rows = G.rows, base = G.base;
+    let hold = "h60";
+    const cell = g => {
+      if (!g) return `<td class="muted">—</td>`;
+      const x = g[hold], d = x.cagr - (hold === "h60" ? base : G.base120);
+      const al = Math.min(1, Math.abs(d) / 10).toFixed(2), pick = G.pick[0] === g.kind && G.pick[1] === g.x && G.pick[2] === g.k && G.pick[3] === hold;
+      return `<td class="gc ${d >= 0 ? "p" : "n"} ${pick ? "pk" : ""}" style="--a:${al}" title="${esc(g.name)}｜最大回落 ${x.mdd}%｜前段 ${x.early}%／後段 ${x.late}%｜每季約 ${g.per_q} 檔">
+        <b>${x.cagr > 0 ? "+" : ""}${x.cagr}%</b><small>前 ${x.early ?? "—"}／後 ${x.late ?? "—"}</small><small>回落 ${x.mdd}%｜${Math.round(g.per_q)} 檔</small></td>`; };
+    const find = (kind, x, k) => rows.find(g => g.kind === kind && g.x === x && g.k === k);
+    const xl = x => x === 0 ? "&gt;0" : `≥${x}pt`;
+    const xs = [...new Set(rows.filter(g => g.kind === "yoy").map(g => g.x))], ks = [...new Set(rows.filter(g => g.kind === "yoy").map(g => g.k))];
+    const qx = [...new Set(rows.filter(g => g.kind === "qoq").map(g => g.x))], qn = [...new Set(rows.filter(g => g.kind === "qoq").map(g => g.k))];
+    const lv = rows.filter(g => g.kind === "lvl");
+    const draw = () => `<div class="gbar"><span class="small">持有</span>
+        <button type="button" class="chip ${hold === "h60" ? "on" : ""}" data-h="h60">60 日</button><button type="button" class="chip ${hold === "h120" ? "on" : ""}" data-h="h120">120 日</button>
+        <span class="small muted">對照（不看比率）：${hold === "h60" ? base : G.base120}%｜紅＝比對照好、綠＝比對照差，顏色越深差越多｜框線＝代表那一組（持有 ${G.pick[3] === "h60" ? 60 : 120} 日）</span></div>
+      <h4>${esc(G.label)}比去年同季高幾個百分點 × 連續幾季</h4>
+      <div class="tw"><table class="grid"><thead><tr><th>年增門檻</th>${ks.map(k => `<th>${k === 1 ? "只看本季" : `連 ${k} 季`}</th>`).join("")}</tr></thead>
+        <tbody>${xs.map(x => `<tr><th>${xl(x)}</th>${ks.map(k => cell(find("yoy", x, k))).join("")}</tr>`).join("")}</tbody></table></div>
+      ${qn.length ? `<h4>${esc(G.label)}一季比一季高（連幾季）× 同時比去年同季高幾個百分點</h4>
+      <div class="tw"><table class="grid"><thead><tr><th>年增門檻</th>${qn.map(n => `<th>季增連 ${n} 季</th>`).join("")}</tr></thead>
+        <tbody>${qx.map(x => `<tr><th>${xl(x)}</th>${qn.map(n => cell(find("qoq", x, n))).join("")}</tr>`).join("")}</tbody></table></div>` : ""}
+      ${lv.length ? `<h4>ROE 水準（年化）＋比去年同季高</h4><div class="tw"><table class="grid"><thead><tr>${lv.map(g => `<th>ROE ≥ ${g.x}%</th>`).join("")}</tr></thead><tbody><tr>${lv.map(cell).join("")}</tr></tbody></table></div>` : ""}
+      <p class="small muted">每格：年化（扣成本與滑價）、前段 2013~19／後段 2020~26 年化、最大回落、每季可選檔數。滑鼠移上去看完整說明。</p>`;
+    const id = "g" + Math.random().toString(36).slice(2, 8);
+    setTimeout(() => { const el = document.getElementById(id); if (!el) return;
+      el.onclick = e => { const b = e.target.closest("button[data-h]"); if (!b) return; e.stopPropagation(); hold = b.dataset.h; el.innerHTML = draw(); }; }, 0);
+    return `<div class="gwrap" id="${id}">${draw()}</div>`;
+  };
   const cols = [
-    {k: "verdict", t: "結論", f: r => `<span class="tag ${V[r.verdict] || ""}">${esc(r.verdict)}</span>`, s: r => ({"成立": 0, "部分": 1, "不成立": 2, "待測": 3})[r.verdict]},
+    {k: "verdict", t: "結論", f: r => `<span class="tag ${V[r.verdict] || ""}">${esc(r.verdict)}</span>`, s: r => ({"成立": 0, "部分": 1, "不成立": 2, "對照": 3, "待測": 4})[r.verdict]},
     {k: "cat", t: "分類", f: r => `<span class="small">${esc(r.cat)}</span>`},
-    {k: "nm", t: "策略", w: 1, f: r => `<b>${esc(r.nm)}</b><br><span class="small muted">${esc(r.rule)}</span>`},
+    {k: "nm", t: "策略", w: 1, f: r => `${r.grid ? '<span class="gx">▸</span> ' : ""}<b>${esc(r.nm)}</b><br><span class="small muted">${esc(r.rule)}</span>${r.grid ? '<br><span class="small gx">點一下看全部參數</span>' : ""}`},
     {k: "cagr", t: "年化", n: 1, f: r => pct(r.cagr)}, {k: "mdd", t: "最大回落", n: 1, f: r => pct(r.mdd)},
     {k: "early", t: "前段", n: 1, f: r => pct(r.early)}, {k: "late", t: "後段", n: 1, f: r => pct(r.late)},
     {k: "period", t: "期間", f: r => `<span class="small">${esc(r.period)}</span>`},
     {k: "memo", t: "說明", w: 1, f: r => `<span class="small">${esc(r.memo)}</span>`}];
-  const t = table(document.getElementById("btt"), cols, js.rows, {sort: ["cagr", -1]});
+  const t = table(document.getElementById("btt"), cols, js.rows, {sort: ["cagr", -1], id: r => r.nm, expand: r => r.grid ? gridHTML(r) : `<p class="small muted">這一項沒有其他參數。研究程式：research/${esc(r.script)}.py</p>`});
   chips(document.getElementById("btc"), cats.map(c => [c, c]), "全部", v => t.set(v === "全部" ? js.rows : js.rows.filter(r => r.cat === v)));
 };
 

@@ -13,7 +13,8 @@ UPDATED = "2026-11-03"
 
 NOTE = ("年化＝資金曲線每年平均報酬，最大回落＝資金從高點最多跌幾成，都已扣手續費、證交稅與每邊滑價（股票 0.3%、CB 0.5%，有註明的除外）。"
         "前段／後段＝分兩段各自算年化，兩段都要好才算可信。對照：加權指數 2013~2026 年化 +13.5%、最大回落 −32%（不含股息，約少算每年 3~4%）。"
-        "「成立」＝兩段都明顯贏大盤；「部分」＝有優勢但不穩或只有一段好；「不成立」＝沒有贏大盤或回落太大；「待測」＝已列入、還沒跑。")
+        "「成立」＝兩段都明顯贏大盤；「部分」＝有優勢但不穩或只有一段好；「不成立」＝沒有贏大盤、回落太大，或沒有贏過它的對照組；「待測」＝已列入、還沒跑。"
+        "有「▸」的列點一下，展開看同一類所有參數的結果。")
 
 CAVEATS = [
     "這些都是歷史統計，而且是從很多條件裡挑出來的（有挑選偏誤），未來不一定成立；不構成投資建議。",
@@ -21,6 +22,8 @@ CAVEATS = [
     "財報訊號用法定公布期限進場（營收次月 10 日、季報 5/15、8/14、11/14、3/31），實際上很多公司更早公布。",
     "已下市公司沒有產業別，用代號推（25xx 營建、28xx 金融）。",
     "CB 的成本照股票算（CB 實際免證交稅），偏保守。",
+    "財報比率家族：" + "代表＝每季至少 40 檔可選（條件不嚴苛）的組合裡，前段、後段年化較差的那一段最高的一組；前段／後段是從全期資金曲線切開算的。",
+    "ROE 用『單季 EPS×4 ÷ 每股淨值』估算，每股淨值＝公布期限那天收盤價 ÷ 股價淨值比，和財報上的 ROE 會有些差距。",
 ]
 
 # cat, verdict, nm, rule, cagr, mdd, early, late, period, memo, script
@@ -32,15 +35,9 @@ ROWS = [
     ("營收", "部分", "營收年增加速，持有 20 日", "同最佳組合但持有 20 日", 19.0, -48.2, 11.5, 27.5, "2013~2026", "持有太短，回落大。", "robust_check"),
     ("對照", "不成立", "每月純挑最接近一年高點（不看營收）", "每月第一個交易日、成交 ≥1 億、排除營建金融、20 份、持有 60 日",
      13.3, -42.7, None, None, "2013~2026", "和大盤差不多，證明營收條件有貢獻。", "robust_check"),
-    ("毛利率", "部分", "毛利率年增 ≥2 個百分點，持有 120 日", "季報；20 份挑最接近一年高點",
-     18.9, -34.0, 17.4, 21.0, "2013~2026", "毛利率類裡最穩的一組，但只小贏大盤；門檻 1~3pt 差不多，再嚴格反而變差。", "gm_sweep"),
-    ("毛利率", "部分", "毛利率創 8 季新高", "季報；20 份挑最接近一年高點、持有 60 日",
-     18.9, -37.6, 10.7, 27.7, "2013~2026", "2022 −33%。", "gm_check"),
-    ("毛利率", "部分", "毛利率連 2 季比上季高（且比去年高）", "季報；持有 120 日", 19.0, -35.3, 13.7, 24.9, "2013~2026", "", "gm_sweep"),
-    ("毛利率", "部分", "毛利率年增 ≥3 個百分點", "季報；持有 60 日", 16.6, -42.1, 11.0, 22.9, "2013~2026", "", "gm_sweep"),
-    ("毛利率", "部分", "連 3 季毛利率比去年同季高", "季報；持有 60／120 日", 18.4, -42.0, 11.1, 26.2, "2013~2026", "120 日 +18.8%。", "gm_sweep"),
-    ("毛利率", "不成立", "連 4 季毛利率年增 ≥2 個百分點", "季報；持有 60 日", 7.7, -52.0, -4.8, 23.1, "2013~2026", "條件越嚴格越差：符合的太少，挑不到強勢股。", "gm_sweep"),
-    ("毛利率", "不成立", "缺貨漲價（毛利率年增 ≥3pt＋營收年增 ≥20%）", "季報；20 份挑最接近一年高點、持有 60 日",
+    ("財報比率", "不成立", "毛利率創 8 季新高", "季報；20 份挑最接近一年高點、持有 60 日",
+     18.9, -37.6, 10.7, 27.7, "2013~2026", "沒贏過對照（+20.1%）；2022 −33%。", "gm_check"),
+    ("財報比率", "不成立", "缺貨漲價（毛利率年增 ≥3pt＋營收年增 ≥20%）", "季報；20 份挑最接近一年高點、持有 60 日",
      13.7, -39.9, 1.7, 28.1, "2013~2026", "隨機挑只有 +6%。", "gm_check"),
     ("漲停股", "部分", "投信買超＋大盤前 20 日下跌的漲停股", "隔日收盤買（排除鎖漲停）；10 份、持有 60 日",
      19.0, -42.6, 4.7, 27.1, "2012/6~2026", "2019 後才好，2012~18 只有 +4.7%、2018 −30%。排除營建金融＋成交 ≥1 億：+18.2%。持有 20 日只有 +7.8%。", "limitup_slip"),
@@ -71,9 +68,61 @@ ROWS = [
 ]
 
 
+RES = Path(__file__).resolve().parent / "results"
+# 財報比率家族（research/ratio_sweep.py 的結果）：每個家族一列「代表」，點開看全部參數
+FAMILY = {
+    "gm": ("毛利率", "不成立", "和對照（不看比率）差不多：門檻 1~3pt 都類似，條件越嚴格（門檻高、連續季數多）越差。"),
+    "om": ("營業利益率", "不成立", "和毛利率類似，沒有比對照好。"),
+    "pm": ("稅前淨利率", "不成立", "和毛利率類似，沒有比對照好。"),
+    "roe": ("股東權益報酬率（ROE）", "部分", "比率類裡最好的是「ROE ≥15%＋比去年同季高」：持有 60 日 +22.4%、回落 −33%，只比對照多約 2 個百分點。"),
+    "tri": ("三率三升", "不成立", "毛利率、營益率、稅前淨利率都比去年同季高；和對照差不多。"),
+}
+PICK_RULE = "代表＝每季至少 40 檔可選（條件不嚴苛）的組合裡，前段、後段年化較差的那一段最高的一組。"
+
+
+def pct(x):
+    return None if x is None else round(x * 100, 1)
+
+
+def family_rows():
+    base = json.loads((RES / "ratio_base.json").read_text())["rows"][0] if (RES / "ratio_base.json").exists() else None
+    out = []
+    if base:
+        b = base["h60"]
+        out.append({"cat": "財報比率", "verdict": "對照", "nm": "對照：季報公布後挑最接近一年高點（不看任何比率）",
+                    "rule": "每季所有公司（成交 ≥1 億、排除營建金融）；20 份、持有 60 日",
+                    "cagr": pct(b["cagr"]), "mdd": pct(b["mdd"]), "early": pct(b["early"]), "late": pct(b["late"]), "period": "2013~2026",
+                    "memo": "財報比率條件要贏過這一列才算有加分。持有 120 日 +15.4%。", "script": "ratio_sweep"})
+    for key, (nm, verdict, memo) in FAMILY.items():
+        p = RES / f"ratio_{key}.json"
+        if not p.exists():
+            continue
+        rows = json.loads(p.read_text())["rows"]
+        best = None
+        for r in rows:
+            if r["per_q"] < 40:
+                continue
+            for h in ("h60", "h120"):
+                x = r[h]
+                sc = min(x["early"] if x["early"] is not None else -1, x["late"] if x["late"] is not None else -1)
+                if best is None or sc > best[0]:
+                    best = (sc, r, h)
+        _, r, h = best
+        x = r[h]
+        grid = [{"kind": g["kind"], "x": g["x"], "k": g["k"], "name": g["name"], "per_q": g["per_q"],
+                 **{hh: {kk: pct(g[hh][kk]) for kk in ("cagr", "mdd", "early", "late")} for hh in ("h60", "h120")}} for g in rows]
+        out.append({"cat": "財報比率", "verdict": verdict, "nm": f"{nm}（{len(rows)} 種參數）",
+                    "rule": f"代表：{r['name']}，持有 {h[1:]} 日（每季約 {r['per_q']:.0f} 檔）",
+                    "cagr": pct(x["cagr"]), "mdd": pct(x["mdd"]), "early": pct(x["early"]), "late": pct(x["late"]), "period": "2013~2026",
+                    "memo": memo, "script": "ratio_sweep",
+                    "grid": {"key": key, "label": nm, "rows": grid, "base": pct(base["h60"]["cagr"]) if base else None,
+                             "base120": pct(base["h120"]["cagr"]) if base else None, "pick": [r["kind"], r["x"], r["k"], h]}})
+    return out
+
+
 def main():
     keys = ["cat", "verdict", "nm", "rule", "cagr", "mdd", "early", "late", "period", "memo", "script"]
-    rows = [dict(zip(keys, r)) for r in ROWS]
+    rows = [dict(zip(keys, r)) for r in ROWS] + family_rows()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({"updated": UPDATED, "note": NOTE, "caveats": CAVEATS, "rows": rows}, ensure_ascii=False, indent=1))
     print(f"寫入 {OUT}（{len(rows)} 筆）")
