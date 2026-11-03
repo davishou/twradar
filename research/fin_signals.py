@@ -190,7 +190,7 @@ def main():
                 if k.startswith("base") and sl:
                     continue
                 rr = pf.simulate(ee, hold, sl, start="2013-02-01")
-                port[f"{k}_{hold}_{lab}"] = rr
+                port[f"{k}_{hold}_{lab}"] = {kk: v for kk, v in rr.items() if kk != "_eq"}
                 print(pf.fmt(rr, f"{lab} {NAMES[k]}"))
         if not k.startswith("base"):
             y = port[f"{k}_120_A"]["yearly"]

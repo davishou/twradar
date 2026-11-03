@@ -117,6 +117,7 @@ def simulate(ev: pd.DataFrame, hold: int, slots: int | None = 10, start=None, en
     yearly = eq.groupby(eq.index.year).apply(lambda s: s.iloc[-1] / s.iloc[0] - 1)
     txs, ews = tx.loc[days], ew.loc[days]
     return {
+        "_eq": eq,                                 # 每日資金曲線（給組合用，不要存成 JSON）
         "range": [str(days[0].date()), str(days[-1].date())], "hold": hold, "slots": slots,
         "n_signals": int(len(e)), "n_trades": int(len(tr)),
         "trade": {"mean": round(float(tr.mean()), 4) if len(tr) else None, "med": round(float(np.median(tr)), 4) if len(tr) else None,
