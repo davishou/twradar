@@ -362,9 +362,9 @@
   "2026-10-26"
  ],
  "fails": {},
- "last_run": "2026-11-02 16:32",
+ "last_run": "2026-11-03 16:32",
  "oldest": "2004-02-11",
- "n_days": 5570,
+ "n_days": 5571,
  "stopped": "完成",
  "complete": true,
  "notice_months": [
@@ -1871,10 +1871,13 @@
   ]
  },
  "by_year": {
+  "2003": {
+   "punish": 1
+  },
   "2004": {
    "quotes": 228,
    "margin": 228,
-   "punish": 42,
+   "punish": 80,
    "no_tpex": 228,
    "no_val": 228
   },
@@ -1882,7 +1885,7 @@
    "quotes": 247,
    "margin": 247,
    "val": 85,
-   "punish": 26,
+   "punish": 66,
    "no_tpex": 247,
    "no_val": 162
   },
@@ -1890,40 +1893,40 @@
    "quotes": 247,
    "margin": 247,
    "val": 247,
-   "punish": 38,
+   "punish": 108,
    "no_tpex": 247
   },
   "2007": {
    "quotes": 243,
    "margin": 243,
    "val": 243,
-   "punish": 61,
+   "punish": 120,
    "no_tpex": 116
   },
   "2008": {
    "quotes": 249,
    "margin": 249,
    "val": 249,
-   "punish": 25
+   "punish": 48
   },
   "2009": {
    "quotes": 248,
    "margin": 248,
    "val": 248,
-   "punish": 78
+   "punish": 149
   },
   "2010": {
    "quotes": 250,
    "margin": 250,
    "val": 250,
-   "punish": 45
+   "punish": 83
   },
   "2011": {
    "quotes": 247,
    "margin": 247,
    "val": 247,
    "notices": 238,
-   "punish": 62
+   "punish": 91
   },
   "2012": {
    "quotes": 247,
@@ -1931,7 +1934,7 @@
    "margin": 247,
    "val": 247,
    "notices": 229,
-   "punish": 58
+   "punish": 89
   },
   "2013": {
    "quotes": 244,
@@ -1939,7 +1942,7 @@
    "margin": 244,
    "val": 244,
    "notices": 236,
-   "punish": 63
+   "punish": 109
   },
   "2014": {
    "quotes": 247,
@@ -1947,7 +1950,7 @@
    "margin": 247,
    "val": 247,
    "notices": 239,
-   "punish": 52
+   "punish": 127
   },
   "2015": {
    "quotes": 244,
@@ -1955,7 +1958,7 @@
    "margin": 244,
    "val": 244,
    "notices": 238,
-   "punish": 46
+   "punish": 131
   },
   "2016": {
    "quotes": 241,
@@ -1963,7 +1966,7 @@
    "margin": 241,
    "val": 241,
    "notices": 233,
-   "punish": 40
+   "punish": 111
   },
   "2017": {
    "quotes": 243,
@@ -1971,7 +1974,7 @@
    "margin": 243,
    "val": 243,
    "notices": 246,
-   "punish": 69
+   "punish": 137
   },
   "2018": {
    "quotes": 245,
@@ -1979,7 +1982,7 @@
    "margin": 245,
    "val": 245,
    "notices": 246,
-   "punish": 88
+   "punish": 150
   },
   "2019": {
    "quotes": 242,
@@ -1987,7 +1990,7 @@
    "margin": 242,
    "val": 242,
    "notices": 239,
-   "punish": 31
+   "punish": 98
   },
   "2020": {
    "quotes": 245,
@@ -1995,7 +1998,7 @@
    "margin": 245,
    "val": 245,
    "notices": 245,
-   "punish": 130
+   "punish": 196
   },
   "2021": {
    "quotes": 244,
@@ -2003,7 +2006,7 @@
    "margin": 244,
    "val": 244,
    "notices": 244,
-   "punish": 106
+   "punish": 185
   },
   "2022": {
    "quotes": 246,
@@ -2011,7 +2014,7 @@
    "margin": 246,
    "val": 246,
    "notices": 246,
-   "punish": 76
+   "punish": 128
   },
   "2023": {
    "quotes": 239,
@@ -2019,7 +2022,7 @@
    "margin": 239,
    "val": 239,
    "notices": 239,
-   "punish": 76
+   "punish": 158
   },
   "2024": {
    "quotes": 242,
@@ -2027,7 +2030,7 @@
    "margin": 242,
    "val": 242,
    "notices": 242,
-   "punish": 120
+   "punish": 197
   },
   "2025": {
    "quotes": 243,
@@ -2035,15 +2038,15 @@
    "margin": 243,
    "val": 243,
    "notices": 243,
-   "punish": 75
+   "punish": 165
   },
   "2026": {
-   "quotes": 199,
-   "inst": 199,
-   "margin": 199,
-   "val": 198,
-   "notices": 199,
-   "punish": 160
+   "quotes": 200,
+   "inst": 200,
+   "margin": 200,
+   "val": 199,
+   "notices": 200,
+   "punish": 188
   }
  },
  "notice_empty": {
@@ -2226,10 +2229,10 @@
    "2013-03": "2026-10-25",
    "2013-02": "2026-10-25",
    "2013-01": "2026-10-25",
-   "2026-10": "2026-11-02"
+   "2026-10": "2026-11-03"
   },
   "fin": {
-   "2026Q3": "2026-11-02",
+   "2026Q3": "2026-11-03",
    "2026Q2": "2026-10-25",
    "2026Q1": "2026-10-25",
    "2025Q4": "2026-10-25",
@@ -2287,7 +2290,7 @@
   }
  },
  "fund_run": {
-  "at": "2026-11-02 16:33",
+  "at": "2026-11-03 16:33",
   "revenue": 1,
   "fin": 1,
   "stopped": "完成",
@@ -2755,11 +2758,11 @@
    "2026-10-23",
    "2026-10-26"
   ],
-  "last_run": "2026-11-02 16:33",
+  "last_run": "2026-11-03 16:33",
   "fetched": 0,
   "stopped": "完成",
-  "quotes_days": 4888,
-  "board_days": 2395
+  "quotes_days": 4889,
+  "board_days": 2396
  },
  "stage1_done": "2026-10-28"
 }
