@@ -1317,15 +1317,20 @@ P.bt = async () => {
       el.onclick = e => { const b = e.target.closest("button[data-h]"); if (!b) return; e.stopPropagation(); hold = b.dataset.h; el.innerHTML = draw(); }; }, 0);
     return `<div class="gwrap" id="${id}">${draw()}</div>`;
   };
+  const hzHTML = r => `<h4>不同持有期</h4><div class="tw"><table class="grid"><thead><tr><th>持有</th>${r.hz.map(x => `<th>${esc(x.h)}</th>`).join("")}</tr></thead><tbody>
+      <tr><th>年化</th>${r.hz.map(x => `<td>${pct(x.cagr)}</td>`).join("")}</tr>
+      <tr><th>最大回落</th>${r.hz.map(x => `<td>${pct(x.mdd)}</td>`).join("")}</tr>
+      <tr><th>前段／後段</th>${r.hz.map(x => `<td class="small">${x.early == null ? "—" : pct(x.early) + "／" + pct(x.late)}</td>`).join("")}</tr></tbody></table></div>
+      <p class="small muted">每季財報期限後買一批 20 檔，各批持有到期賣；資金平均分給手上所有股票。</p>`;
   const cols = [
     {k: "verdict", t: "結論", f: r => `<span class="tag ${V[r.verdict] || ""}">${esc(r.verdict)}</span>`, s: r => ({"成立": 0, "部分": 1, "不成立": 2, "對照": 3, "待測": 4})[r.verdict]},
     {k: "cat", t: "分類", f: r => `<span class="small">${esc(r.cat)}</span>`},
-    {k: "nm", t: "策略", w: 1, f: r => `${r.grid ? '<span class="gx">▸</span> ' : ""}<b>${esc(r.nm)}</b><br><span class="small muted">${esc(r.rule)}</span>${r.grid ? '<br><span class="small gx">點一下看全部參數</span>' : ""}`},
+    {k: "nm", t: "策略", w: 1, f: r => `${r.grid || r.hz ? '<span class="gx">▸</span> ' : ""}<b>${esc(r.nm)}</b><br><span class="small muted">${esc(r.rule)}</span>${r.grid ? '<br><span class="small gx">點一下看全部參數</span>' : r.hz ? '<br><span class="small gx">點一下看各持有期</span>' : ""}`},
     {k: "cagr", t: "年化", n: 1, f: r => pct(r.cagr)}, {k: "mdd", t: "最大回落", n: 1, f: r => pct(r.mdd)},
     {k: "early", t: "前段", n: 1, f: r => pct(r.early)}, {k: "late", t: "後段", n: 1, f: r => pct(r.late)},
     {k: "period", t: "期間", f: r => `<span class="small">${esc(r.period)}</span>`},
     {k: "memo", t: "說明", w: 1, f: r => `<span class="small">${esc(r.memo)}</span>`}];
-  const t = table(document.getElementById("btt"), cols, js.rows, {sort: ["cagr", -1], id: r => r.nm, expand: r => r.grid ? gridHTML(r) : `<p class="small muted">這一項沒有其他參數。研究程式：research/${esc(r.script)}.py</p>`});
+  const t = table(document.getElementById("btt"), cols, js.rows, {sort: ["cagr", -1], id: r => r.nm, expand: r => r.grid ? gridHTML(r) : r.hz ? hzHTML(r) : `<p class="small muted">這一項沒有其他參數。研究程式：research/${esc(r.script)}.py</p>`});
   chips(document.getElementById("btc"), cats.map(c => [c, c]), "全部", v => t.set(v === "全部" ? js.rows : js.rows.filter(r => r.cat === v)));
 };
 

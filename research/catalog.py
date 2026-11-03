@@ -23,6 +23,7 @@ CAVEATS = [
     "已下市公司沒有產業別，用代號推（25xx 營建、28xx 金融）。",
     "CB 的成本照股票算（CB 實際免證交稅），偏保守。",
     "財報比率家族：" + "代表＝每季至少 40 檔可選（條件不嚴苛）的組合裡，前段、後段年化較差的那一段最高的一組；前段／後段是從全期資金曲線切開算的。",
+    "價值因子從 2006/4 起，前段＝2006~2015、後段＝2016~2026（和其他策略的切法不同）；同期加權指數（不含息）年化 +9.7%，前段 +2.3%、後段 +17.1%。",
     "ROE 用『單季 EPS×4 ÷ 每股淨值』估算，每股淨值＝公布期限那天收盤價 ÷ 股價淨值比，和財報上的 ROE 會有些差距。",
 ]
 
@@ -130,9 +131,45 @@ def family_rows():
     return out
 
 
+# 價值因子（research/value_factor.py → research/results/value_factor.json）：每列可展開看 3 個月～5 年各持有期
+VALUE = [
+    ("main:val", "1年", "部分", "價值綜合（低本益比＋低淨值比＋高殖利率）", "三個排名平均最便宜的 20 檔；每季加一批、各批持有 1 年",
+     "贏同股票池全買約 4~5 個百分點、兩段都贏；但只和加權指數差不多（不含息 +9.7%），2008 −50%。持有越久越好一點。"),
+    ("main:pe", "1年", "不成立", "低本益比", "本益比 > 0 最低的 20 檔", "最差，連同股票池全買都輸（價值陷阱：便宜是因為獲利要衰退）。"),
+    ("main:pb", "1年", "不成立", "低股價淨值比", "淨值比最低的 20 檔", "後段 +19% 很好，前段 −3% 輸股票池，不穩。"),
+    ("main:dy", "2年", "部分", "高殖利率", "殖利率最高的 20 檔；持有 2 年", "持有 2 年以上才好（+10.7%、兩段都贏股票池）；持有 3 個月只有 +5%。"),
+    ("main:near", "3個月", "部分", "強勢（每季挑最接近一年高點，不看財報）", "每季 20 檔；持有 3 個月",
+     "持有越短越好（3 個月 +15.4%、5 年 +10.5%）：強勢只維持幾個月。"),
+    ("main:cheap_strong", "6個月", "成立", "便宜＋強勢 A：價值綜合最便宜 30% 裡挑最強勢", "每季 20 檔；持有 6 個月",
+     "2006 起兩段都贏加權指數（前段 +9% vs +2%、後段 +21% vs +17%），回落比其他價值策略小；所有持有期都有 +13~16%。"),
+    ("main:blend", "6個月", "成立", "便宜＋強勢 B：價值排名和強勢排名平均", "每季 20 檔；持有 6 個月", "和 A 差不多（+16.0%）。"),
+    ("small:cheap_strong", "3個月", "成立", "便宜＋強勢 A（股票池放寬到成交 ≥2 千萬）", "每季 20 檔；持有 3 個月",
+     "目前兩段最平均的：前段 +18%、後段 +23%；但含較冷門的股票，大資金買不進去。"),
+    ("main:random", "1年", "對照", "對照：股票池隨機 20 檔（成交 ≥1 億、排除營建金融）", "每季 20 檔", "價值、強勢策略要贏過這一列才算有用。"),
+    ("main:all", "1年", "對照", "對照：股票池全部都買（等權）", "每季全部可選股票", "成交 ≥1 億的股票池本身表現不好（+5.7%），不設門檻的全部股票約 +11%：熱門股之後反而較差。"),
+]
+
+
+def value_rows():
+    p = RES / "value_factor.json"
+    if not p.exists():
+        return []
+    d = json.loads(p.read_text())
+    out = []
+    for key, h, verdict, nm, rule, memo in VALUE:
+        rr = d.get(key)
+        if not rr:
+            continue
+        x = rr[h]
+        out.append({"cat": "價值因子", "verdict": verdict, "nm": nm, "rule": f"{rule}（代表：持有 {h}）", "cagr": pct(x["cagr"]), "mdd": pct(x["mdd"]),
+                    "early": pct(x.get("early")), "late": pct(x.get("late")), "period": "2006/4~2026", "memo": memo, "script": "value_factor",
+                    "hz": [{"h": k, **{kk: pct(v.get(kk)) for kk in ("cagr", "mdd", "early", "late")}} for k, v in rr.items()]})
+    return out
+
+
 def main():
     keys = ["cat", "verdict", "nm", "rule", "cagr", "mdd", "early", "late", "period", "memo", "script"]
-    rows = [dict(zip(keys, r)) for r in ROWS] + family_rows()
+    rows = [dict(zip(keys, r)) for r in ROWS] + family_rows() + value_rows()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({"updated": UPDATED, "note": NOTE, "caveats": CAVEATS, "rows": rows}, ensure_ascii=False, indent=1))
     print(f"寫入 {OUT}（{len(rows)} 筆）")
