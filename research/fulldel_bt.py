@@ -20,10 +20,40 @@ import pandas as pd
 from research import event_bt as eb
 
 
+def events_from_snaps(path, gap_days: int = 15):
+    """從每週＋逐日快照重建打入／恢復：名單中短暫消失（≤15 天，例如停止買賣那幾天不在表上）視為仍在名單"""
+    import json
+    snaps = json.loads(Path(path).read_text())
+    keys = sorted(snaps)
+    pres: dict[str, list] = {}
+    for k in keys:
+        for c in snaps[k]:
+            if len(c) == 4 and c.isdigit():
+                pres.setdefault(c, []).append(pd.Timestamp(k))
+    rows = []
+    first = pd.Timestamp(keys[0])
+    allk = [pd.Timestamp(k) for k in keys]
+    for c, ds in pres.items():
+        ds = sorted(ds)
+        segs = [[ds[0], ds[0]]]
+        for d in ds[1:]:
+            if (d - segs[-1][1]).days <= gap_days:
+                segs[-1][1] = d
+            else:
+                segs.append([d, d])
+        for a, b in segs:
+            if a > first:
+                i = allk.index(a)
+                rows.append({"date": a, "prev": allk[i - 1], "code": c, "event": "打入"})
+            j = allk.index(b)
+            if j + 1 < len(allk):
+                rows.append({"date": allk[j + 1], "prev": b, "code": c, "event": "恢復"})
+    return pd.DataFrame(rows)
+
+
 def main(argv):
-    path = Path(argv[0]) if argv else Path("/tmp/btdata/twse_full_events.csv")
-    ev = pd.read_csv(path, dtype={"code": str}, parse_dates=["date", "prev"])
-    ev = ev[ev.code.str.fullmatch(r"\d{4}")]
+    path = Path(argv[0]) if argv else Path("/tmp/btdata/twse_full_snaps.json")
+    ev = events_from_snaps(path)
     M = eb.mats()
     days, C = M["adj"].index, M["close"]
     out = [f"事件 {len(ev)} 筆：{ev.event.value_counts().to_dict()}；{ev.date.min().date()}~{ev.date.max().date()}"]
@@ -63,7 +93,7 @@ def main(argv):
             t = pd.DataFrame({"code": e2.code.to_numpy(), "d0": [D(i - k) for i in e2.i], "f0": "close",
                               "d1": [D(i + 19) for i in e2.i], "f1": "close", "side": side})
             out.append(eb.fmt(eb.run(t, slots=None, slip=0.003, label=f"{evt} {a}~{b} 公告後進場 持有20天 每筆都做")))
-    print("\n".join(x for x in out if "每年" not in x))
+    print("\n".join(x.split("\n")[0] for x in out))
     (eb.pf.OUT / "fulldel_bt.txt").write_text("\n".join(out))
     return 0
 

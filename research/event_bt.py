@@ -81,7 +81,7 @@ def run(tr: pd.DataFrame, slots: int | None = 10, slip: float = 0.003, start=Non
             idx = list(range(i, k + 1))
             path = [p0] + [Ca[x, j] for x in range(i, k)] + [p1]
         path = pd.Series(path, dtype=float).ffill().to_numpy()
-        rets = path[1:] / path[:-1] - 1
+        rets = np.clip(path[1:] / path[:-1] - 1, -0.11, 0.11)   # 停牌復牌、減資等跳動截掉（漲跌幅上限 10%／2015 前 7%）
         if len(idx) != len(rets):
             continue
         for x, rr in zip(idx, rets):
@@ -94,7 +94,7 @@ def run(tr: pd.DataFrame, slots: int | None = 10, slip: float = 0.003, start=Non
         for x in range(i, k + 1):
             held[x] += 1
         heapq.heappush(busy, k)
-        g = p1 / p0
+        g = float(np.prod(1 + rets))
         trades.append((((g * (1 - sell_c)) / (1 + buy_c) - 1) if s > 0 else ((1 - sell_c) - g * (1 + buy_c))) + h)
     trn = np.array(trades)
     if slots is None:
