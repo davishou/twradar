@@ -337,7 +337,9 @@ def levstop_main(argv):
     tr = pd.concat(parts, ignore_index=True)
     tr = tr[tr.d0 >= START]
     out = []
-    if argv[1:2] == ["extra"]:
+    if argv[1:2] == ["s15"]:
+        cases = [(f"停損 15%（全部）＋槓桿 {L}x", dict(lev=L, stop=0.15)) for L in (1.3, 1.5, 2.0)]
+    elif argv[1:2] == ["extra"]:
         cases = [(f"停損 8%（全部）＋槓桿 {L}x", dict(lev=L, stop=0.08)) for L in (1.3, 1.5, 2.0)]
         cases += [(f"停損 5%（全部）＋槓桿 {L}x", dict(lev=L, stop=0.05)) for L in (1.5, 2.0)]
         cases += [("停損 8%（全部）＋槓桿 1.5x、融資利率 8%", dict(lev=1.5, stop=0.08, fin_rate=0.08))]
@@ -356,7 +358,7 @@ def levstop_main(argv):
                    f"最差一年 {bad:+.0%} 平均曝險 {r['expo']:.0%} 交易 {r['trades']}")
         out.append("     每年：" + "  ".join(f"{str(y)[2:]} {v:+.0%}" for y, v in r["yearly"].items()))
         print("\n".join(out[-2:]), flush=True)
-    (eb.pf.OUT / ("multi_levstop_extra.txt" if argv[1:2] == ["extra"] else "multi_levstop.txt")).write_text("\n".join(out))
+    (eb.pf.OUT / (f"multi_levstop_{argv[1]}.txt" if len(argv) > 1 else "multi_levstop.txt")).write_text("\n".join(out))
 
 
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "levstop":
