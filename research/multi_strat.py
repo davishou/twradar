@@ -179,5 +179,124 @@ def main(argv):
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and not (len(sys.argv) > 1 and sys.argv[1] == "kelly"):
     sys.exit(main(sys.argv[1:]))
+
+
+# ---------------------------------------------------------------- 凱利公式
+def tender_trades(days):
+    E = pd.read_csv(eb.pf.OUT / "tender_events.csv", dtype={"code": str})
+    E = E[E.full.astype(str).eq("True") & (E.ratio >= 0.97)]
+    return pd.DataFrame({"code": E.code, "d0": [days[int(i)] for i in E.i], "f0": "close",
+                         "d1": [D(days, int(i) + 2) for i in E.i], "f1": "close", "side": -1, "label": "公開收購截止前放空"})
+
+
+def run_sized(tr, mode, base=0.04, frac=1.0, min_n=30, slip=0.003, start=START, cap_one=1.0):
+    """每筆部位＝當時總資金 × f。mode='equal'：f=base；mode='kelly'：f＝frac×(勝率−敗率÷盈虧比)，
+    勝率、盈虧比只用『進場日之前已經出場』的同策略交易估計（避免偷看），不到 min_n 筆先用 base。
+    所有部位合計最多 100% 資金（不融資），不夠就只買剩下的（<1% 跳過）。"""
+    M = eb.mats()
+    C, O = M["adj"], M["adj_open"]
+    days = C.index[C.index >= pd.Timestamp(start)]
+    di = {d: i for i, d in enumerate(days)}
+    col = {c: i for i, c in enumerate(C.columns)}
+    Ca, Oa = C.loc[days].to_numpy(), O.loc[days].to_numpy()
+    if "hedge" not in tr:
+        tr = tr.assign(hedge=0.0)
+    t = tr[tr.code.isin(col) & tr.d0.isin(di) & tr.d1.isin(di)].sort_values(["d0", "score"], ascending=[True, False], kind="stable")
+    n = len(days)
+    contrib = np.zeros(n)
+    expo = np.zeros(n + 1)
+    hist: dict = {}          # label -> list of (exit_i, ret)
+    open_w = []              # (exit_i, w)
+    trades, fs_used = [], {}
+    for row in t.itertuples(index=False):
+        i, k, j = di[row.d0], di[row.d1], col[row.code]
+        if k < i or (k == i and row.f0 == row.f1):
+            continue
+        p0 = Oa[i, j] if row.f0 == "open" else Ca[i, j]
+        p1 = Oa[k, j] if row.f1 == "open" else Ca[k, j]
+        if not (np.isfinite(p0) and np.isfinite(p1) and p0 > 0):
+            continue
+        open_w = [(e, w) for e, w in open_w if e >= i]
+        room = 1.0 - sum(w for _, w in open_w)
+        if mode == "equal":
+            f = base
+        else:
+            h = [r for e, r in hist.get(row.label, []) if e < i]
+            if len(h) < min_n:
+                f = base
+            else:
+                h = np.array(h)
+                p = (h > 0).mean()
+                R = h[h > 0].mean() / -h[h <= 0].mean() if (h <= 0).any() and (h > 0).any() else 1
+                f = max(0.0, frac * (p - (1 - p) / R))
+        f = min(f, cap_one, room)
+        if f < 0.01:
+            continue
+        s = row.side
+        buy_c, sell_c = eb.FEE + slip, eb.FEE + eb.TAX + slip + (eb.SHORT_FEE if s < 0 else 0)
+        if row.f0 == "close":
+            idx = list(range(i + 1, k + 1))
+            path = [p0] + [Ca[x, j] for x in range(i + 1, k)] + [p1]
+        else:
+            idx = list(range(i, k + 1))
+            path = [p0] + [Ca[x, j] for x in range(i, k)] + [p1]
+        path = pd.Series(path, dtype=float).ffill().to_numpy()
+        rets = np.clip(path[1:] / path[:-1] - 1, -0.11, 0.11)
+        hgd = row.hedge if np.isfinite(row.hedge) else 0.0
+        for x, rr in zip(idx, rets):
+            contrib[x] += f * s * rr
+        contrib[k] += f * hgd
+        contrib[i] -= f * (buy_c if s > 0 else sell_c)
+        contrib[k] -= f * (sell_c if s > 0 else buy_c)
+        expo[i] += f
+        expo[k + 1] -= f
+        g = float(np.prod(1 + rets))
+        ret = (((g * (1 - sell_c)) / (1 + buy_c) - 1) if s > 0 else ((1 - sell_c) - g * (1 + buy_c))) + hgd
+        hist.setdefault(row.label, []).append((k, ret))
+        open_w.append((k, f))
+        trades.append(ret)
+        fs_used.setdefault(row.label, []).append(f)
+    eq = pd.Series(np.cumprod(1 + contrib), index=days)
+    yrs = (days[-1] - days[0]).days / 365.25
+    yearly = eq.groupby(eq.index.year).apply(lambda s: s.iloc[-1] / s.iloc[0] - 1)
+    mid = days[0] + (days[-1] - days[0]) / 2
+    seg = lambda a, b: (lambda s: (s.iloc[-1] / s.iloc[0]) ** (365.25 / (s.index[-1] - s.index[0]).days) - 1)(eq[(eq.index >= a) & (eq.index <= b)])  # noqa: E731
+    return {"cagr": eq.iloc[-1] ** (1 / yrs) - 1, "mdd": (eq / eq.cummax() - 1).min(), "early": seg(days[0], mid), "late": seg(mid, days[-1]),
+            "trades": len(trades), "expo": float(np.cumsum(expo)[:n].mean()), "yearly": yearly,
+            "vol": float(np.log1p(contrib).std() * np.sqrt(250)), "f": {k: float(np.mean(v)) for k, v in fs_used.items()}}
+
+
+def kelly_main(argv):
+    src = Path(argv[0]) if argv else Path("/tmp/btdata")
+    M = eb.mats()
+    days = M["adj"].index
+    tx = eb.taiex()
+    parts = [core_trades(days)]
+    rng = 0
+    for t in exdiv_trades(days, tx) + [disposal_trades(days), tender_trades(days)]:
+        parts.append(t.assign(score=100.0))
+    fd = fulldel_trades(days, src).sample(frac=0.5, random_state=rng).assign(score=100.0)
+    lu = limitup_trades(days).sample(frac=0.3, random_state=rng).assign(score=100.0, hedge=-0.01)
+    parts += [fd, lu]
+    tr = pd.concat(parts, ignore_index=True)
+    tr = tr[tr.d0 >= START]
+    out = []
+    for nm, kw in (("平均分 25 份（每筆 4%）", dict(mode="equal", base=0.04)),
+                   ("凱利（全凱利）", dict(mode="kelly", frac=1.0)),
+                   ("半凱利", dict(mode="kelly", frac=0.5)),
+                   ("凱利，單筆最多 10%", dict(mode="kelly", frac=1.0, cap_one=0.10)),
+                   ("半凱利，單筆最多 10%", dict(mode="kelly", frac=0.5, cap_one=0.10)),
+                   ("四分之一凱利", dict(mode="kelly", frac=0.25))):
+        r = run_sized(tr, **kw)
+        out.append(f"{nm}｜年化 {r['cagr']:+.1%} 最大回落 {r['mdd']:+.1%} 年波動 {r['vol']:.0%} 前段 {r['early']:+.1%} 後段 {r['late']:+.1%} "
+                   f"交易 {r['trades']} 平均資金在場 {r['expo']:.0%}")
+        out.append("     平均每筆部位：" + "；".join(f"{k} {v:.1%}" for k, v in r["f"].items()))
+        out.append("     每年：" + "  ".join(f"{str(y)[2:]} {v:+.0%}" for y, v in r["yearly"].items()))
+        print("\n".join(out[-3:]), flush=True)
+    (eb.pf.OUT / "multi_kelly.txt").write_text("\n".join(out))
+
+
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "kelly":
+    kelly_main(sys.argv[2:])
