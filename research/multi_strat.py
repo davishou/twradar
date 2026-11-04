@@ -179,7 +179,7 @@ def main(argv):
     return 0
 
 
-if __name__ == "__main__" and not (len(sys.argv) > 1 and sys.argv[1] == "kelly"):
+if __name__ == "__main__" and not (len(sys.argv) > 1 and sys.argv[1] in ("kelly", "levstop")):
     sys.exit(main(sys.argv[1:]))
 
 
@@ -191,7 +191,8 @@ def tender_trades(days):
                          "d1": [D(days, int(i) + 2) for i in E.i], "f1": "close", "side": -1, "label": "公開收購截止前放空"})
 
 
-def run_sized(tr, mode, base=0.04, frac=1.0, min_n=30, slip=0.003, start=START, cap_one=1.0):
+def run_sized(tr, mode, base=0.04, frac=1.0, min_n=30, slip=0.003, start=START, cap_one=1.0,
+              lev=1.0, fin_rate=0.065, stop=None, stop_core_only=False):
     """每筆部位＝當時總資金 × f。mode='equal'：f=base；mode='kelly'：f＝frac×(勝率−敗率÷盈虧比)，
     勝率、盈虧比只用『進場日之前已經出場』的同策略交易估計（避免偷看），不到 min_n 筆先用 base。
     所有部位合計最多 100% 資金（不融資），不夠就只買剩下的（<1% 跳過）。"""
@@ -218,10 +219,27 @@ def run_sized(tr, mode, base=0.04, frac=1.0, min_n=30, slip=0.003, start=START, 
         p1 = Oa[k, j] if row.f1 == "open" else Ca[k, j]
         if not (np.isfinite(p0) and np.isfinite(p1) and p0 > 0):
             continue
+        # 停損：收盤時這筆累計虧損 ≥ stop，隔天開盤出場
+        if stop and (not stop_core_only or str(row.label).startswith("主力")):
+            gg = 1.0
+            x0 = i + 1 if row.f0 == "close" else i
+            prev = p0
+            for x in range(x0, k):
+                cx = Ca[x, j]
+                if np.isfinite(cx):
+                    gg *= 1 + np.clip(cx / prev - 1, -0.11, 0.11)
+                    prev = cx
+                if row.side * (gg - 1) <= -stop:
+                    k = x + 1
+                    p1 = Oa[k, j] if np.isfinite(Oa[k, j]) else Ca[k, j]
+                    row = row._replace(f1="open")
+                    break
+            if not np.isfinite(p1):
+                continue
         open_w = [(e, w) for e, w in open_w if e >= i]
-        room = 1.0 - sum(w for _, w in open_w)
+        room = lev - sum(w for _, w in open_w)
         if mode == "equal":
-            f = base
+            f = base * lev
         else:
             h = [r for e, r in hist.get(row.label, []) if e < i]
             if len(h) < min_n:
@@ -231,7 +249,9 @@ def run_sized(tr, mode, base=0.04, frac=1.0, min_n=30, slip=0.003, start=START, 
                 p = (h > 0).mean()
                 R = h[h > 0].mean() / -h[h <= 0].mean() if (h <= 0).any() and (h > 0).any() else 1
                 f = max(0.0, frac * (p - (1 - p) / R))
-        f = min(f, cap_one, room)
+        if mode != "equal":
+            f *= lev
+        f = min(f, cap_one * lev, room)
         if f < 0.01:
             continue
         s = row.side
@@ -258,13 +278,15 @@ def run_sized(tr, mode, base=0.04, frac=1.0, min_n=30, slip=0.003, start=START, 
         open_w.append((k, f))
         trades.append(ret)
         fs_used.setdefault(row.label, []).append(f)
+    ex = np.cumsum(expo)[:n]
+    contrib -= np.maximum(0, ex - 1) * fin_rate / 250          # 超過自有資金的部分付融資利息（融券放空另有保證金，這裡一律以利息估）
     eq = pd.Series(np.cumprod(1 + contrib), index=days)
     yrs = (days[-1] - days[0]).days / 365.25
     yearly = eq.groupby(eq.index.year).apply(lambda s: s.iloc[-1] / s.iloc[0] - 1)
     mid = days[0] + (days[-1] - days[0]) / 2
     seg = lambda a, b: (lambda s: (s.iloc[-1] / s.iloc[0]) ** (365.25 / (s.index[-1] - s.index[0]).days) - 1)(eq[(eq.index >= a) & (eq.index <= b)])  # noqa: E731
     return {"cagr": eq.iloc[-1] ** (1 / yrs) - 1, "mdd": (eq / eq.cummax() - 1).min(), "early": seg(days[0], mid), "late": seg(mid, days[-1]),
-            "trades": len(trades), "expo": float(np.cumsum(expo)[:n].mean()), "yearly": yearly,
+            "trades": len(trades), "expo": float(ex.mean()), "minv": float(eq.min()), "yearly": yearly,
             "vol": float(np.log1p(contrib).std() * np.sqrt(250)), "f": {k: float(np.mean(v)) for k, v in fs_used.items()}}
 
 
@@ -300,3 +322,42 @@ def kelly_main(argv):
 
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "kelly":
     kelly_main(sys.argv[2:])
+
+
+def levstop_main(argv):
+    src = Path(argv[0]) if argv else Path("/tmp/btdata")
+    M = eb.mats()
+    days = M["adj"].index
+    tx = eb.taiex()
+    parts = [core_trades(days)]
+    for t in exdiv_trades(days, tx) + [disposal_trades(days), tender_trades(days)]:
+        parts.append(t.assign(score=100.0))
+    parts += [fulldel_trades(days, src).sample(frac=0.5, random_state=0).assign(score=100.0),
+              limitup_trades(days).sample(frac=0.3, random_state=0).assign(score=100.0, hedge=-0.01)]
+    tr = pd.concat(parts, ignore_index=True)
+    tr = tr[tr.d0 >= START]
+    out = []
+    if argv[1:2] == ["extra"]:
+        cases = [(f"停損 8%（全部）＋槓桿 {L}x", dict(lev=L, stop=0.08)) for L in (1.3, 1.5, 2.0)]
+        cases += [(f"停損 5%（全部）＋槓桿 {L}x", dict(lev=L, stop=0.05)) for L in (1.5, 2.0)]
+        cases += [("停損 8%（全部）＋槓桿 1.5x、融資利率 8%", dict(lev=1.5, stop=0.08, fin_rate=0.08))]
+    else:
+        cases = [("平均分 4%（基準）", {})]
+        cases += [(f"槓桿 {L}x", dict(lev=L)) for L in (1.3, 1.5, 2.0)]
+        cases += [(f"停損 {s_:.0%}（全部策略）", dict(stop=s_)) for s_ in (0.05, 0.08, 0.10, 0.15, 0.20)]
+        cases += [(f"停損 {s_:.0%}（只有主力營收）", dict(stop=s_, stop_core_only=True)) for s_ in (0.08, 0.10, 0.15, 0.20)]
+        cases += [("槓桿 1.5x＋主力停損 15%", dict(lev=1.5, stop=0.15, stop_core_only=True)),
+                  ("槓桿 1.5x＋主力停損 10%", dict(lev=1.5, stop=0.10, stop_core_only=True)),
+                  ("槓桿 2x＋主力停損 15%", dict(lev=2.0, stop=0.15, stop_core_only=True))]
+    for nm, kw in cases:
+        r = run_sized(tr, mode="equal", base=0.04, **kw)
+        bad = min(r["yearly"].values)
+        out.append(f"{nm}｜年化 {r['cagr']:+.1%} 最大回落 {r['mdd']:+.1%} 年波動 {r['vol']:.0%} 前段 {r['early']:+.1%} 後段 {r['late']:+.1%} "
+                   f"最差一年 {bad:+.0%} 平均曝險 {r['expo']:.0%} 交易 {r['trades']}")
+        out.append("     每年：" + "  ".join(f"{str(y)[2:]} {v:+.0%}" for y, v in r["yearly"].items()))
+        print("\n".join(out[-2:]), flush=True)
+    (eb.pf.OUT / ("multi_levstop_extra.txt" if argv[1:2] == ["extra"] else "multi_levstop.txt")).write_text("\n".join(out))
+
+
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "levstop":
+    levstop_main(sys.argv[2:])
