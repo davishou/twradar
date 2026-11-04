@@ -59,6 +59,7 @@ def run(tr: pd.DataFrame, slots: int | None = 10, slip: float = 0.003, start=Non
     held = np.zeros(n)
     busy: list[int] = []
     trades = []
+    by: dict = {}
     for row in t.itertuples(index=False):
         i, k, j = di[row.d0], di[row.d1], col[row.code]
         if k < i or (k == i and row.f0 == row.f1):
@@ -96,6 +97,9 @@ def run(tr: pd.DataFrame, slots: int | None = 10, slip: float = 0.003, start=Non
         heapq.heappush(busy, k)
         g = float(np.prod(1 + rets))
         trades.append((((g * (1 - sell_c)) / (1 + buy_c) - 1) if s > 0 else ((1 - sell_c) - g * (1 + buy_c))) + h)
+        lb = getattr(row, "label", None)
+        if lb is not None:
+            by.setdefault(lb, []).append((trades[-1], k - i + 1))
     trn = np.array(trades)
     if slots is None:
         w = np.where(held > 0, held, 1)
@@ -123,6 +127,8 @@ def run(tr: pd.DataFrame, slots: int | None = 10, slip: float = 0.003, start=Non
            "payoff": float(trn[trn > 0].mean() / -trn[trn <= 0].mean()) if (trn > 0).any() and (trn <= 0).any() else None,
            "cagr": float(cagr), "mdd": float(mdd), "inv": float(inv),
            "early": seg(days[0], mid), "late": seg(mid, days[-1]),
+           "by": {lb: {"n": len(v), "mean": float(np.mean([x[0] for x in v])), "win": float(np.mean([x[0] > 0 for x in v])),
+                       "slotdays": int(sum(x[1] for x in v))} for lb, v in by.items()},
            "range": f"{days[0].year}~{days[-1].year}", "yearly": {int(y): float(v) for y, v in yearly.items()}}
     return res
 

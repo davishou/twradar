@@ -1352,6 +1352,7 @@ P.bt = async () => {
       <tr><th>最大回落</th>${r.hz.map(x => `<td>${pct(x.mdd)}</td>`).join("")}</tr>
       <tr><th>前段／後段</th>${r.hz.map(x => `<td class="small">${x.early == null ? "—" : pct(x.early) + "／" + pct(x.late)}</td>`).join("")}</tr></tbody></table></div>
       <p class="small muted">每季財報期限後買一批 20 檔，各批持有到期賣；資金平均分給手上所有股票。</p>`;
+  let disc = 0.3, cat = "全部";
   const cols = [
     {k: "verdict", t: "結論", f: r => `<span class="tag ${V[r.verdict] || ""}">${esc(r.verdict)}</span>`, s: r => ({"成立": 0, "部分": 1, "不成立": 2, "對照": 3, "待測": 4})[r.verdict]},
     {k: "cat", t: "分類", f: r => `<span class="small">${esc(r.cat)}</span>`},
@@ -1359,10 +1360,13 @@ P.bt = async () => {
     {k: "hold", t: "持有", f: r => `<span class="small">${esc(r.hold || "—")}</span>`},
     {k: "cagr", t: "年化", n: 1, f: r => pct(r.cagr)}, {k: "mdd", t: "最大回落", n: 1, f: r => pct(r.mdd)},
     {k: "early", t: "前段", n: 1, f: r => pct(r.early)}, {k: "late", t: "後段", n: 1, f: r => pct(r.late)},
+    {k: "tmean", t: "每筆期望", n: 1, s: r => r.tmean == null ? -999 : r.tmean,
+     f: r => r.tmean == null ? '<span class="muted">—</span>' : `${pct(Math.round((r.tmean + 2 * 0.1425 * (1 - disc)) * 10) / 10)}<br><span class="small muted">勝率 ${r.twin}%・盈虧比 ${r.tpay}</span><br><span class="small muted">每持有一天 ${((r.tmean + 2 * 0.1425 * (1 - disc)) / r.thold).toFixed(2)}%</span>`},
+    {k: "tyear", t: "頻率", n: 1, s: r => r.tyear ?? -1,
+     f: r => r.tyear == null ? '<span class="muted">—</span>' : `每年 ${r.tyear} 次<br><span class="small muted">持有 ${r.thold} 天・資金在場 ${r.tinv}%</span>`},
     {k: "period", t: "期間", f: r => `<span class="small">${esc(r.period)}</span>`},
     {k: "memo", t: "說明", w: 1, f: r => `<span class="small">${esc(r.memo)}</span>`}];
   // 手續費折扣：表內數字是原價 0.1425%；新年化 ≈ (1+原)×exp(換手×2×0.1425%×(1−折數))−1
-  let disc = 0.3, cat = "全部";
   const fadj = (x, T) => x == null || !T ? x : Math.round(((1 + x / 100) * Math.exp(T * 2 * 0.001425 * (1 - disc)) - 1) * 1000) / 10;
   const view = () => js.rows.filter(r => cat === "全部" || r.cat === cat).map(r => ({...r, cagr: fadj(r.cagr, r.turns), early: fadj(r.early, r.turns), late: fadj(r.late, r.turns)}));
   const t = table(document.getElementById("btt"), cols, view(), {sort: ["cagr", -1], id: r => r.nm, expand: r => r.grid ? gridHTML(r) : r.hz ? hzHTML(r) : `<p class="small muted">這一項沒有其他參數。研究程式：research/${esc(r.script)}.py</p>`});
