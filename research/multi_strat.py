@@ -179,7 +179,7 @@ def main(argv):
     return 0
 
 
-if __name__ == "__main__" and not (len(sys.argv) > 1 and sys.argv[1] in ("kelly", "levstop")):
+if __name__ == "__main__" and not (len(sys.argv) > 1 and sys.argv[1] in ("kelly", "levstop", "stats")):
     sys.exit(main(sys.argv[1:]))
 
 
@@ -276,7 +276,7 @@ def run_sized(tr, mode, base=0.04, frac=1.0, min_n=30, slip=0.003, start=START, 
         ret = (((g * (1 - sell_c)) / (1 + buy_c) - 1) if s > 0 else ((1 - sell_c) - g * (1 + buy_c))) + hgd
         hist.setdefault(row.label, []).append((k, ret))
         open_w.append((k, f))
-        trades.append(ret)
+        trades.append((row.label, ret, k - i + 1, f))
         fs_used.setdefault(row.label, []).append(f)
     ex = np.cumsum(expo)[:n]
     contrib -= np.maximum(0, ex - 1) * fin_rate / 250          # 超過自有資金的部分付融資利息（融券放空另有保證金，這裡一律以利息估）
@@ -286,7 +286,7 @@ def run_sized(tr, mode, base=0.04, frac=1.0, min_n=30, slip=0.003, start=START, 
     mid = days[0] + (days[-1] - days[0]) / 2
     seg = lambda a, b: (lambda s: (s.iloc[-1] / s.iloc[0]) ** (365.25 / (s.index[-1] - s.index[0]).days) - 1)(eq[(eq.index >= a) & (eq.index <= b)])  # noqa: E731
     return {"cagr": eq.iloc[-1] ** (1 / yrs) - 1, "mdd": (eq / eq.cummax() - 1).min(), "early": seg(days[0], mid), "late": seg(mid, days[-1]),
-            "trades": len(trades), "expo": float(ex.mean()), "minv": float(eq.min()), "yearly": yearly,
+            "tlist": trades, "eq": eq, "trades": len(trades), "expo": float(ex.mean()), "minv": float(eq.min()), "yearly": yearly,
             "vol": float(np.log1p(contrib).std() * np.sqrt(250)), "f": {k: float(np.mean(v)) for k, v in fs_used.items()}}
 
 
@@ -363,3 +363,40 @@ def levstop_main(argv):
 
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "levstop":
     levstop_main(sys.argv[2:])
+
+
+def stats_main(argv):
+    src = Path(argv[0]) if argv else Path("/tmp/btdata")
+    M = eb.mats()
+    days = M["adj"].index
+    tx = eb.taiex()
+    parts = [core_trades(days)]
+    for t in exdiv_trades(days, tx) + [disposal_trades(days), tender_trades(days)]:
+        parts.append(t.assign(score=100.0))
+    parts += [fulldel_trades(days, src).sample(frac=0.5, random_state=0).assign(score=100.0),
+              limitup_trades(days).sample(frac=0.3, random_state=0).assign(score=100.0, hedge=-0.01)]
+    tr = pd.concat(parts, ignore_index=True)
+    tr = tr[tr.d0 >= START]
+    out = []
+    for nm, kw in (("不停損", {}), ("停損 15%", dict(stop=0.15)), ("停損 8%", dict(stop=0.08))):
+        r = run_sized(tr, mode="equal", base=0.04, **kw)
+        T = pd.DataFrame(r["tlist"], columns=["label", "ret", "days", "f"])
+        w, l = T.ret[T.ret > 0], T.ret[T.ret <= 0]
+        eq = r["eq"]
+        mo = eq.resample("ME").last().pct_change().dropna()
+        yr = eq.resample("YE").last().pct_change().dropna()
+        out.append(f"\n== {nm} ==")
+        out.append(f"每筆：{len(T)} 筆／{len(T) / 13.75:.0f} 筆每年｜勝率 {len(w) / len(T):.1%}｜平均賺 {w.mean():+.2%} 平均賠 {l.mean():+.2%} 盈虧比 {w.mean() / -l.mean():.2f}｜"
+                   f"每筆期望 {T.ret.mean():+.2%}（中位 {T.ret.median():+.2%}）｜平均持有 {T.days.mean():.1f} 天｜每持有一天期望 {T.ret.sum() / T.days.sum():+.3%}")
+        out.append(f"以資金看：每月賺錢機率 {(mo > 0).mean():.0%}（平均每月 {mo.mean():+.2%}，最差月 {mo.min():+.1%}）｜每年賺錢機率 {(yr > 0).mean():.0%}｜年化 {r['cagr']:+.1%} 回落 {r['mdd']:+.1%}")
+        g = T.groupby("label").agg(n=("ret", "size"), win=("ret", lambda x: (x > 0).mean()), mean=("ret", "mean"),
+                                   pw=("ret", lambda x: x[x > 0].mean()), pl=("ret", lambda x: x[x <= 0].mean()), d=("days", "mean"))
+        g["contrib"] = g.n * g["mean"] * 0.04
+        for lb, x in g.sort_values("contrib", ascending=False).iterrows():
+            out.append(f"   {lb}：{x.n} 筆 勝率 {x.win:.0%} 平均賺 {x.pw:+.1%} 平均賠 {x.pl:+.1%} 期望 {x['mean']:+.2%} 持有 {x.d:.0f} 天 貢獻（不複利）{x.contrib:+.0%}")
+    print("\n".join(out))
+    (eb.pf.OUT / "multi_stats.txt").write_text("\n".join(out))
+
+
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "stats":
+    stats_main(sys.argv[2:])
