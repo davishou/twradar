@@ -126,9 +126,11 @@ jobs:
             python -m pipeline.run ${{ steps.pick.outputs.job }}
           fi
 
-      - name: 選股通知與實際紀錄（GitHub Secrets：NTFY_TOPIC、TELEGRAM_BOT_TOKEN／TELEGRAM_CHAT_ID、SMTP_USER／SMTP_PASS／NOTIFY_EMAIL，設哪個發哪個）
+      - name: 選股通知與實際紀錄（GitHub Secrets：LINE_CHANNEL_TOKEN／LINE_USER_ID、NTFY_TOPIC、TELEGRAM_BOT_TOKEN／TELEGRAM_CHAT_ID、SMTP_USER／SMTP_PASS／NOTIFY_EMAIL，設哪個發哪個）
         if: steps.pick.outputs.job == 'announce' || steps.pick.outputs.job == 'daily' || steps.pick.outputs.job == 'all' || steps.pick.outputs.job == 'notifytest'
         env:
+          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

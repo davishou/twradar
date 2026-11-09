@@ -8,6 +8,7 @@
 另外：進場日收盤後把當月名單凍結記到 data/state/picks_log.json（實際紀錄，之後不改）。
 
 通知管道（GitHub Secrets，設哪個就發哪個；都沒設就只記紀錄不發）
+  LINE_CHANNEL_TOKEN, LINE_USER_ID      LINE 官方帳號（Messaging API；輕用量每月 200 則免費，一則推給自己算 1 則）
   NTFY_TOPIC                         ntfy.sh 推播（手機裝 ntfy App、訂閱同一個主題名稱；主題名稱請取長一點的亂碼）
   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID  Telegram 機器人
   SMTP_USER, SMTP_PASS, NOTIFY_EMAIL    Email（Gmail 要用「應用程式密碼」）
@@ -37,6 +38,15 @@ URL = "https://davishou.github.io/twradar/#/picks"
 def send(title: str, body: str) -> list[str]:
     import requests
     sent = []
+    tok, uid = os.environ.get("LINE_CHANNEL_TOKEN", "").strip(), os.environ.get("LINE_USER_ID", "").strip()
+    if tok and uid:
+        try:
+            text = f"{title}\n\n{body}\n\n{URL}"[:4900]
+            requests.post("https://api.line.me/v2/bot/message/push", headers={"Authorization": f"Bearer {tok}"},
+                          json={"to": uid, "messages": [{"type": "text", "text": text}]}, timeout=20).raise_for_status()
+            sent.append("line")
+        except Exception as e:  # noqa: BLE001
+            log.warning("LINE 失敗：%s", getattr(getattr(e, "response", None), "text", "") or e)
     topic = os.environ.get("NTFY_TOPIC", "").strip()
     if topic:
         try:
@@ -140,7 +150,7 @@ def main(argv):
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if argv and argv[0] == "test":
         ch = send("盤後雷達 測試通知", "看到這則就代表通知設定成功。\n之後進場日早上、停損觸發時會收到通知。")
-        print("已送出：", ch or "沒有設定任何管道（NTFY_TOPIC／TELEGRAM_*／SMTP_*）")
+        print("已送出：", ch or "沒有設定任何管道（LINE_*／NTFY_TOPIC／TELEGRAM_*／SMTP_*）")
         return 0 if ch else 1
     check(dry="dry" in argv)
     return 0
