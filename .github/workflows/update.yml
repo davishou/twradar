@@ -130,6 +130,7 @@ jobs:
         if: steps.pick.outputs.job == 'announce' || steps.pick.outputs.job == 'daily' || steps.pick.outputs.job == 'all' || steps.pick.outputs.job == 'notifytest'
         env:
           LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
+          CAPITAL: ${{ vars.CAPITAL }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

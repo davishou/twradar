@@ -1235,6 +1235,18 @@ const nextBox = js => {
     ${p ? `<br>下一批：${esc(p.ym)} 營收（已公布 ${fi(p.reported)}／上月 ${fi(p.reported_prev)} 家），預計 <b>${esc(p.entry_est || "—")}</b> 收盤進場。` : ""}
     <br><span class="small muted">設定好通知後，進場前一晚、進場日早上、停損觸發時會推播到手機。</span></div>`;
 };
+const bookBox = js => {
+  const b = js.book; if (!b) return "";
+  const rows = [...(b.open || []).map(p => ({...p, st: p.stopped ? "停損中" : "持有中"})), ...(b.planned || []).map(p => ({...p, st: "預定"}))];
+  const sd = s => s === "short" ? '<b class="down">放空</b>' : '<b class="up">買進</b>';
+  const body = rows.length ? `<div class="tw"><table><thead><tr><th>狀態</th><th>策略</th><th>股票</th><th>方向</th><th>進場</th><th>出場</th><th class="num">進場價</th><th>說明</th></tr></thead><tbody>${
+    rows.sort((a, b) => a.entry < b.entry ? -1 : 1).map(p => `<tr><td>${esc(p.st)}</td><td class="small">${esc(p.strat)}</td><td>${stockLink(p.code, p.name)}</td><td>${sd(p.side)}</td>
+      <td>${esc(p.entry)} ${esc(p.entry_at)}</td><td>${esc(p.exit)} ${esc(p.exit_at)}</td><td class="num">${p.entry_close == null ? "—" : fp(p.entry_close)}</td>
+      <td class="small">${p.yield ? `殖利率 ${(p.yield * 100).toFixed(1)}%、${esc(p.ex)} 除權息，放空等值台指期避險` : p.eff ? `${esc(p.eff)} 生效，借券賣出` : p.punish ? `處置 ${esc(p.punish)}` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    : `<p class="small muted">目前沒有預定或持有中的短線事件。</p>`;
+  return `<h2>短線事件（除權息、第二次處置、全額交割）</h2>
+    <p class="small muted">每筆總資金 4%，份數不夠時優先於營收主力；收盤虧損達 15% 隔天開盤停損。除權息兩種策略都要同時放空等值台指期。LINE 會在前一晚 22:00 後、當天早上 08:00 後通知。</p>${body}`;
+};
 const trackBox = js => {
   const t = js.log; if (!t) return "";
   const c = t.closed || {}, e = t.expect || {};
@@ -1265,12 +1277,13 @@ P.picks = async () => {
   app.innerHTML = `<h1>選股清單</h1>
     <p class="sub">回測最好的組合：<b>營收年增加速</b>（單月營收年增 ≥ ${R.min_yoy}%，且連 3 個月年增一個比一個高）＋<b>挑股價最接近一年高點</b>。
       資料日 ${esc(js.date)}；最新營收月份 ${esc(js.latest_rev || "—")}。</p>
-    <div class="notice"><b>怎麼用</b>　資金分 ${R.slots} 份。每月營收公布期限（次月 10 日）之後的第一個交易日收盤，用<b>空出來的份數</b>從名單第 1 名往下買（已持有的跳過），
-      收盤比買價跌 ${Math.round((R.stop || 0.2) * 100)}% 以上就在<b>下一個交易日收盤停損</b>；沒停損就持有 ${R.hold} 個交易日（約 3 個月）後收盤賣。
+    <div class="notice"><b>怎麼用</b>　多策略組合：每筆用總資金 4%（${R.slots} 份，和除權息、處置、全額交割等短線事件共用，份數不夠時短線事件優先）。每月營收公布期限（次月 10 日）之後的第一個交易日收盤，用<b>空出來的份數</b>從名單第 1 名往下買（已持有的跳過），
+      收盤比買價跌 ${Math.round((R.stop || 0.15) * 100)}% 以上就在<b>下一個交易日開盤停損</b>；沒停損就持有 ${R.hold} 個交易日（約 3 個月）後收盤賣。
       停損空出的份數<b>等下個月</b>，不追買名單後面的（回測顯示追買會變差）。只看 20 日均成交 ≥ 1 億的普通股，排除營建、金融。
-      回測 2013~2026（扣手續費、稅與每邊滑價 0.3%）：年化約 <b>+30%</b>、最大回落約 <b>−30%</b>；只有 2018、2022 小賠。
+      回測 2013~2026（3 折手續費、每邊滑價 0.3%）：全部策略一起年化約 <b>+39%</b>、最大回落約 <b>−25%</b>（只做營收主力約 +30%）。
       這是歷史統計、而且是從多種挑法裡選出來的，不構成投資建議。<a href="#/bt">看全部回測結果 →</a></div>
     ${nextBox(js)}
+    ${bookBox(js)}
     ${trackBox(js)}
     <h2>目前持股（模擬）</h2>
     <p class="small muted">從 ${esc(js.sim_start || "—")} 開始照規則買的結果：持有 ${js.holdings.length} 檔、空 ${js.free} 份；平均報酬 ${rr(sumH)}（未扣成本）。
@@ -1279,7 +1292,7 @@ P.picks = async () => {
     ${months.map((m, i) => `<h2>${esc(m.ym)} 營收　<span class="small muted">${status(m)}｜符合 ${fi(m.n_signal)} 家，過濾後 ${m.rows.length} 家${m.bought.length ? `，模擬買進 ${m.bought.length} 檔（★）` : ""}</span></h2>
       <div id="pm${i}"></div>`).join("")}
     <h2>近一年已賣出（模擬）</h2><div id="pc"></div>
-    <p class="small muted">「停損價」換算成現在的股價（已還原除權息），收盤 ≤ 停損價就隔天收盤賣。「距一年高點」＝進場前一天收盤 ÷ 近 250 個交易日最高（還原權息）；100% 代表正在創一年新高，並列時順序不分先後。報酬＝進場收盤到最新收盤（還原權息、未扣成本）。
+    <p class="small muted">「停損價」換算成現在的股價（已還原除權息），收盤 ≤ 停損價就隔天開盤賣。「距一年高點」＝進場前一天收盤 ÷ 近 250 個交易日最高（還原權息）；100% 代表正在創一年新高，並列時順序不分先後。報酬＝進場收盤到最新收盤（還原權息、未扣成本）。
       還沒到進場日的月份，排序用最新一天收盤。規則與回測：research/robust_check.py、pipeline/picks.py。</p>`;
   table(document.getElementById("ph"), [
     {k: "code", t: "代號"}, {k: "name", t: "名稱", f: r => stockLink(r.code, r.name)}, {k: "ym", t: "營收月"},

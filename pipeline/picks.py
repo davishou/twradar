@@ -5,8 +5,8 @@
   進場   營收法定公布期限（次月 10 日）之後的第一個交易日收盤買
   過濾   20 日均成交金額 ≥ 1 億、排除營建（建材營造）與金融（金融保險）、只看普通股（4 碼）
   排序   股價 ÷ 近一年（250 日）最高價，越接近 1 越前面（用進場前一天收盤）
-  資金   20 份；每月進場日用「空出來的份數」從名單第一名往下買（已持有的跳過）
-  出場   收盤比買價跌 20% 以上就在下一個交易日收盤賣（停損）；沒停損就持有 60 個交易日賣。停損空出的份數等下個月，不追買
+  資金   多策略組合：每筆總資金 4%（25 份，和短線事件共用，份數不夠時短線事件優先）；每月進場日用空出來的份數從名單第一名往下買（已持有的跳過）
+  出場   收盤比買價跌 15% 以上就在下一個交易日開盤賣（停損，紀錄用隔天收盤近似）；沒停損就持有 60 個交易日賣。停損空出的份數等下個月，不追買
 另外模擬「從一年前開始照規則買」，得到目前應有的持股（回測 2013~2026 年化約 +30%、最大回落約 −30%，已扣成本與滑價 0.3%）。
 
 只讀 data/history（約 260 個交易日）、data/archive/revenue、data/state/companies.json；不抓網路、不呼叫 AI。
@@ -25,8 +25,9 @@ from .util import read_json, write_json
 
 log = logging.getLogger(__name__)
 OUT = config.OUT_DIR / "picks.json"
-SLOTS, HOLD, MIN_LIQ, MIN_YOY, STOP = 20, 60, 1e8, 30.0, 0.20
+SLOTS, HOLD, MIN_LIQ, MIN_YOY, STOP = 25, 60, 1e8, 30.0, 0.15
 EXCL_IND = {"建材營造", "金融保險"}
+LIVE_START = "2026-11-11"   # 使用者實際開始照做的第一個進場日：通知只管這天之後買的部位
 NEAR_N, NEAR_MIN = 250, 120          # 一年高點；資料不足 120 日不排序（排最後）
 
 
@@ -123,7 +124,7 @@ def entry_index(days: list[date], y: int, m: int) -> tuple[date, int | None]:
     return dl, None
 
 
-def build(today: date | None = None, holidays: set[date] | None = None) -> dict:
+def build(today: date | None = None, holidays: set[date] | None = None, reserved: int = 0) -> dict:
     comp = (read_json(config.STATE_DIR / "companies.json", {}) or {}).get("data", {})
     days, adj, vals, meta = price_panel()
     if not days:
@@ -176,8 +177,10 @@ def build(today: date | None = None, holidays: set[date] | None = None) -> dict:
         bought = []
         if ei is not None:
             holds = [h for h in holds if h["exit_i"] > ei]
-            held = {h["code"] for h in holds}
-            free = SLOTS - len(holds)
+            # 實際開始照做（LIVE_START）之後：只算實際照做的部位，模擬的舊部位不占份數
+            base = holds if days[ei].isoformat() < LIVE_START else [h for h in holds if days[h["entry_i"]].isoformat() >= LIVE_START]
+            held = {h["code"] for h in base}
+            free = SLOTS - len(base)
             for r in rows:
                 if free <= 0:
                     break
@@ -232,7 +235,8 @@ def build(today: date | None = None, holidays: set[date] | None = None) -> dict:
                      "exit": days[h["exit_i"]].isoformat(), "why": h["why"], "ret": None if not p0 or not p1 else round(p1 / p0 - 1, 4)})
     # 下一個交易日要做的事（給通知與頁面「下一步」用）
     nxt = next_trading_day(days[-1], holidays or set())
-    sell = [{"code": h["code"], "name": h["name"], "why": h["why"]} for h in holds if h["exit_i"] == last + 1]
+    live = [h for h in holds if days[h["entry_i"]].isoformat() >= LIVE_START]       # 實際照做的部位（通知用）
+    sell = [{"code": h["code"], "name": h["name"], "why": h["why"]} for h in live if h["exit_i"] == last + 1]
     buy, pend = [], None
     for mo in out_months:
         if mo["entry"] is None:
@@ -242,8 +246,8 @@ def build(today: date | None = None, holidays: set[date] | None = None) -> dict:
             mo["entry_est"] = ent.isoformat()
             pend = mo
             if ent == nxt:
-                keep = {h["code"] for h in holds if h["exit_i"] > last + 1}
-                free = SLOTS - len(keep)
+                keep = {h["code"] for h in live if h["exit_i"] > last + 1}
+                free = SLOTS - len(keep) - reserved           # 短線事件占用的份數優先
                 for r in mo["rows"]:
                     if free <= 0:
                         break
@@ -254,14 +258,21 @@ def build(today: date | None = None, holidays: set[date] | None = None) -> dict:
                     free -= 1
     log = read_json(config.STATE_DIR / "picks_log.json", {}) or {}
     return {"date": days[-1].isoformat(), "today": (today or days[-1]).isoformat(), "next_day": nxt.isoformat(),
-            "next": {"date": nxt.isoformat(), "sell": sell, "buy": buy,
+            "next": {"date": nxt.isoformat(), "sell": sell, "buy": buy, "live_open": len([h for h in live if h["exit_i"] > last]),
                      "pending": None if not pend else {"ym": pend["ym"], "entry_est": pend.get("entry_est"), "status": pend["status"],
                                                        "reported": pend["reported"], "reported_prev": pend["reported_prev"]}},
             "log": track(log, adj, days),
+            "book": _book(),
             "latest_rev": f"{latest[0]}-{latest[1]:02d}" if latest else None,
             "rule": {"slots": SLOTS, "hold": HOLD, "stop": STOP, "min_liq": MIN_LIQ, "min_yoy": MIN_YOY, "excl": sorted(EXCL_IND)},
             "months": out_months[::-1], "holdings": cur, "free": SLOTS - len(cur), "closed": done[::-1],
             "sim_start": out_months[0]["entry"] if out_months else None}
+
+
+def _book() -> dict:
+    """短線事件部位（pipeline/strats.py 的紀錄），給選股頁顯示"""
+    b = read_json(config.STATE_DIR / "strat_book.json", {}) or {}
+    return {"planned": b.get("planned", [])[:60], "open": b.get("open", []), "closed": b.get("closed", [])[-60:]}
 
 
 def next_trading_day(d: date, holidays: set[date]) -> date:
