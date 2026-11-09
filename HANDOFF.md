@@ -109,6 +109,18 @@
   前端換算 新年化≈(1+原)×exp(turns×2×0.1425%×(1−折數))−1。已用 FEE_DISC=0.3 重跑最佳組合驗證：換算 +34.4%＝精確 +34.4%。最大回落與展開的參數格子不換算。
   catalog 新增策略時，若有實際交易筆數請在 TURNS 填精確值（短線策略換手很高，折扣影響很大）。
 
+## 多策略組合、凱利、槓桿、停損（2026-11-04～05，另一個對話「陳信宏先生」做的）
+- 程式 `research/multi_strat.py`：
+  - `python -m research.multi_strat /tmp/btdata` 主力＋短線事件共用資金（份數 K）
+  - `… kelly /tmp/btdata` 平均分 vs 全／半／四分之一凱利
+  - `… levstop /tmp/btdata [extra|s15]` 槓桿、停損及兩者搭配
+  - `… stats /tmp/btdata` 整體與各策略勝率、盈虧比、每筆期望
+  - /tmp/btdata 需要：btdata 分支的 `twse_full_snaps.json`，以及 `material_*.csv` 放在 `/tmp/btdata/mat/`；另需先跑過 `research.tender_bt` 產生 research/out/tender_events.csv。
+- 「全部可用策略」＝營收加速主力、除權息前一天買（殖利率≥6%）、除權息前 10 天買（≥4%）、第二次處置前放空、公開收購截止前放空、全額交割放空（假設 50% 借得到券）、連續漲停隔日沖（假設 30% 買得到、每筆再扣 1%）。淘汰：爆量急拉放空、處置解除買、標借鎖單、恢復交易後買、跌停出貨型放空、跌停進貨型（2013 後太少）。
+- 結論（3 折、每筆 4%、2013 起）：平均分 +39.8%／−30%；凱利系列都不比平均分好（全凱利 +25%／−49%）；停損 8% +36%／−21%；停損 8%＋槓桿 1.5 倍 +54%／−31%；停損 15%＋1.5 倍 +59%／−36%。整體每年約 300 筆、勝率 57.5%、每筆期望 +3.1%、每月賺錢機率 70%、營收主力約占總獲利 66%。
+- 數字都在回測總表「多策略組合」分類與 research/README 最後幾節。限制：樣本多頭為主、沒有 2008；漲停排隊、借券是否做得到是最大不確定性。
+- 這些策略的來源是一本私人參考書；書名與內容不放進公開 repo（只寫策略標題與結果）。
+
 ## 短線事件策略與新資料源（2026-11-03 下午）
 - 結果見 research/README「短線事件策略（日資料）」；工具 research/event_bt.py（開盤／收盤進出、放空、避險）。
 - 回補工作 `.github/workflows/backfill_bt.yml`（tools/backfill_bt.py：tpex_punish、twse_full、lend、material 起年 迄年），結果推到 **btdata 分支**（`git fetch origin +btdata:refs/remotes/origin/btdata`），不動 main。上櫃處置已併入 data/archive/punish。
