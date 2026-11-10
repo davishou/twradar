@@ -1,0 +1,14 @@
+
+==== taifex 2026-11-10 04:16:00
+taifex 2022 1 fut 215 opt 4537 bad []
+taifex 2022 2 fut 394 opt 8162 bad []
+taifex 2022 3 fut 669 opt 13872 bad []
+taifex 2022 4 fut 896 opt 18643 bad []
+taifex 2022 5 fut 1147 opt 24313 bad []
+taifex 2022 6 fut 1398 opt 29566 bad []
+taifex 2022 7 fut 1649 opt 35878 bad []
+taifex 2022 8 fut 1924 opt 42790 bad []
+taifex 2022 9 fut 2175 opt 48725 bad []
+taifex 2022 10 fut 2414 opt 54118 bad []
+taifex 2022 11 fut 2677 opt 61968 bad []
+taifex 2022 12 fut 2940 opt 69830 bad []
