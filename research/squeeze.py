@@ -13,6 +13,7 @@
   hi20／hi60  當天收盤創 20／60 日新高（不含當天的前高）
   volat   60 日報酬標準差（年化）
   lu20    前 20 日漲停次數
+  locked  一字漲停；hc／lc／oc 高、低、開 ÷ 收盤；vol 成交量
 """
 from __future__ import annotations
 
@@ -30,12 +31,15 @@ def feats() -> dict:
     if _F is not None:
         return _F
     px, r, tx, ew = pf.prices()
-    q = bt.load_quotes()[["date", "code", "high", "low", "close", "volume", "value", "is_lu"]]
+    q = bt.load_quotes()[["date", "code", "open", "high", "low", "close", "volume", "value", "is_lu"]]
 
     def piv(c):
         return q.pivot(index="date", columns="code", values=c).reindex(index=px.index, columns=px.columns).astype("float32")
-    H, L, C, VO, VA = piv("high"), piv("low"), piv("close"), piv("volume"), piv("value")
+    H, L, C, VO, VA, O = piv("high"), piv("low"), piv("close"), piv("volume"), piv("value"), piv("open")
     LU = q.pivot(index="date", columns="code", values="is_lu").reindex(index=px.index, columns=px.columns).fillna(False).astype("float32")
+    del q
+    import gc
+    gc.collect()
     px = px.astype("float32")
     f = {"px": px, "r": r, "tx": tx, "ew": ew}
     f["near"] = px / px.rolling(250, min_periods=200).max()
@@ -54,6 +58,12 @@ def feats() -> dict:
     f["volat"] = r.rolling(60, min_periods=40).std() * np.sqrt(250)
     f["lu20"] = LU.rolling(20, min_periods=1).sum()
     f["is_lu"] = LU > 0
+    f["locked"] = f["is_lu"] & (H <= L + 1e-9)          # 一字漲停（買不到）
+    f["hc"], f["lc"], f["oc"], f["vol"] = H / C, L / C, O / C, VO   # 高／低／開 對收盤的比值（乘還原價就是還原高低開）、成交量
+    for k, v in list(f.items()):
+        if isinstance(v, pd.DataFrame) and v.dtypes.iloc[0] == "float64":
+            f[k] = v.astype("float32")
+    del H, L, C, VA, LU, hl, O
     _F = f
     return f
 

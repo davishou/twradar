@@ -54,19 +54,17 @@ def signals(f) -> dict:
 
 def to_events(sig: pd.DataFrame, f, minliq=1e8) -> pd.DataFrame:
     """訊號日 t → 進場日 t+1 收盤；流動性、排序用 t 當天收盤資料；t+1 一字漲停不買"""
-    q = bt.load_quotes()[["date", "code", "high", "low", "is_lu"]]
-    lock = q[q["is_lu"] & (q["high"] <= q["low"] + 1e-9)]
-    locked = set(zip(lock["date"], lock["code"]))
     days = sig.index
     s = sig.fillna(False).astype(bool)
     ii, jj = np.where(s.to_numpy())
     ok = ii + 1 < len(days)
     ii, jj = ii[ok], jj[ok]
+    free = ~f["locked"].to_numpy()[ii + 1, jj]                # 進場日一字漲停：買不到
+    ii, jj = ii[free], jj[free]
     e = pd.DataFrame({"code": sig.columns.to_numpy()[jj], "date": days[ii + 1],
                       "score": f["near"].to_numpy()[ii, jj], "liq": f["val20"].to_numpy()[ii, jj]})
     e = e[(e["liq"] >= minliq) & e["score"].notna()]
     e = e[~excl_mask(e)]
-    e = e[[(d, c) not in locked for d, c in zip(e["date"], e["code"])]]
     return e[["code", "date", "score"]].reset_index(drop=True)
 
 
