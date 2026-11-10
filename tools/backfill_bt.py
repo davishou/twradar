@@ -4,6 +4,7 @@ python tools/backfill_bt.py tpex_punish        上櫃處置 2004 起（櫃買 bu
 python tools/backfill_bt.py twse_full          上市全額交割（變更交易）名單：每週一張快照，名單有變再逐日補，得到打入／恢復日
 python tools/backfill_bt.py lend               標借：證交所 borrow/BFIB8U（2005 起）、櫃買 margin/lend（每月一查）
 python tools/backfill_bt.py material 起年 迄年   觀測站重大訊息逐日掃描（2005 起），只留公開收購／變更交易／恢復交易等關鍵字；可續跑
+python tools/backfill_bt.py treasury 起年 迄年   同上，但只留庫藏股（主旨含「買回」「庫藏」）公告 → treasury_YYYY.csv（research/treasury_bt.py 用）
 """
 from __future__ import annotations
 
@@ -194,8 +195,11 @@ def lend():
 KW = re.compile(r"公開收購|變更交易方法|全額交割|普通交割|恢復.{0,6}交易方法|分盤集合競價|停止買賣|終止上市|終止櫃檯買賣")
 
 
-def material(y0: int = 2005, y1: int = 2026, minutes: float = 300):
-    prog_p = OUT / f"material_progress_{y0}_{y1}.json"
+KW_TREASURY = re.compile(r"庫藏|買回")
+
+
+def material(y0: int = 2005, y1: int = 2026, minutes: float = 300, kw=KW, prefix: str = "material", subject_only: bool = False):
+    prog_p = OUT / f"{prefix}_progress_{y0}_{y1}.json"
     prog = json.loads(prog_p.read_text()) if prog_p.exists() else {"next": f"{y0}-01-01", "fail": []}
     d = date.fromisoformat(prog["next"])
     today = min(date.today(), date(y1, 12, 31))
@@ -211,7 +215,7 @@ def material(y0: int = 2005, y1: int = 2026, minutes: float = 300):
                 prog["fail"].append(d.isoformat())
             else:
                 for r in rows:
-                    if KW.search(r["subject"]) or KW.search(r["body"][:400]):
+                    if kw.search(r["subject"]) or (not subject_only and kw.search(r["body"][:400])):
                         buf.setdefault(d.year, []).append({**r, "body": r["body"][:3000]})
             time.sleep(3.5)
         d += timedelta(days=1)
@@ -219,21 +223,24 @@ def material(y0: int = 2005, y1: int = 2026, minutes: float = 300):
         if len(LOG) % 50 == 0:
             pass
     for y, rs in buf.items():
-        p = OUT / f"material_{y}.csv"
+        p = OUT / f"{prefix}_{y}.csv"
         old = list(csv.DictReader(open(p, encoding="utf-8"))) if p.exists() else []
         keyset = {(o["date"], o["time"], o["code"], o["subject"]) for o in old}
         old += [r for r in rs if (r["date"], r["time"], r["code"], r["subject"]) not in keyset]
         write_csv(p, old, ["date", "time", "code", "name", "market", "subject", "body", "clause"])
     prog_p.write_text(json.dumps(prog, ensure_ascii=False))
-    log("material next", prog["next"], "fail", len(prog["fail"]), {y: len(v) for y, v in buf.items()})
+    log(prefix, "next", prog["next"], "fail", len(prog["fail"]), {y: len(v) for y, v in buf.items()})
 
 
 if __name__ == "__main__":
     task = sys.argv[1]
     try:
-        if task == "material":
+        if task in ("material", "treasury"):
             a = [int(x) for x in sys.argv[2:4]] if len(sys.argv) > 3 else [2005, 2026]
-            material(a[0], a[1])
+            if task == "treasury":
+                material(a[0], a[1], kw=KW_TREASURY, prefix="treasury", subject_only=True)
+            else:
+                material(a[0], a[1])
         else:
             {"tpex_punish": tpex_punish, "twse_full": twse_full, "lend": lend}[task]()
     finally:
