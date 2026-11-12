@@ -362,6 +362,11 @@ def job_history(minutes: float = 40) -> None:
         job_treasury(minutes=10)          # 庫藏股回補沒補完就順便續補；補完後幾乎不花時間
     except Exception as e:  # noqa: BLE001
         log.exception("庫藏股回補失敗：%s", e)
+    try:   # 最近 45 天的除權除息計算結果（參考價），還原因子要用
+        t = now_tw().date()
+        archive.save_exright(sources.fetch_exright_results(t - timedelta(days=45), t))
+    except Exception as e:  # noqa: BLE001
+        log.exception("除權息計算結果抓取失敗：%s", e)
     n = archive.build_adjust()
     log.info("還原因子 %d 筆；回補完成：%s", n, st.get("complete"))
 

@@ -279,9 +279,42 @@ def repair_tpex_sign() -> dict:
 
 # ------------------------------------------------------------------ 還原因子
 
+def load_exright() -> dict:
+    """{(日期, 代號): (除權息前收盤價, 除權息參考價)}，來自交易所的除權除息計算結果表"""
+    p = ROOT / "exright.csv.gz"
+    if not p.exists():
+        return {}
+    with gzip.open(p, "rt", encoding="utf-8") as f:
+        return {(r["date"], r["code"]): (float(r["prev_close"]), float(r["ref"])) for r in csv.DictReader(f)}
+
+
+def save_exright(rows: list[dict]) -> int:
+    """合併新的除權除息計算結果（同一天同一檔以新的為準）；回傳總筆數"""
+    have = {k: v for k, v in load_exright().items()}
+    for r in rows:
+        try:
+            have[(r["date"], r["code"])] = (float(r["prev_close"]), float(r["ref"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["date", "code", "prev_close", "ref"])
+    for (d, c), (pc, ref) in sorted(have.items()):
+        w.writerow([d, c, f"{pc:g}", f"{ref:g}"])
+    data = gzip.compress(buf.getvalue().encode("utf-8"), compresslevel=9, mtime=0)
+    p = ROOT / "exright.csv.gz"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.exists() or p.read_bytes() != data:
+        p.write_bytes(data)
+    return len(have)
+
+
 def build_adjust() -> int:
     """除權息、減資等『非交易』價格變動：當日參考價 ≠ 前一交易日收盤 → 還原因子 = 參考價 / 前收。
-    回測時把該日之前的價格乘上因子（多次相乘）即得還原價。"""
+    回測時把該日之前的價格乘上因子（多次相乘）即得還原價。
+    除權息日優先用交易所『除權除息計算結果表』的參考價（exright.csv.gz）：行情檔在除權息當天漲跌欄是 0，
+    用「收盤−漲跌」反推的參考價會等於收盤，還原價就會把那天的漲跌整個抹掉。"""
+    exr = load_exright()
     prev: dict[str, float] = {}
     rows = []
     for d in days("quotes"):
@@ -292,6 +325,9 @@ def build_adjust() -> int:
             except ValueError:
                 continue
             p = prev.get(r["code"])
+            x = exr.get((d, r["code"]))
+            if p and x and abs(x[0] / p - 1) < 0.02:                   # 交易所的除權息前收盤＝我們的前收（差太多＝對不上，不用）
+                ref = x[1] * p / x[0]
             if p and ref and abs(ref / p - 1) > 0.0005:
                 day_rows.append({"date": d, "code": r["code"], "name": r["name"], "prev_close": p, "ref": ref,
                                  "factor": round(ref / p, 6)})

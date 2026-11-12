@@ -4,6 +4,10 @@ python tools/backfill_bt.py tpex_punish        上櫃處置 2004 起（櫃買 bu
 python tools/backfill_bt.py twse_full          上市全額交割（變更交易）名單：每週一張快照，名單有變再逐日補，得到打入／恢復日
 python tools/backfill_bt.py lend               標借：證交所 borrow/BFIB8U（2005 起）、櫃買 margin/lend（每月一查）
 python tools/backfill_bt.py material 起年 迄年   觀測站重大訊息逐日掃描（2005 起），只留公開收購／變更交易／恢復交易等關鍵字；可續跑
+python tools/backfill_bt.py taifex 起年 迄年     期交所台指期、台指選擇權每日行情 → fut_TX_YYYY.csv、opt_TXO_YYYY.csv.gz（research/fo_bt.py 用）
+python tools/backfill_bt.py yahoo_intraday       加權指數 60 分 K（約 730 天）、5 分 K（60 天）→ twii_60m.csv、twii_5m.csv
+python tools/backfill_bt.py exright 起年 迄年    證交所 TWT49U＋櫃買除權除息計算結果（除權息參考價）→ exright_YYYY.csv（重建還原因子用）
+python tools/backfill_bt.py treasury 起年 迄年   同上，但只留庫藏股（主旨含「買回」「庫藏」）公告 → treasury_YYYY.csv（research/treasury_bt.py 用）
 """
 from __future__ import annotations
 
@@ -194,8 +198,11 @@ def lend():
 KW = re.compile(r"公開收購|變更交易方法|全額交割|普通交割|恢復.{0,6}交易方法|分盤集合競價|停止買賣|終止上市|終止櫃檯買賣")
 
 
-def material(y0: int = 2005, y1: int = 2026, minutes: float = 300):
-    prog_p = OUT / f"material_progress_{y0}_{y1}.json"
+KW_TREASURY = re.compile(r"庫藏|買回")
+
+
+def material(y0: int = 2005, y1: int = 2026, minutes: float = 300, kw=KW, prefix: str = "material", subject_only: bool = False):
+    prog_p = OUT / f"{prefix}_progress_{y0}_{y1}.json"
     prog = json.loads(prog_p.read_text()) if prog_p.exists() else {"next": f"{y0}-01-01", "fail": []}
     d = date.fromisoformat(prog["next"])
     today = min(date.today(), date(y1, 12, 31))
@@ -211,7 +218,7 @@ def material(y0: int = 2005, y1: int = 2026, minutes: float = 300):
                 prog["fail"].append(d.isoformat())
             else:
                 for r in rows:
-                    if KW.search(r["subject"]) or KW.search(r["body"][:400]):
+                    if kw.search(r["subject"]) or (not subject_only and kw.search(r["body"][:400])):
                         buf.setdefault(d.year, []).append({**r, "body": r["body"][:3000]})
             time.sleep(3.5)
         d += timedelta(days=1)
@@ -219,23 +226,140 @@ def material(y0: int = 2005, y1: int = 2026, minutes: float = 300):
         if len(LOG) % 50 == 0:
             pass
     for y, rs in buf.items():
-        p = OUT / f"material_{y}.csv"
+        p = OUT / f"{prefix}_{y}.csv"
         old = list(csv.DictReader(open(p, encoding="utf-8"))) if p.exists() else []
         keyset = {(o["date"], o["time"], o["code"], o["subject"]) for o in old}
         old += [r for r in rs if (r["date"], r["time"], r["code"], r["subject"]) not in keyset]
         write_csv(p, old, ["date", "time", "code", "name", "market", "subject", "body", "clause"])
     prog_p.write_text(json.dumps(prog, ensure_ascii=False))
-    log("material next", prog["next"], "fail", len(prog["fail"]), {y: len(v) for y, v in buf.items()})
+    log(prefix, "next", prog["next"], "fail", len(prog["fail"]), {y: len(v) for y, v in buf.items()})
+
+# ---------------------------------------------------------------- 期交所：台指期／台指選擇權每日行情（回測用）
+FUT_F = ["date", "contract", "session", "open", "high", "low", "close", "volume", "settle", "oi"]
+OPT_F = ["date", "contract", "strike", "cp", "open", "high", "low", "close", "volume", "settle", "oi", "bid", "ask", "expiry"]
+
+
+def _taifex_month(kind: str, cid: str, y: int, m: int):
+    import calendar
+    import io
+    a, b = f"{y}/{m:02d}/01", f"{y}/{m:02d}/{calendar.monthrange(y, m)[1]:02d}"
+    for k in range(4):
+        try:
+            r = S.post(f"https://www.taifex.com.tw/cht/3/{kind}DataDown",
+                       data={"down_type": "1", "commodity_id": cid, "commodity_id2": "", "queryStartDate": a, "queryEndDate": b}, timeout=180)
+            txt = r.content.decode("big5", "replace")
+            if r.status_code == 200 and txt.lstrip().startswith("交易日期"):
+                time.sleep(3)
+                return list(csv.reader(io.StringIO(txt)))
+        except Exception as e:  # noqa: BLE001
+            log("err", kind, y, m, e)
+        time.sleep(10 * (k + 1))
+    return None
+
+
+def taifex(y0: int, y1: int):
+    """台指期（TX，全部單式月份、一般＋盤後）與台指選擇權（TXO，只留一般交易時段、到期月份 ≤ 次月、有成交或有未平倉的列）
+    → fut_TX_YYYY.csv、opt_TXO_YYYY.csv.gz。一年寫一次檔，已存在的年份跳過（今年除外）。"""
+    import gzip
+    today = date.today()
+    for y in range(y0, y1 + 1):
+        fp, op = OUT / f"fut_TX_{y}.csv", OUT / f"opt_TXO_{y}.csv.gz"
+        if fp.exists() and op.exists() and y < today.year:
+            continue
+        frows, orows, bad = [], [], []
+        for m in range(1, 13):
+            if date(y, m, 1) > today:
+                break
+            rows = _taifex_month("fut", "TX", y, m)
+            if rows is None:
+                bad.append(f"fut{m}")
+            else:
+                h = [c.strip() for c in rows[0]]
+                ix = {c: i for i, c in enumerate(h)}
+                for r in rows[1:]:
+                    if len(r) < 12 or "/" in r[ix["到期月份(週別)"]]:
+                        continue                                    # 價差委託不要
+                    g = lambda c: r[ix[c]].strip()  # noqa: E731
+                    frows.append({"date": g("交易日期").replace("/", "-"), "contract": g("到期月份(週別)"), "session": g("交易時段") if "交易時段" in ix else "一般",
+                                  "open": g("開盤價"), "high": g("最高價"), "low": g("最低價"), "close": g("收盤價"), "volume": g("成交量"),
+                                  "settle": g("結算價"), "oi": g("未沖銷契約數")})
+            rows = _taifex_month("opt", "TXO", y, m)
+            if rows is None:
+                bad.append(f"opt{m}")
+            else:
+                h = [c.strip() for c in rows[0]]
+                ix = {c: i for i, c in enumerate(h)}
+                nxt = (y * 12 + m) + 1                              # 次月（年×12＋月−1 的下一個）
+                for r in rows[1:]:
+                    if len(r) < 14:
+                        continue
+                    g = lambda c: r[ix[c]].strip() if c in ix and ix[c] < len(r) else ""  # noqa: E731
+                    if g("交易時段") not in ("", "一般"):
+                        continue
+                    con = g("到期月份(週別)")
+                    if not con[:6].isdigit() or int(con[:4]) * 12 + int(con[4:6]) > nxt:
+                        continue
+                    vol, oi = g("成交量"), g("未沖銷契約數")
+                    if vol in ("", "0", "-") and oi in ("", "0", "-"):
+                        continue
+                    orows.append({"date": g("交易日期").replace("/", "-"), "contract": con, "strike": g("履約價").split(".")[0],
+                                  "cp": "C" if g("買賣權").startswith("買") or g("買賣權").upper().startswith("C") else "P",
+                                  "open": g("開盤價"), "high": g("最高價"), "low": g("最低價"), "close": g("收盤價"), "volume": vol,
+                                  "settle": g("結算價"), "oi": oi, "bid": g("最後最佳買價"), "ask": g("最後最佳賣價"), "expiry": g("契約到期日")})
+            log("taifex", y, m, "fut", len(frows), "opt", len(orows), "bad", bad)
+        if frows:
+            write_csv(fp, frows, FUT_F)
+        if orows:
+            with gzip.open(op, "wt", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=OPT_F)
+                w.writeheader()
+                w.writerows(orows)
+        if bad:
+            log("taifex", y, "缺", bad)
+
+
+def yahoo_intraday():
+    """加權指數盤中資料（Yahoo 只給最近：60 分 K 約 730 天、5 分 K 60 天）→ twii_60m.csv、twii_5m.csv（和舊檔合併，之後每次跑會累積）"""
+    for interval, rng in (("60m", "730d"), ("5m", "60d")):
+        try:
+            r = S.get("https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII", params={"interval": interval, "range": rng}, timeout=60,
+                      headers={"User-Agent": "Mozilla/5.0"})
+            j = r.json()["chart"]["result"][0]
+            qd = j["indicators"]["quote"][0]
+            rows = [{"ts": t, "open": o, "high": h, "low": l, "close": c} for t, o, h, l, c in
+                    zip(j["timestamp"], qd["open"], qd["high"], qd["low"], qd["close"]) if c is not None]
+        except Exception as e:  # noqa: BLE001
+            log("yahoo", interval, "失敗", e)
+            continue
+        p = OUT / f"twii_{interval}.csv"
+        old = list(csv.DictReader(open(p, encoding="utf-8"))) if p.exists() else []
+        have = {int(o["ts"]) for o in old}
+        old += [x for x in rows if x["ts"] not in have]
+        old.sort(key=lambda x: int(x["ts"]))
+        write_csv(p, old, ["ts", "open", "high", "low", "close"])
+        log("yahoo", interval, len(rows), "合計", len(old))
+        time.sleep(2)
 
 
 if __name__ == "__main__":
     task = sys.argv[1]
     try:
-        if task == "material":
+        if task in ("material", "treasury"):
             a = [int(x) for x in sys.argv[2:4]] if len(sys.argv) > 3 else [2005, 2026]
-            material(a[0], a[1])
+            if task == "treasury":
+                material(a[0], a[1], kw=KW_TREASURY, prefix="treasury", subject_only=True)
+            else:
+                material(a[0], a[1])
+        elif task == "exright":
+            from pipeline import sources as _src
+            for y in range(int(sys.argv[2]), int(sys.argv[3]) + 1):
+                rows = _src.fetch_exright_results(date(y, 1, 1), min(date(y, 12, 31), date.today()))
+                write_csv(OUT / f"exright_{y}.csv", rows, ["date", "code", "market", "prev_close", "ref"])
+                log("exright", y, len(rows), "上市", sum(r["market"] == "TWSE" for r in rows), "上櫃", sum(r["market"] == "TPEX" for r in rows))
+        elif task == "taifex":
+            taifex(int(sys.argv[2]), int(sys.argv[3]))
         else:
-            {"tpex_punish": tpex_punish, "twse_full": twse_full, "lend": lend}[task]()
+            {"tpex_punish": tpex_punish, "twse_full": twse_full, "lend": lend, "yahoo_intraday": yahoo_intraday}[task]()
     finally:
         with open(OUT / f"log_{'_'.join(sys.argv[1:])}.txt", "a", encoding="utf-8") as f:
             f.write(f"\n==== {task} {time.strftime('%F %T')}\n" + "\n".join(LOG[-400:]))

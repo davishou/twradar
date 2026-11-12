@@ -50,6 +50,8 @@ URLS = {
     # 除權除息預告表
     "twse_exright": "https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL",
     "tpex_exright": "https://www.tpex.org.tw/openapi/v1/tpex_exright_prepost",
+    "twse_exright_result": "https://www.twse.com.tw/rwd/zh/exRight/TWT49U",          # 除權除息計算結果表（含除權息參考價）
+    "tpex_exright_result": "https://www.tpex.org.tw/web/stock/exright/dailyquo/exDailyQ_result.php",
     # 休市日
     "holidays": "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
     # 櫃買舊版依日期行情（新版失敗時備援）

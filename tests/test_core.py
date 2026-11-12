@@ -210,6 +210,29 @@ class ArchiveTest(unittest.TestCase):
             archive.ROOT = old
 
 
+class ExrightAdjust(unittest.TestCase):
+    def test_exchange_ref_used_on_ex_day(self):
+        """除權息日行情的漲跌欄是 0（參考價會變成收盤價）→ 要用交易所除權除息計算結果的參考價"""
+        import csv
+        import gzip
+        import tempfile
+        from pathlib import Path
+        from pipeline import archive
+        old = archive.ROOT
+        archive.ROOT = Path(tempfile.mkdtemp())
+        try:
+            q = lambda c, ch: {"code": "2330", "name": "台積電", "market": "TWSE", "open": c, "high": c, "low": c,  # noqa: E731
+                               "close": c, "change": ch, "volume": 1, "value": 1, "trades": 1}
+            archive.save_quotes(date(2024, 9, 11), [q(901.0, -3.0)])
+            archive.save_quotes(date(2024, 9, 12), [q(940.0, 0.0)])
+            archive.save_exright([{"date": "2024-09-12", "code": "2330", "prev_close": 901, "ref": 897}])
+            self.assertEqual(archive.build_adjust(), 1)
+            r = list(csv.DictReader(gzip.open(archive.ROOT / "adjust.csv.gz", "rt", encoding="utf-8")))[0]
+            self.assertAlmostEqual(float(r["factor"]), 897 / 901, places=5)   # 當天報酬＝940/897−1（+4.8%），不是 0
+        finally:
+            archive.ROOT = old
+
+
 class TreasuryBackfill(unittest.TestCase):
     def test_backfill_and_merge(self):
         """回補是可續跑的；決議比執行結果晚補進來也只會有一筆計畫"""
