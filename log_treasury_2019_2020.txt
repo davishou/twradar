@@ -1,3 +1,5 @@
 
 ==== treasury 2026-11-10 07:50:18
 treasury next 2020-04-02 fail 1 {2019: 836, 2020: 498}
+==== treasury 2026-11-12 06:00:07
+treasury next 2021-01-01 fail 1 {2020: 1066}
