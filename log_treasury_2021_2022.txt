@@ -1,3 +1,5 @@
 
 ==== treasury 2026-11-10 07:51:39
 treasury next 2021-12-31 fail 0 {2021: 700}
+==== treasury 2026-11-12 06:41:37
+treasury next 2023-01-01 fail 0 {2022: 742}
