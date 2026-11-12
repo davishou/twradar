@@ -527,7 +527,7 @@ def fetch_exright_results(start: date, end: date) -> list[dict]:
         j = get_json(U["twse_exright_result"], params={"startDate": a.strftime("%Y%m%d"), "endDate": b.strftime("%Y%m%d"), "response": "json"})
         for r in table_rows(j or {}, "股票代號"):
             code = str(r.get("股票代號", "")).strip()
-            d = parse_date(r.get("資料日期"))
+            d = parse_date(re.sub(r"(\d+)年(\d+)月(\d+)日", r"\1/\2/\3", str(r.get("資料日期", ""))))   # 「94年01月11日」民國兩位數年
             if d and is_common_stock(code):
                 out.append({"date": d.isoformat(), "code": code, "market": "TWSE",
                             "prev_close": num(r.get("除權息前收盤價")), "ref": num(r.get("除權息參考價"))})
@@ -536,10 +536,13 @@ def fetch_exright_results(start: date, end: date) -> list[dict]:
     while m <= end:
         nxt = date(m.year + (m.month == 12), m.month % 12 + 1, 1)
         a, b = max(start, m), min(end, nxt - timedelta(days=1))
-        j = get_json(U["tpex_exright_result"], params={"l": "zh-tw", "d": roc(a), "ed": roc(b)})
+        r3 = lambda x: f"{x.year - 1911:03d}/{x.month:02d}/{x.day:02d}"  # noqa: E731  （民國年要 3 位數，櫃買 2011 前沒有資料）
+        j = get_json(U["tpex_exright_result"], params={"l": "zh-tw", "d": r3(a), "ed": r3(b)}) if a.year >= 2011 else None
         for r in table_rows(j or {}, "代號"):
             code = str(r.get("代號", "")).strip()
             d = parse_date(r.get("除權息日期"))
+            if d and not (a <= d <= b):
+                continue                                              # 查詢格式不對時櫃買會回『今天』的資料，丟掉
             if d and is_common_stock(code):
                 out.append({"date": d.isoformat(), "code": code, "market": "TPEX",
                             "prev_close": num(r.get("除權息前收盤價")), "ref": num(r.get("除權息參考價"))})
