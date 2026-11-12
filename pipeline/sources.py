@@ -516,6 +516,37 @@ def fetch_exrights() -> list[dict]:
     return out
 
 
+def fetch_exright_results(start: date, end: date) -> list[dict]:
+    """除權除息『計算結果』（已除權息的實際參考價）：[{date,code,market,prev_close,ref}]。
+    行情檔在除權息當天的漲跌欄是 0，用「收盤−漲跌」反推的參考價是錯的，還原因子要用這裡的參考價。
+    證交所一次可查一整年；櫃買一次查一個月。"""
+    out = []
+    y = start.year
+    while y <= end.year:
+        a, b = max(start, date(y, 1, 1)), min(end, date(y, 12, 31))
+        j = get_json(U["twse_exright_result"], params={"startDate": a.strftime("%Y%m%d"), "endDate": b.strftime("%Y%m%d"), "response": "json"})
+        for r in table_rows(j or {}, "股票代號"):
+            code = str(r.get("股票代號", "")).strip()
+            d = parse_date(r.get("資料日期"))
+            if d and is_common_stock(code):
+                out.append({"date": d.isoformat(), "code": code, "market": "TWSE",
+                            "prev_close": num(r.get("除權息前收盤價")), "ref": num(r.get("除權息參考價"))})
+        y += 1
+    m = date(start.year, start.month, 1)
+    while m <= end:
+        nxt = date(m.year + (m.month == 12), m.month % 12 + 1, 1)
+        a, b = max(start, m), min(end, nxt - timedelta(days=1))
+        j = get_json(U["tpex_exright_result"], params={"l": "zh-tw", "d": roc(a), "ed": roc(b)})
+        for r in table_rows(j or {}, "代號"):
+            code = str(r.get("代號", "")).strip()
+            d = parse_date(r.get("除權息日期"))
+            if d and is_common_stock(code):
+                out.append({"date": d.isoformat(), "code": code, "market": "TPEX",
+                            "prev_close": num(r.get("除權息前收盤價")), "ref": num(r.get("除權息參考價"))})
+        m = nxt
+    return [r for r in out if r["prev_close"] and r["ref"]]
+
+
 def fetch_exrights_raw() -> list[dict]:
     """除權息預告（策略通知用）：[{code,name,market,date,cash,stock}]；cash＝每股現金股利（元），stock＝每股股票股利（元，面額 10）"""
     out = []

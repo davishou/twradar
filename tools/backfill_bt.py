@@ -6,6 +6,7 @@ python tools/backfill_bt.py lend               標借：證交所 borrow/BFIB8U�
 python tools/backfill_bt.py material 起年 迄年   觀測站重大訊息逐日掃描（2005 起），只留公開收購／變更交易／恢復交易等關鍵字；可續跑
 python tools/backfill_bt.py taifex 起年 迄年     期交所台指期、台指選擇權每日行情 → fut_TX_YYYY.csv、opt_TXO_YYYY.csv.gz（research/fo_bt.py 用）
 python tools/backfill_bt.py yahoo_intraday       加權指數 60 分 K（約 730 天）、5 分 K（60 天）→ twii_60m.csv、twii_5m.csv
+python tools/backfill_bt.py exright 起年 迄年    證交所 TWT49U＋櫃買除權除息計算結果（除權息參考價）→ exright_YYYY.csv（重建還原因子用）
 python tools/backfill_bt.py treasury 起年 迄年   同上，但只留庫藏股（主旨含「買回」「庫藏」）公告 → treasury_YYYY.csv（research/treasury_bt.py 用）
 """
 from __future__ import annotations
@@ -349,6 +350,12 @@ if __name__ == "__main__":
                 material(a[0], a[1], kw=KW_TREASURY, prefix="treasury", subject_only=True)
             else:
                 material(a[0], a[1])
+        elif task == "exright":
+            from pipeline import sources as _src
+            for y in range(int(sys.argv[2]), int(sys.argv[3]) + 1):
+                rows = _src.fetch_exright_results(date(y, 1, 1), min(date(y, 12, 31), date.today()))
+                write_csv(OUT / f"exright_{y}.csv", rows, ["date", "code", "market", "prev_close", "ref"])
+                log("exright", y, len(rows), "上市", sum(r["market"] == "TWSE" for r in rows), "上櫃", sum(r["market"] == "TPEX" for r in rows))
         elif task == "taifex":
             taifex(int(sys.argv[2]), int(sys.argv[3]))
         else:
