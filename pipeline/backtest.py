@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import glob
+import os
 import json
 import sys
 from pathlib import Path
@@ -58,7 +59,9 @@ def _cached(name: str, build):
     """依資料庫檔案數做快取鍵，資料庫有新資料時自動重建"""
     pd, _ = _pd()
     n = len(glob.glob(str(ARCHIVE / "*" / "*" / "*.csv.gz")))
-    p = CACHE / f"{name}_{n}.pkl"
+    top = sorted(glob.glob(str(ARCHIVE / "*.csv.gz")))            # adjust.csv.gz 這類單一檔：內容變了也要重建
+    sig = sum(int(os.path.getmtime(f)) + os.path.getsize(f) for f in top) % 10**9
+    p = CACHE / f"{name}_{n}_{sig}.pkl"
     if p.exists():
         return pd.read_pickle(p)
     CACHE.mkdir(parents=True, exist_ok=True)
