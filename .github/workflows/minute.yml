@@ -1,0 +1,44 @@
+# 分鐘 K 資料庫：永豐 Shioaji 1 分 K → Parquet → Cloudflare R2（私人 bucket，不進 git）
+# 收盤後先補當天，再用剩下的時間與流量往回補（最早 2018-12）。說明見 pipeline/minute.py 開頭。
+name: minute
+on:
+  schedule:
+    - cron: "40 6 * * 1-5"     # 台灣 14:40
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "probe（第一次測試）/ auto / daily / backfill / status"
+        default: "probe"
+permissions:
+  contents: read
+concurrency:
+  group: minute
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+      SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            pipeline
+            requirements-minute.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-minute.txt
+      - name: 檢查金鑰
+        run: |
+          for v in SHIOAJI_API_KEY SHIOAJI_SECRET_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET; do
+            [ -n "${!v}" ] || { echo "::error::缺少 GitHub Secret $v"; exit 1; }
+          done
+      - name: 執行
+        run: python -m pipeline.minute ${{ github.event.inputs.task || 'auto' }} 290
