@@ -148,3 +148,11 @@
 5. ~~量比~~（2026-10-25 完成）。
 6. 回測功能本身（資料庫已備好）。待辦：基本面補齊後，測「缺貨漲價型」財報訊號（營收年增加速、毛利率跳升、轉虧為盈，公布後進場）——前段找、後段驗證、和大盤比。工具已有：`pipeline/backtest.py`（讀資料庫、漲停事件表、超額報酬、分組勝率、月 IC），研究腳本與結論在 `research/`（README 有摘要）。需 `requirements-backtest.txt`（pandas、scipy），排程不會裝。使用者想要的方向：找「勝率與漲幅都贏大盤」的訊號，一律和大盤比（超額報酬），用前段找、後段驗證。
 7. 上櫃分點、處置第 5 款：需付費資料源。
+
+## 分鐘 K 資料庫（pipeline/minute.py、.github/workflows/minute.yml，2026-11-13）
+- 來源永豐 Shioaji `api.kbars`（1 分 K，最早 2018-12-07；需永豐證券戶＋API 金鑰，不用憑證）。存到 **Cloudflare R2 私人 bucket**，不進 git：`minute/1m/<代號>/<YYYY-MM>.parquet`（ts 台灣時間、09:01＝09:00~09:01，價格 float32、volume 張、amount 元，zstd），進度 `minute/_progress.json`。
+- GitHub Secrets：SHIOAJI_API_KEY、SHIOAJI_SECRET_KEY、R2_ACCOUNT_ID、R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY、R2_BUCKET。**不要請使用者把金鑰貼到對話。**
+- 排程：平日 14:40（GitHub cron）job `auto`＝先 daily（從上次更新日接著抓，最多 30 天）再 backfill（一個月一層、成交金額大的先，連 3 個月空＝上市前）。手動 task：probe（第一次測試）／daily／backfill／status；結果寫在 Actions 執行頁的 Summary。
+- 永豐限制：每 10 秒 50 次（程式 0.25 秒一次）；每日流量 500MB（近 30 天沒用 API 下單）／2GB／10GB，早上 8 點重置；流量用完 kbars 回空，所以每 50 次查 `api.usage()`，剩 30MB 就停，空資料要先確認還有流量才算數。估計每檔每月約 300KB 流量、Parquet 約 30~60KB；全市場約 1,900 檔 × 95 個月，500MB 等級要回補約半年，存起來約 5~10GB（R2 免費 10GB）。
+- 只有現存的上市櫃股票＋ETF（Contracts 沒有已下市的）→ 分鐘資料有倖存者偏差，回測要注意。
+- 研究讀取：`from pipeline.minute import load, resample`；`load("2330","2024-01-01","2024-03-31")` 會把過去月份快取到 data/.cache/minute；本機要設同樣的 R2 環境變數（沒設 R2_BUCKET 就讀本機 MINUTE_DIR）。套件 `pip install -r requirements-minute.txt`。測試 tests/test_minute.py（假 api、不連網）。
