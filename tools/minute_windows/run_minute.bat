@@ -1,6 +1,6 @@
 @echo off
-rem 分鐘 K 本機排程用（Windows 工作排程器每天 14:40 執行這個檔）
-rem 資料、金鑰、紀錄都放在 D:\twradar-minute，不在 repo 裡
+rem Minute K data: run by Windows Task Scheduler at 14:40 daily
+rem Data, keys and log live in D:\twradar-minute (not in the repo)
 set MINUTE_DIR=D:\twradar-minute\data
 set MINUTE_ENV=D:\twradar-minute\minute.env
 set PYTHONUTF8=1
