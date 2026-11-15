@@ -8,4 +8,4 @@ cd /d "%~dp0..\.."
 set TASK=%1
 if "%TASK%"=="" set TASK=auto
 echo ===== %date% %time% %TASK% >> D:\twradar-minute\log.txt
-python -m pipeline.minute %TASK% 300 >> D:\twradar-minute\log.txt 2>&1
+py -3.12 -m pipeline.minute %TASK% 300 >> D:\twradar-minute\log.txt 2>&1
