@@ -347,7 +347,8 @@ def daily(fx: Fetcher, store, end: date | None = None) -> dict:
         p["daily_first"] = end.strftime("%Y-%m")
         start = end.replace(day=1)
     else:
-        start = date.fromisoformat(p["daily_last"]) + timedelta(days=1)
+        # 從上次那天「重抓」：期貨夜盤（15:00~隔天 05:00）在 14:40 時還沒開始，要隔天補；重複的分鐘會自動去掉
+        start = date.fromisoformat(p["daily_last"])
         start = max(start, end - timedelta(days=30))
     if start > end:
         return {"job": "daily", "skip": f"已更新到 {p['daily_last']}"}

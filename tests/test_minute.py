@@ -81,11 +81,11 @@ class Minute(unittest.TestCase):
         self.assertEqual((r["from"], r["codes"]), ("2026-11-01", 4 + 3 + 1))   # 股票 4、期貨 3、選擇權 1
         self.assertTrue(self.store.get(M.key_of("OPT/TXO39000L6", "2026-11")))
         r2 = M.daily(self.fx, self.store, date(2026, 11, 13))
-        self.assertEqual(r2["from"], "2026-11-13")
+        self.assertEqual(r2["from"], "2026-11-12")          # 上次那天重抓（期貨夜盤）
         df = M.load("2330", "2026-11-01", "2026-11-30", store=self.store, cache=None)
         self.assertFalse(df["ts"].duplicated().any())
         self.assertEqual(df["close"].iloc[0], 100.5)
-        self.assertIn("skip", M.daily(self.fx, self.store, date(2026, 11, 13)))
+        self.assertIn("skip", M.daily(self.fx, self.store, date(2026, 11, 12)))
 
     def test_backfill_layers_and_listing(self):
         M.daily(self.fx, self.store, date(2026, 11, 12))
