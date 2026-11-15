@@ -152,7 +152,8 @@
 ## 分鐘 K 資料庫（pipeline/minute.py、.github/workflows/minute.yml，2026-11-13）
 - 來源永豐 Shioaji `api.kbars`（1 分 K，最早 2018-12-07；需永豐證券戶＋API 金鑰，不用憑證）。存到 **Cloudflare R2 私人 bucket**，不進 git：`minute/1m/<代號>/<YYYY-MM>.parquet`（ts 台灣時間、09:01＝09:00~09:01，價格 float32、volume 張、amount 元，zstd），進度 `minute/_progress.json`。
 - GitHub Secrets：SHIOAJI_API_KEY、SHIOAJI_SECRET_KEY、R2_ACCOUNT_ID、R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY、R2_BUCKET。**不要請使用者把金鑰貼到對話。**
-- 排程：平日 14:40（GitHub cron）job `auto`＝先 daily（從上次更新日接著抓，最多 30 天）再 backfill（一個月一層、成交金額大的先，連 3 個月空＝上市前）。手動 task：probe（第一次測試）／daily／backfill／status；結果寫在 Actions 執行頁的 Summary。
+- **2026-11-15 使用者改成存在自己的 Windows 電腦 D:\twradar-minute**（tools/minute_windows/run_minute.bat 由工作排程器每天 14:40 跑；金鑰在 D:\twradar-minute\minute.env，紀錄 log.txt）。minute.yml 只留手動、不排程；R2 是之後的選項。
+- 排程（原 GitHub 版）：job `auto`＝先 daily（從上次更新日接著抓，最多 30 天）再 backfill（一個月一層、成交金額大的先，連 3 個月空＝上市前）。手動 task：probe（第一次測試）／daily／backfill／status；結果寫在 Actions 執行頁的 Summary。
 - 永豐限制：每 10 秒 50 次（程式 0.25 秒一次）；每日流量 500MB（近 30 天沒用 API 下單）／2GB／10GB，早上 8 點重置；流量用完 kbars 回空，所以每 50 次查 `api.usage()`，剩 30MB 就停，空資料要先確認還有流量才算數。估計每檔每月約 300KB 流量、Parquet 約 30~60KB；全市場約 1,900 檔 × 95 個月，500MB 等級要回補約半年，存起來約 5~10GB（R2 免費 10GB）。
 - 只有現存的上市櫃股票＋ETF（Contracts 沒有已下市的）→ 分鐘資料有倖存者偏差，回測要注意。
 - 研究讀取：`from pipeline.minute import load, resample`；`load("2330","2024-01-01","2024-03-31")` 會把過去月份快取到 data/.cache/minute；本機要設同樣的 R2 環境變數（沒設 R2_BUCKET 就讀本機 MINUTE_DIR）。套件 `pip install -r requirements-minute.txt`。測試 tests/test_minute.py（假 api、不連網）。

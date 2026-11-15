@@ -1,9 +1,8 @@
 # 分鐘 K 資料庫：永豐 Shioaji 1 分 K → Parquet → Cloudflare R2（私人 bucket，不進 git）
 # 收盤後先補當天，再用剩下的時間與流量往回補（最早 2018-12）。說明見 pipeline/minute.py 開頭。
 name: minute
+# 目前改在使用者自己的 Windows 電腦跑（tools/minute_windows），這個 workflow 只保留手動執行，之後想搬到 R2 再打開排程。
 on:
-  schedule:
-    - cron: "40 6 * * 1-5"     # 台灣 14:40
   workflow_dispatch:
     inputs:
       task:

@@ -100,7 +100,20 @@ class R2Store:
             token = r["NextContinuationToken"]
 
 
+def load_env_file(path: str | None = None) -> None:
+    """本機用：從 KEY=VALUE 檔讀金鑰（預設看環境變數 MINUTE_ENV）。檔案放在 repo 外面，不要進 git。"""
+    path = path or os.environ.get("MINUTE_ENV")
+    if not path or not Path(path).exists():
+        return
+    for line in Path(path).read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"'))
+
+
 def open_store():
+    load_env_file()
     e = os.environ
     if e.get("R2_BUCKET"):
         return R2Store(e["R2_ACCOUNT_ID"], e["R2_ACCESS_KEY_ID"], e["R2_SECRET_ACCESS_KEY"], e["R2_BUCKET"])
@@ -427,6 +440,7 @@ def resample(df: pd.DataFrame, rule: str = "5min") -> pd.DataFrame:
 # ---------------------------------------------------------------- 指令
 def main(argv: list[str]) -> None:
     cmd = argv[0] if argv else "status"
+    load_env_file()
     store = open_store()
     if cmd == "status":
         res = status(store)
