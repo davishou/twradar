@@ -1,5 +1,6 @@
 """分鐘 K（pipeline/minute.py）：用假的 Shioaji 與本機資料夾測試，不連網。"""
 import tempfile
+import unittest.mock
 import unittest
 from datetime import date
 from types import SimpleNamespace as NS
@@ -20,7 +21,11 @@ class FakeApi:
     def __init__(self):
         c = lambda code: NS(code=code)
         self.Contracts = NS(Stocks=NS(TSE=[c("2330"), c("0050"), c("00631L"), c("030001"), c("2881A")],
-                                      OTC=[c("6999")]))
+                                      OTC=[c("6999")]),
+                            Futures=[[c("TXF202612"), c("TXFR1"), c("TXFR2")], [c("CDFR1"), c("CDFR2")]],
+                            Options=NS(TXO=[NS(code="TXO39000L6", delivery_date="2026/12/16"),
+                                            NS(code="TXO39100L6", delivery_date="2026/12/16"),
+                                            NS(code="TXO39000C7", delivery_date="2027/03/17")]))
         self.remaining = 10**9
         self.calls = []
 
@@ -28,11 +33,13 @@ class FakeApi:
         return NS(remaining_bytes=self.remaining)
 
     def snapshots(self, cs):
-        return [NS(code=x.code, total_amount={"2330": 9, "6999": 5}.get(x.code, 1)) for x in cs]
+        return [NS(code=x.code, total_amount={"2330": 9, "6999": 5}.get(x.code, 1),
+                   total_volume=0 if x.code == "TXO39100L6" else 3) for x in cs]
 
     def kbars(self, contract, start, end):
         self.calls.append((contract.code, start))
-        first = {"2330": "2018-12", "0050": "2018-12", "00631L": "2018-12", "6999": "2025-06"}[contract.code]
+        first = {"2330": "2018-12", "0050": "2018-12", "00631L": "2018-12", "6999": "2025-06",
+                 "TXFR1": "2020-03", "TXFR2": "2020-03", "CDFR1": "2020-03"}.get(contract.code, "2026-11")
         if start[:7] < first or self.remaining < 10**6:
             return {"ts": []}
         days = pd.bdate_range(start, end)[:2]
@@ -50,12 +57,19 @@ class Minute(unittest.TestCase):
         self.api = FakeApi()
         self.fx = M.Fetcher(self.api, reserve=0)
         self.fx.MIN_GAP = 0
+        p = unittest.mock.patch.object(M, "now_tw", return_value=M.datetime(2026, 11, 15, 15, tzinfo=M.TW))
+        p.start()
+        self.addCleanup(p.stop)
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def test_universe(self):
         self.assertEqual(sorted(self.fx.contracts()), ["0050", "00631L", "2330", "6999"])  # 無權證、特別股
+
+    def test_futures_options(self):
+        self.assertEqual(sorted(self.fx.futures()), ["CDFR1", "TXFR1", "TXFR2"])   # 個股期貨只留 R1
+        self.assertEqual(list(self.fx.options()), ["OPT/TXO39000L6"])               # 45 天內、有成交
 
     def test_months(self):
         self.assertEqual(list(M.months_back("2019-02", "2018-12")), ["2019-02", "2019-01", "2018-12"])
@@ -64,7 +78,8 @@ class Minute(unittest.TestCase):
 
     def test_daily_merge_and_resume(self):
         r = M.daily(self.fx, self.store, date(2026, 11, 12))
-        self.assertEqual((r["from"], r["codes"]), ("2026-11-01", 4))
+        self.assertEqual((r["from"], r["codes"]), ("2026-11-01", 4 + 3 + 1))   # 股票 4、期貨 3、選擇權 1
+        self.assertTrue(self.store.get(M.key_of("OPT/TXO39000L6", "2026-11")))
         r2 = M.daily(self.fx, self.store, date(2026, 11, 13))
         self.assertEqual(r2["from"], "2026-11-13")
         df = M.load("2330", "2026-11-01", "2026-11-30", store=self.store, cache=None)
@@ -80,6 +95,8 @@ class Minute(unittest.TestCase):
         self.assertEqual(p["back"]["2330"], "2018-12")
         self.assertEqual(p["back"]["6999"], "2025-06")       # 上市前連 3 個月空就停
         self.assertIn("6999", p["done"])
+        self.assertEqual(p["back"]["TXFR1"], "2020-03")
+        self.assertNotIn("OPT/TXO39000L6", p["back"])         # 選擇權不回補
         self.assertTrue(self.store.get(M.key_of("2330", "2018-12")))
         # 第一層（2026-10）成交金額大的先抓
         self.assertEqual([c for c, s in self.api.calls if s == "2026-10-01"][:2], ["2330", "6999"])

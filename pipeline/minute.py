@@ -12,6 +12,10 @@ ts 是台灣時間（不帶時區），沿用 Shioaji 的標法：09:01 那根�
     python -m pipeline.minute backfill [分鐘]         由新到舊回補（最早 2018-12），流量快用完或時間到就停，下次續跑
     python -m pipeline.minute status                 看進度
 
+範圍：上市櫃股票＋ETF、期貨連續月（每個商品 R1；台指／小台／微台加 R2，代號如 TXFR1）、
+      台指選擇權 TXO 45 天內到期且當天有成交的合約（存在 minute/1m/OPT/<合約代號>/）。
+      選擇權和期貨單月合約到期後就查不到，所以選擇權只能從開始跑的那天往後累積，不回補。
+
 環境變數：SHIOAJI_API_KEY、SHIOAJI_SECRET_KEY；
           R2_ACCOUNT_ID、R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY、R2_BUCKET（沒設 R2 就存到本機 MINUTE_DIR，預設 data/.cache/minute_store）
 
@@ -40,6 +44,7 @@ import pandas as pd
 TW = ZoneInfo("Asia/Taipei")
 EARLIEST = "2018-12"          # Shioaji 1 分 K 最早到 2018-12-07
 EMPTY_STOP = 3
+R2_FUT = ("TXF", "MXF", "TMF")    # 這幾個另存次月連續 R2
 PREFIX = "minute/1m"
 PROGRESS = "minute/_progress.json"
 COLS = ["ts", "open", "high", "low", "close", "volume", "amount"]
@@ -262,6 +267,47 @@ class Fetcher:
                     out[code] = c
         return out
 
+    def futures(self) -> dict:
+        """期貨連續月：每個商品的近月 R1（台指、小台、微台另加次月 R2）。
+        到期的單月合約查不到，連續月才有長歷史；換月那天價格會跳（R1 換成下個月）。"""
+        out = {}
+        try:
+            cats = list(self.api.Contracts.Futures)
+        except Exception as e:
+            print(f"  期貨商品檔讀不到：{e}", file=sys.stderr)
+            return out
+        for cat in cats:
+            try:
+                items = list(cat)
+            except TypeError:
+                items = [cat]
+            for c in items:
+                code = getattr(c, "code", "")
+                if code.endswith("R1") or (code.endswith("R2") and code[:3] in R2_FUT):
+                    out[code] = c
+        return out
+
+    def options(self, days: int = 45) -> dict:
+        """台指選擇權（TXO）45 天內到期、今天有成交的合約。到期的合約查不到，所以只能從現在開始每天累積。"""
+        try:
+            items = list(self.api.Contracts.Options.TXO)
+        except Exception as e:
+            print(f"  選擇權商品檔讀不到：{e}", file=sys.stderr)
+            return {}
+        lim = (now_tw().date() + timedelta(days=days)).strftime("%Y/%m/%d")
+        cs = [c for c in items if str(getattr(c, "delivery_date", "9999")) <= lim]
+        vol = {}
+        for i in range(0, len(cs), 500):
+            try:
+                self._wait()
+                for s in self.api.snapshots(cs[i:i + 500]):
+                    vol[s.code] = s.total_volume
+            except Exception as e:
+                print(f"  選擇權 snapshots 失敗：{e}", file=sys.stderr)
+        if vol:
+            cs = [c for c in cs if vol.get(c.code, 0) > 0]
+        return {f"OPT/{c.code}": c for c in cs}
+
     def kbars(self, contract, start: str, end: str) -> pd.DataFrame:
         for i in range(3):
             self._wait()
@@ -305,7 +351,7 @@ def daily(fx: Fetcher, store, end: date | None = None) -> dict:
         start = max(start, end - timedelta(days=30))
     if start > end:
         return {"job": "daily", "skip": f"已更新到 {p['daily_last']}"}
-    cs = fx.contracts()
+    cs = {**fx.contracts(), **fx.futures(), **fx.options()}
     ok = bad = rows = 0
     t0 = time.time()
     for code, c in cs.items():
@@ -334,7 +380,7 @@ def backfill(fx: Fetcher, store, minutes: float = 240) -> dict:
     if "daily_first" not in p:
         return {"job": "backfill", "skip": "還沒跑過 daily"}
     t0 = time.time()
-    cs = fx.contracts()
+    cs = {**fx.contracts(), **fx.futures()}      # 選擇權到期就查不到，不回補
     done = set(p["done"])
     order = [c for c in fx.ranking({k: v for k, v in cs.items() if k not in done}) if c in cs]
     fetched = written = 0
@@ -396,7 +442,18 @@ def probe(fx: Fetcher, store) -> dict:
             break
     store.put("minute/_probe.parquet", to_parquet(df))
     back = from_parquet(store.get("minute/_probe.parquet"))
-    return {"remaining_mb": None if r is None else r // 2**20, "contracts": len(cs),
+    fut, opt = fx.futures(), fx.options()
+    ftest = {}
+    if "TXFR1" in fut:
+        f = fx.kbars(fut["TXFR1"], d, d)
+        ftest = {"txf_rows": len(f), "txf_first": str(f["ts"].iloc[0]) if len(f) else None,
+                 "txf_last": str(f["ts"].iloc[-1]) if len(f) else None}
+    if opt:
+        k = sorted(opt)[0]
+        o = fx.kbars(opt[k], d, d)
+        ftest.update({"opt_code": k, "opt_rows": len(o)})
+    return {**ftest, "futures": len(fut), "options": len(opt), "opt_sample": sorted(opt)[:3],
+            "remaining_mb": None if r is None else r // 2**20, "contracts": len(cs),
             "tse_otc_sample": sorted(cs)[:5], "day": d, "rows": len(df),
             "first": str(df["ts"].iloc[0]) if len(df) else None, "last": str(df["ts"].iloc[-1]) if len(df) else None,
             "r2_roundtrip": len(back) == len(df), "parquet_kb": round(len(to_parquet(df)) / 1024, 1)}

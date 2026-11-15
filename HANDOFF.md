@@ -155,5 +155,6 @@
 - **2026-11-15 使用者改成存在自己的 Windows 電腦 D:\twradar-minute**（tools/minute_windows/run_minute.bat 由工作排程器每天 14:40 跑；金鑰在 D:\twradar-minute\minute.env，紀錄 log.txt）。minute.yml 只留手動、不排程；R2 是之後的選項。
 - 排程（原 GitHub 版）：job `auto`＝先 daily（從上次更新日接著抓，最多 30 天）再 backfill（一個月一層、成交金額大的先，連 3 個月空＝上市前）。手動 task：probe（第一次測試）／daily／backfill／status；結果寫在 Actions 執行頁的 Summary。
 - 永豐限制：每 10 秒 50 次（程式 0.25 秒一次）；每日流量 500MB（近 30 天沒用 API 下單）／2GB／10GB，早上 8 點重置；流量用完 kbars 回空，所以每 50 次查 `api.usage()`，剩 30MB 就停，空資料要先確認還有流量才算數。估計每檔每月約 300KB 流量、Parquet 約 30~60KB；全市場約 1,900 檔 × 95 個月，500MB 等級要回補約半年，存起來約 5~10GB（R2 免費 10GB）。
+- 範圍（2026-11-15 加期權）：股票＋ETF、期貨連續月（各商品 R1，台指／小台／微台加 R2；換月日價格會跳）、TXO 45 天內到期且當天有成交的合約（minute/1m/OPT/）。到期合約查不到 → 選擇權不回補、只從開始跑那天累積；期貨用連續月回補。使用者的 API Key 已勾證券＋期權帳戶。
 - 只有現存的上市櫃股票＋ETF（Contracts 沒有已下市的）→ 分鐘資料有倖存者偏差，回測要注意。
 - 研究讀取：`from pipeline.minute import load, resample`；`load("2330","2024-01-01","2024-03-31")` 會把過去月份快取到 data/.cache/minute；本機要設同樣的 R2 環境變數（沒設 R2_BUCKET 就讀本機 MINUTE_DIR）。套件 `pip install -r requirements-minute.txt`。測試 tests/test_minute.py（假 api、不連網）。
