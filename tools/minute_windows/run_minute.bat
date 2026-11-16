@@ -3,7 +3,7 @@ rem Minute K data: run by Windows Task Scheduler at 14:40 daily
 rem Data, keys and log live in D:\twradar-minute (not in the repo)
 set MINUTE_DIR=D:\twradar-minute\data
 set MINUTE_ENV=D:\twradar-minute\minute.env
-set PYTHONUTF8=1
+set PYTHONIOENCODING=cp950:replace
 cd /d "%~dp0..\.."
 set TASK=%1
 if "%TASK%"=="" set TASK=auto
