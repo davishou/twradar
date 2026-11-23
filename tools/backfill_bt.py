@@ -5,6 +5,7 @@ python tools/backfill_bt.py twse_full          上市全額交割（變更交易
 python tools/backfill_bt.py lend               標借：證交所 borrow/BFIB8U（2005 起）、櫃買 margin/lend（每月一查）
 python tools/backfill_bt.py material 起年 迄年   觀測站重大訊息逐日掃描（2005 起），只留公開收購／變更交易／恢復交易等關鍵字；可續跑
 python tools/backfill_bt.py taifex 起年 迄年     期交所台指期、台指選擇權每日行情 → fut_TX_YYYY.csv、opt_TXO_YYYY.csv.gz（research/fo_bt.py 用）
+python tools/backfill_bt.py twse_taiex 起年 迄年  證交所加權指數每日開高低收（MI_5MINS_HIST，1999 起）＋收盤（FMTQIK，含 2000 年以前週六與補行交易日）→ taiex_twse.csv
 python tools/backfill_bt.py yahoo_intraday       加權指數 60 分 K（約 730 天）、5 分 K（60 天）→ twii_60m.csv、twii_5m.csv
 python tools/backfill_bt.py exright 起年 迄年    證交所 TWT49U＋櫃買除權除息計算結果（除權息參考價）→ exright_YYYY.csv（重建還原因子用）
 python tools/backfill_bt.py treasury 起年 迄年   同上，但只留庫藏股（主旨含「買回」「庫藏」）公告 → treasury_YYYY.csv（research/treasury_bt.py 用）
@@ -279,7 +280,7 @@ def taifex(y0: int, y1: int):
                 for r in rows[1:]:
                     if len(r) < 12 or "/" in r[ix["到期月份(週別)"]]:
                         continue                                    # 價差委託不要
-                    g = lambda c: r[ix[c]].strip()  # noqa: E731
+                    g = lambda c: r[ix[c]].strip() if c in ix and ix[c] < len(r) else ""  # noqa: E731（早年欄位較少）
                     frows.append({"date": g("交易日期").replace("/", "-"), "contract": g("到期月份(週別)"), "session": g("交易時段") if "交易時段" in ix else "一般",
                                   "open": g("開盤價"), "high": g("最高價"), "low": g("最低價"), "close": g("收盤價"), "volume": g("成交量"),
                                   "settle": g("結算價"), "oi": g("未沖銷契約數")})
@@ -316,6 +317,56 @@ def taifex(y0: int, y1: int):
                 w.writerows(orows)
         if bad:
             log("taifex", y, "缺", bad)
+
+
+def _num(x):
+    try:
+        return float(str(x).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _roc2iso(s):
+    y, m, d = str(s).strip().split("/")
+    return f"{int(y) + 1911:04d}-{int(m):02d}-{int(d):02d}"
+
+
+def twse_taiex(y0: int, y1: int):
+    """證交所官方加權指數：MI_5MINS_HIST（開高低收，1999/1 起）、FMTQIK（收盤，1990 起）。Yahoo 沒有週六（2000 年以前週六有交易）
+    與部分補行交易日，用這份補。→ taiex_twse.csv（date, open, high, low, close, src），和舊檔合併。"""
+    p = OUT / "taiex_twse.csv"
+    have = {r["date"]: r for r in csv.DictReader(open(p, encoding="utf-8"))} if p.exists() else {}
+    today = date.today()
+    for y in range(y0, y1 + 1):
+        for m in range(1, 13):
+            if date(y, m, 1) > today or (y, m) < (1997, 7):
+                continue
+            ym = f"{y}{m:02d}01"
+            j = getj("https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK", {"date": ym, "response": "json"})
+            n1 = n2 = 0
+            for r in (j or {}).get("data", []) or []:
+                try:
+                    d = _roc2iso(r[0])
+                except Exception:  # noqa: BLE001
+                    continue
+                c = _num(r[4])
+                if c:
+                    have.setdefault(d, {"date": d, "open": "", "high": "", "low": "", "close": c, "src": "FMTQIK"})
+                    have[d]["close"] = c
+                    n1 += 1
+            if y >= 1999:
+                j2 = getj("https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST", {"date": ym, "response": "json"})
+                for r in (j2 or {}).get("data", []) or []:
+                    try:
+                        d = _roc2iso(r[0])
+                    except Exception:  # noqa: BLE001
+                        continue
+                    o, h, lo, c = (_num(x) for x in r[1:5])
+                    if c:
+                        have[d] = {"date": d, "open": o, "high": h, "low": lo, "close": c, "src": "MI_5MINS_HIST"}
+                        n2 += 1
+            log("twse_taiex", y, m, "收盤", n1, "開高低收", n2)
+        write_csv(p, sorted(have.values(), key=lambda r: r["date"]), ["date", "open", "high", "low", "close", "src"])
 
 
 def yahoo_intraday():
@@ -356,6 +407,8 @@ if __name__ == "__main__":
                 rows = _src.fetch_exright_results(date(y, 1, 1), min(date(y, 12, 31), date.today()))
                 write_csv(OUT / f"exright_{y}.csv", rows, ["date", "code", "market", "prev_close", "ref"])
                 log("exright", y, len(rows), "上市", sum(r["market"] == "TWSE" for r in rows), "上櫃", sum(r["market"] == "TPEX" for r in rows))
+        elif task == "twse_taiex":
+            twse_taiex(int(sys.argv[2]), int(sys.argv[3]))
         elif task == "taifex":
             taifex(int(sys.argv[2]), int(sys.argv[3]))
         else:

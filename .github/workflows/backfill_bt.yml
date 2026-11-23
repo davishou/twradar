@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "tpex_punish / twse_full / lend / material 起年 迄年"
+        description: "tpex_punish / twse_full / lend / material 起年 迄年 / taifex 起年 迄年 / twse_taiex 起年 迄年"
         default: "tpex_punish"
 permissions:
   contents: write
