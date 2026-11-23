@@ -382,6 +382,15 @@ def target_start(st: dict, today: date | None = None) -> date:
     return EARLIEST if st.get("stage1_done") else ten
 
 
+def saturday_sessions() -> set[str]:
+    """證交所官方指數裡的週六交易日（以前的補行交易日），回補時不要當成假日跳過"""
+    f = ROOT / "mkt" / "taiex_twse.csv"
+    if not f.exists():
+        return set()
+    with f.open(encoding="utf-8") as fh:
+        return {r["date"] for r in csv.DictReader(fh) if date.fromisoformat(r["date"]).weekday() == 5}
+
+
 def backfill(src, years: int | None = None, minutes: float = 40, delay: float = 2.5) -> dict:
     """由新到舊補行情、法人、融資融券；每次最多跑 minutes 分鐘，進度存在 progress.json。
     目標：先補到 10 年，補完自動延伸到最早（2004-02）。years 有給就用固定年數（測試用）。
@@ -402,6 +411,7 @@ def backfill(src, years: int | None = None, minutes: float = 40, delay: float = 
     gave_up = {k: set(v) for k, v in st.get("gave_up", {}).items()}   # 已放棄的日子（多半是那時還沒有這種資料）
     no_tpex = set(st.get("no_tpex", []))
     seeded = seed_from_history()
+    sats = saturday_sessions()
     d = today - timedelta(days=1)
     done = streak = 0
     stopped = ""
@@ -410,7 +420,7 @@ def backfill(src, years: int | None = None, minutes: float = 40, delay: float = 
             stopped = "時間到"
             break
         ds = d.isoformat()
-        if d.weekday() >= 5 or ds in closed or fails.get(ds, 0) >= 3:
+        if (d.weekday() >= 5 and ds not in sats) or ds in closed or fails.get(ds, 0) >= 3:
             d -= timedelta(days=1)
             continue
         need = [k for k in ("quotes", "inst", "margin", "val") if not has(k, d) and ds not in gave_up.get(k, set())

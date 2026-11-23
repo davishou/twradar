@@ -243,6 +243,38 @@ def load(sid: str) -> dict[str, list]:
     return out
 
 
+def official_taiex(rows: dict[str, list]) -> int:
+    """用證交所官方加權指數（data/archive/mkt/taiex_twse.csv，tools/backfill_bt.py twse_taiex 產生）修正 Yahoo：
+    補上 Yahoo 沒有的交易日（2000 年以前的週六、之後的週六補行交易日），刪掉官方沒有的日子（颱風休市 Yahoo 仍有一列）。
+    只動官方檔涵蓋的期間；開高低收以官方為準（1999 年以前官方只有收盤）。"""
+    f = MKT_DIR / "taiex_twse.csv"
+    if not f.exists():
+        return 0
+    off = {}
+    with f.open(encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            c = _num(r.get("close"))
+            if c is not None:
+                off[r["date"]] = [_num(r.get(k)) for k in ("open", "high", "low")] + [c]
+    if not off:
+        return 0
+    lo, hi = min(off), max(off)
+    n = 0
+    for d in [d for d in rows if lo <= d <= hi and d not in off]:
+        del rows[d]
+        n += 1
+    for d, (o, h, l, c) in off.items():
+        old = rows.get(d)
+        vol = old[4] if old and len(old) > 4 else None
+        if o is None and old and old[3] is not None and abs(old[3] / c - 1) < 0.001:
+            o, h, l = old[0], old[1], old[2]                  # 1999 年以前官方只有收盤：收盤一致就保留 Yahoo 的開高低
+        new = [o if o is not None else c, h if h is not None else c, l if l is not None else c, c, vol]
+        if old != new:
+            rows[d] = new
+            n += 1
+    return n
+
+
 def save(sid: str, rows: dict[str, list]) -> None:
     by_year: dict[str, list] = {}
     for d in sorted(rows):
@@ -496,6 +528,8 @@ def update(full: bool = False, quick: bool = False, only: list[str] | None = Non
         new, meta = got
         before = len(rows)
         rows.update(new)
+        if sid == "taiex":
+            official_taiex(rows)
         save(sid, rows)
         ok += 1
         px, t = _num(meta.get("regularMarketPrice")), meta.get("regularMarketTime")
