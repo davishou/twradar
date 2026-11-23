@@ -1,0 +1,14 @@
+
+==== taifex 2026-11-23 23:51:57
+taifex 2026 1 fut 0 opt 0 bad ['fut1', 'opt1']
+taifex 2026 2 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2']
+taifex 2026 3 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3']
+taifex 2026 4 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4']
+taifex 2026 5 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4', 'fut5', 'opt5']
+taifex 2026 6 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4', 'fut5', 'opt5', 'fut6', 'opt6']
+taifex 2026 7 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4', 'fut5', 'opt5', 'fut6', 'opt6', 'fut7', 'opt7']
+taifex 2026 8 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4', 'fut5', 'opt5', 'fut6', 'opt6', 'fut7', 'opt7', 'fut8', 'opt8']
+taifex 2026 9 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4', 'fut5', 'opt5', 'fut6', 'opt6', 'fut7', 'opt7', 'fut8', 'opt8', 'fut9', 'opt9']
+taifex 2026 10 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4', 'fut5', 'opt5', 'fut6', 'opt6', 'fut7', 'opt7', 'fut8', 'opt8', 'fut9', 'opt9', 'fut10', 'opt10']
+taifex 2026 11 fut 0 opt 0 bad ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4', 'fut5', 'opt5', 'fut6', 'opt6', 'fut7', 'opt7', 'fut8', 'opt8', 'fut9', 'opt9', 'fut10', 'opt10', 'fut11', 'opt11']
+taifex 2026 缺 ['fut1', 'opt1', 'fut2', 'opt2', 'fut3', 'opt3', 'fut4', 'opt4', 'fut5', 'opt5', 'fut6', 'opt6', 'fut7', 'opt7', 'fut8', 'opt8', 'fut9', 'opt9', 'fut10', 'opt10', 'fut11', 'opt11']
