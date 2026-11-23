@@ -196,10 +196,11 @@ P.home = async () => {
   const [daily, com, line, nd] = await Promise.all([d ? load(`daily/${d}.json`) : null, d ? load(`commentary/${d}.json`) : null, load("line.json"), META.nextday_dates?.[0] ? load(`nextday/${META.nextday_dates[0]}.json`) : null]);
   if (!daily) { app.innerHTML = `<h1>還沒有資料</h1><p class="sub">執行 <code>python -m pipeline.run backfill 120</code> 與 <code>python -m pipeline.run all</code> 產生資料，或用 <code>python -m pipeline.run mock</code> 先看示範。</p>`; return; }
   const maxStreak = Math.max(...daily.groups.map(g => g.streak), 1);
+  const HEATW = innerWidth < 600 ? 88 : 112;   // 每格最小寬度：族群名稱至少能顯示 2 行，放不下就換列（不出現橫向捲軸）
   const heat = daily.groups.map(g => {
     const L = 64 - Math.round((g.streak - 1) / Math.max(maxStreak - 1, 1) * 26);
-    return `<a href="#/daily/${daily.date}?t=${encodeURIComponent(g.theme)}" style="flex:${g.count} 1 0;background:hsl(2 62% ${L}%)" title="${esc(g.theme)}：${g.count} 檔，連續 ${g.streak} 天">
-      ${g.streak > 1 ? `<span class="s">連 ${g.streak} 天</span>` : ""}<span class="n">${g.count}</span><span class="t">${esc(g.emoji)} ${esc(g.theme)}</span></a>`;
+    return `<a href="#/daily/${daily.date}?t=${encodeURIComponent(g.theme)}" style="flex:${g.count} 1 ${HEATW + g.count * 14}px;background:hsl(2 62% ${L}%)" title="${esc(g.theme)}：${g.count} 檔，連續 ${g.streak} 天">
+      <span class="h"><span class="n">${g.count}</span>${g.streak > 1 ? `<span class="s">連 ${g.streak} 天</span>` : ""}</span><span class="t">${esc(g.emoji)} ${esc(g.theme)}</span></a>`;
   }).join("");
   const j = META.jobs || {};
   app.innerHTML = `
