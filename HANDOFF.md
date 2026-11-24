@@ -129,6 +129,12 @@
 - 公開收購（research/tender_bt.py，不成立）、上櫃全額交割（research/fulldel_tpex.py）已用約 7 成的重大訊息跑過；剩餘年份 2026-11-03 13:35 UTC 起 10 段續跑（各段從 material_progress_*.json 接續），補完可重跑。原始紀錄：btdata 根目錄 material_YYYY.csv（2026-11-03 08:00 UTC 起分 11 段、每段 2 年重跑；第一次因子資料夾被稀疏下載擋住沒存到）。跑法：把 btdata 的 material_*.csv 放到一個資料夾，`python -m research.tender_bt 那個資料夾`。上櫃全額交割也要從這份重大訊息找。
 - 處置新制 2026/8/10：處置 5 天（當沖占比高 7 天）、撮合一律約 2 分鐘；舊資料的 5／20 分鐘不再適用。
 
+## 加權指數官方修正與台指期日資料（2026-11-24）
+- `data/archive/mkt/taiex_twse.csv`：證交所官方加權指數（FMTQIK 收盤 1997/7 起、MI_5MINS_HIST 開高低收 1999 起），由 `tools/backfill_bt.py twse_taiex 起年 迄年`（backfill_bt workflow，結果在 btdata 分支）產生後複製進來。
+  `pipeline/markets.official_taiex()` 每次更新 taiex 都用它修正 Yahoo：補 2000 年以前週六（當年週六有半天交易）與 2006~2018 週六補行交易日，刪掉颱風休市 Yahoo 仍有的假列（2001-09-18、2014-07-23、2016-07-08）。`markets full` 重抓後也會自動套用。
+- 個股行情／法人／融資的週六補行交易日（23 天，2006~2018）原本被回補跳過；`archive.backfill` 現在照官方指數的週六清單補，下一次 history 工作會補上。
+- 台指期日資料（含夜盤）1998/7~今：btdata 分支 `fut_TX_YYYY.csv`（`taifex 起年 迄年`；同時跑太多工作時期交所會全部拒絕，一次只跑一個）。夜盤列的日期是它所屬的交易日（前一晚 15:00 到當天 05:00）。
+
 ## 小走勢圖（pipeline/spark.py、app.js 的 spk*）
 - 每檔 160 日還原收盤，64 階一字元編碼；漲停日紅點；外框＝圖中最大波動：最大漲幅 ×2/×5/×10 淡黃/黃/紅框，最大跌幅 −30/−60/−80% 淺綠/深綠/墨綠，漲跌都有取對數幅度大的一邊，框內小字標倍數或跌幅。
 - 表格有「名稱」欄就自動在右邊加「走勢」欄（table → withSpark），所有圖對齊，可依最大漲幅排序；每日漲停檔、隔日檔內嵌 `spark`（只畫到那一天），其他頁用 spark.json（最新）。滑鼠移上或手機點一下浮出大圖；個股頁直接顯示大圖。
