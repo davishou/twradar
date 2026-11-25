@@ -362,9 +362,9 @@
   "2026-10-26"
  ],
  "fails": {},
- "last_run": "2026-11-24 16:44",
+ "last_run": "2026-11-25 16:33",
  "oldest": "2004-02-11",
- "n_days": 5608,
+ "n_days": 5610,
  "stopped": "完成",
  "complete": true,
  "notice_months": [
@@ -2045,12 +2045,12 @@
    "punish": 165
   },
   "2026": {
-   "quotes": 214,
-   "inst": 214,
-   "margin": 214,
-   "val": 214,
-   "notices": 214,
-   "punish": 200
+   "quotes": 216,
+   "inst": 216,
+   "margin": 216,
+   "val": 215,
+   "notices": 216,
+   "punish": 201
   }
  },
  "notice_empty": {
@@ -2294,7 +2294,7 @@
   }
  },
  "fund_run": {
-  "at": "2026-11-24 16:44",
+  "at": "2026-11-25 16:33",
   "revenue": 0,
   "fin": 0,
   "stopped": "完成",
@@ -2762,11 +2762,11 @@
    "2026-10-23",
    "2026-10-26"
   ],
-  "last_run": "2026-11-24 16:44",
-  "fetched": 0,
+  "last_run": "2026-11-25 16:33",
+  "fetched": 1,
   "stopped": "完成",
-  "quotes_days": 4903,
-  "board_days": 2411
+  "quotes_days": 4905,
+  "board_days": 2412
  },
  "stage1_done": "2026-10-28"
 }
