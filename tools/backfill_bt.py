@@ -7,6 +7,7 @@ python tools/backfill_bt.py material 起年 迄年   觀測站重大訊息逐日
 python tools/backfill_bt.py taifex 起年 迄年     期交所台指期、台指選擇權每日行情 → fut_TX_YYYY.csv、opt_TXO_YYYY.csv.gz（research/fo_bt.py 用）
 python tools/backfill_bt.py twse_taiex 起年 迄年  證交所加權指數每日開高低收（MI_5MINS_HIST，1999 起）＋收盤（FMTQIK，含 2000 年以前週六與補行交易日）→ taiex_twse.csv
 python tools/backfill_bt.py yahoo_intraday       加權指數 60 分 K（約 730 天）、5 分 K（60 天）→ twii_60m.csv、twii_5m.csv
+python tools/backfill_bt.py shares 起年 迄年     每月第一個交易日的發行股數（證交所 MI_QFIIS 2005 起、櫃買外資持股表約 2010 起）→ shares_YYYY.csv（PS／PSG 用）
 python tools/backfill_bt.py exright 起年 迄年    證交所 TWT49U＋櫃買除權除息計算結果（除權息參考價）→ exright_YYYY.csv（重建還原因子用）
 python tools/backfill_bt.py treasury 起年 迄年   同上，但只留庫藏股（主旨含「買回」「庫藏」）公告 → treasury_YYYY.csv（research/treasury_bt.py 用）
 """
@@ -401,6 +402,39 @@ if __name__ == "__main__":
                 material(a[0], a[1], kw=KW_TREASURY, prefix="treasury", subject_only=True)
             else:
                 material(a[0], a[1])
+        elif task == "shares":
+            from pipeline import archive as _ar
+            days = sorted(_ar.days("quotes"))
+            firsts = {}
+            for d in days:
+                firsts.setdefault(d[:7], d)
+            for y in range(int(sys.argv[2]), int(sys.argv[3]) + 1):
+                rows = []
+                for ym, d in sorted(firsts.items()):
+                    if int(ym[:4]) != y:
+                        continue
+                    dd = date.fromisoformat(d)
+                    try:
+                        r = S.get("https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS", params={"date": dd.strftime("%Y%m%d"), "selectType": "ALLBUT0999", "response": "json"}, timeout=60)
+                        j = r.json()
+                        for x in j.get("data") or []:
+                            if re.fullmatch(r"\d{4}", str(x[0]).strip()):
+                                rows.append({"date": d, "code": x[0].strip(), "shares": str(x[3]).replace(",", ""), "market": "TWSE"})
+                    except Exception as e:  # noqa: BLE001
+                        log("shares twse", d, e)
+                    time.sleep(3)
+                    try:
+                        r = S.get("https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php", params={"l": "zh-tw", "d": f"{dd.year - 1911:03d}/{dd.month:02d}/{dd.day:02d}"}, timeout=60)
+                        t = (r.json().get("tables") or [{}])[0]
+                        if t.get("date", "").endswith(f"{dd.month:02d}/{dd.day:02d}"):
+                            for x in t.get("data") or []:
+                                if re.fullmatch(r"\d{4}", str(x[1]).strip()):
+                                    rows.append({"date": d, "code": x[1].strip(), "shares": str(x[3]).replace(",", ""), "market": "TPEX"})
+                    except Exception as e:  # noqa: BLE001
+                        log("shares tpex", d, e)
+                    time.sleep(3)
+                write_csv(OUT / f"shares_{y}.csv", rows, ["date", "code", "shares", "market"])
+                log("shares", y, len(rows), "上市", sum(r["market"] == "TWSE" for r in rows), "上櫃", sum(r["market"] == "TPEX" for r in rows))
         elif task == "exright":
             from pipeline import sources as _src
             for y in range(int(sys.argv[2]), int(sys.argv[3]) + 1):
