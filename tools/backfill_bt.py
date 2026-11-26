@@ -403,36 +403,40 @@ if __name__ == "__main__":
             else:
                 material(a[0], a[1])
         elif task == "shares":
-            from pipeline import archive as _ar
-            days = sorted(_ar.days("quotes"))
-            firsts = {}
-            for d in days:
-                firsts.setdefault(d[:7], d)
+            # 工作流程沒有下載行情檔：每月從 1 號往後試，證交所有資料的第一天就是當月第一個交易日
             for y in range(int(sys.argv[2]), int(sys.argv[3]) + 1):
                 rows = []
-                for ym, d in sorted(firsts.items()):
-                    if int(ym[:4]) != y:
-                        continue
-                    dd = date.fromisoformat(d)
-                    try:
-                        r = S.get("https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS", params={"date": dd.strftime("%Y%m%d"), "selectType": "ALLBUT0999", "response": "json"}, timeout=60)
-                        j = r.json()
-                        for x in j.get("data") or []:
+                for mth in range(1, 13):
+                    if date(y, mth, 1) > date.today():
+                        break
+                    for day in range(1, 12):
+                        dd = date(y, mth, day)
+                        if dd.weekday() >= 5 or dd > date.today():
+                            continue
+                        try:
+                            j = S.get("https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS", params={"date": dd.strftime("%Y%m%d"), "selectType": "ALLBUT0999", "response": "json"}, timeout=60).json()
+                        except Exception as e:  # noqa: BLE001
+                            log("shares twse", dd, e)
+                            time.sleep(10)
+                            continue
+                        time.sleep(3)
+                        if j.get("stat") != "OK" or not j.get("data"):
+                            continue
+                        d = dd.isoformat()
+                        for x in j["data"]:
                             if re.fullmatch(r"\d{4}", str(x[0]).strip()):
                                 rows.append({"date": d, "code": x[0].strip(), "shares": str(x[3]).replace(",", ""), "market": "TWSE"})
-                    except Exception as e:  # noqa: BLE001
-                        log("shares twse", d, e)
-                    time.sleep(3)
-                    try:
-                        r = S.get("https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php", params={"l": "zh-tw", "d": f"{dd.year - 1911:03d}/{dd.month:02d}/{dd.day:02d}"}, timeout=60)
-                        t = (r.json().get("tables") or [{}])[0]
-                        if t.get("date", "").endswith(f"{dd.month:02d}/{dd.day:02d}"):
-                            for x in t.get("data") or []:
-                                if re.fullmatch(r"\d{4}", str(x[1]).strip()):
-                                    rows.append({"date": d, "code": x[1].strip(), "shares": str(x[3]).replace(",", ""), "market": "TPEX"})
-                    except Exception as e:  # noqa: BLE001
-                        log("shares tpex", d, e)
-                    time.sleep(3)
+                        try:
+                            t = (S.get("https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php",
+                                       params={"l": "zh-tw", "d": f"{dd.year - 1911:03d}/{dd.month:02d}/{dd.day:02d}"}, timeout=60).json().get("tables") or [{}])[0]
+                            if str(t.get("date", "")).endswith(f"{dd.month:02d}/{dd.day:02d}"):
+                                for x in t.get("data") or []:
+                                    if re.fullmatch(r"\d{4}", str(x[1]).strip()):
+                                        rows.append({"date": d, "code": x[1].strip(), "shares": str(x[3]).replace(",", ""), "market": "TPEX"})
+                        except Exception as e:  # noqa: BLE001
+                            log("shares tpex", d, e)
+                        time.sleep(3)
+                        break
                 write_csv(OUT / f"shares_{y}.csv", rows, ["date", "code", "shares", "market"])
                 log("shares", y, len(rows), "上市", sum(r["market"] == "TWSE" for r in rows), "上櫃", sum(r["market"] == "TPEX" for r in rows))
         elif task == "exright":
